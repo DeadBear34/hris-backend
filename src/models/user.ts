@@ -1,4 +1,4 @@
-import { pool } from "../config/database.js";
+import { pool } from "../config/databaseConnection.js";
 
 export interface User {
   id: string;

@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import * as userModel from "../models/user.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
-import { BadRequest, Conflict, Unauthorized } from "../helpers/AppError.js";
+import { BadRequest, Conflict, Unauthorized } from "../helpers/appError.js";
 
 export async function RegisterController(req: Request, res: Response, next: NextFunction) {
   try {

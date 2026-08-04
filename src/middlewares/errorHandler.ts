@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { AppError } from "../helpers/AppError.js";
+import { AppError } from "../helpers/appError.js";
 import { logger } from "../config/logger.js";
 
 export function notFoundHandler(req: Request, res: Response) {

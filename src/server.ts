@@ -1,7 +1,7 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
-import { testConnection } from "./config/database.js";
+import { testConnection } from "./config/databaseConnection.js";
 
 async function start() {
   try {

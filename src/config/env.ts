@@ -6,12 +6,16 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(8080),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
+  JWT_SECRET: z.string().min(32, "JWT_SECRET minimal 32 karakter"),
+  JWT_EXPIRES_IN: z.string().default("15m"),
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error("Invalid environment variables:", parsed.error.format());
+  console.error("Environment variable tidak valid:");
+  console.error(parsed.error.issues);
   process.exit(1);
 }
 

@@ -4,7 +4,7 @@ import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
 import { BadRequest, Conflict, Unauthorized } from "../helpers/AppError.js";
 
-export async function register(req: Request, res: Response, next: NextFunction) {
+export async function RegisterController(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password, name } = req.body;
 
@@ -40,7 +40,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
   }
 }
 
-export async function login(req: Request, res: Response, next: NextFunction) {
+export async function LoginController(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body;
 
@@ -87,7 +87,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export async function me(req: Request, res: Response, next: NextFunction) {
+export async function MeController(req: Request, res: Response, next: NextFunction) {
   try {
     if (!req.user) {
       throw Unauthorized("Belum login");

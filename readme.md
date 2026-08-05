@@ -19,26 +19,9 @@ Saat ini cakupan yang tersedia adalah modul autentikasi. Modul manajemen karyawa
 | Logging | Pino |
 | Keamanan HTTP | Helmet, CORS |
 
-## Struktur Proyek
-
-```
-src/
-  config/          Konfigurasi aplikasi (environment, logger, koneksi database)
-  controller/      Menangani request dan response HTTP
-  helpers/         Utilitas umum (JWT, hashing password, kelas error)
-  middlewares/     Autentikasi, otorisasi, dan penanganan error terpusat
-  models/          Akses data dan query SQL
-  route/           Definisi endpoint dan pemasangan middleware
-  app.ts           Perakitan aplikasi Express
-  server.ts        Titik masuk aplikasi
-```
-
-Alur sebuah request: `route` menerima dan meneruskan ke `middleware`, lalu ke `controller`, yang memanggil `models` untuk berbicara dengan database. Error yang dilempar di mana pun ditangkap oleh `errorHandler`.
-
 ## Prasyarat
 
 - Node.js versi 22 (tersedia di `.nvmrc`, jalankan `nvm use`)
-- Akun Supabase dengan project PostgreSQL yang sudah dibuat
 
 ## Instalasi
 
@@ -65,15 +48,7 @@ cp .env.example .env
 | `LOG_LEVEL` | tidak | `info` | `debug`, `info`, `warn`, atau `error` |
 | `DATABASE_URL` | ya | — | Connection string PostgreSQL dari Supabase (tab Direct connection) |
 | `JWT_SECRET` | ya | — | Kunci penandatangan token, minimal 32 karakter |
-| `JWT_EXPIRES_IN` | tidak | `15m` | Masa berlaku access token |
-
-Menghasilkan nilai `JWT_SECRET`:
-
-```bash
-openssl rand -hex 32
-```
-
-Aplikasi memvalidasi seluruh variabel saat startup. Jika ada yang tidak valid atau belum diisi, proses akan berhenti dengan pesan yang menjelaskan variabel mana yang bermasalah.
+| `JWT_EXPIRES_IN` | tidak | `24h` | Masa berlaku access token |
 
 
 ## Menjalankan Aplikasi

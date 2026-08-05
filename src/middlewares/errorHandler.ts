@@ -16,13 +16,17 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ) {
-  if (err instanceof ZodError) {
+    if (err instanceof ZodError) {
     return res.status(400).json({
-      success: false,
-      message: "Validasi gagal",
-      errors: err.issues,
+        success: false,
+        message: "Validasi gagal",
+        code: "VALIDATION_ERROR",
+        errors: err.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+        })),
     });
-  }
+    }
 
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({

@@ -8,7 +8,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET minimal 32 karakter"),
-  JWT_EXPIRES_IN: z.string().default("15m"),
+  JWT_EXPIRES_IN: z.string().default("24h"),
 });
 
 const parsed = envSchema.safeParse(process.env);

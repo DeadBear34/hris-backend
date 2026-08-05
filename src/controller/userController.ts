@@ -6,15 +6,7 @@ import { BadRequest, Conflict, Unauthorized } from "../helpers/appError.js";
 
 export async function RegisterController(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password, name } = req.body;
-
-    if (!email || !password || !name) {
-      throw BadRequest("Email, password, dan nama wajib diisi");
-    }
-
-    if (password.length < 8) {
-      throw BadRequest("Password minimal 8 karakter");
-    }
+    const { email, password, full_name, phone, gender } = req.body;
 
     const existing = await userModel.findByEmail(email);
 
@@ -24,14 +16,16 @@ export async function RegisterController(req: Request, res: Response, next: Next
 
     const hashed = await hashPassword(password);
 
-    const user = await userModel.insertUser(email, hashed, name, "employee");
+    const user = await userModel.insertUser(email, hashed, full_name, phone, gender, "employee", new Date());
 
     res.status(201).json({
-      success: true,
-      data: {
+    success: true,
+    data: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        full_name: user.full_name,
+        phone: user.phone,
+        gender: user.gender,
         role: user.role,
       },
     });
@@ -43,10 +37,6 @@ export async function RegisterController(req: Request, res: Response, next: Next
 export async function LoginController(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      throw BadRequest("Email dan password wajib diisi");
-    }
 
     const user = await userModel.findByEmail(email);
 
@@ -77,7 +67,7 @@ export async function LoginController(req: Request, res: Response, next: NextFun
         user: {
           id: user.id,
           email: user.email,
-          name: user.name,
+          full_name: user.full_name,
           role: user.role,
         },
       },
@@ -104,7 +94,9 @@ export async function MeController(req: Request, res: Response, next: NextFuncti
       data: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        full_name: user.full_name,
+        phone: user.phone,
+        gender: user.gender,
         role: user.role,
       },
     });

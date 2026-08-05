@@ -10,12 +10,7 @@ export function notFoundHandler(req: Request, res: Response) {
   });
 }
 
-export function errorHandler(
-  err: unknown,
-  _req: Request,
-  res: Response,
-  _next: NextFunction,
-) {
+export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
     if (err instanceof ZodError) {
     return res.status(400).json({
         success: false,

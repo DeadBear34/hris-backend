@@ -71,51 +71,43 @@ export interface ListParams {
   limit: number;
 }
 
-export async function listEmployees(
-  params: ListParams,
-): Promise<{ rows: EmployeeListItem[]; total: number }> {
-  const conditions: string[] = [];
-  const values: unknown[] = [];
+export async function listEmployees(params: ListParams): Promise<{ rows: EmployeeListItem[]; total: number }> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
 
-  if (params.search) {
-    values.push(`%${params.search}%`);
-    const i = values.length;
-    conditions.push(
-      `(e.full_name ILIKE $${i} OR e.employee_number ILIKE $${i} OR u.email ILIKE $${i})`,
+    if (params.search) {
+        values.push(`%${params.search}%`);
+        const i = values.length;
+        conditions.push(
+        `(e.full_name ILIKE $${i} OR e.employee_number ILIKE $${i} OR u.email ILIKE $${i})`,
+        );
+    }
+
+    if (params.department_id) {
+        values.push(params.department_id);
+        conditions.push(`e.department_id = $${values.length}`);
+    }
+
+    if (params.is_active !== undefined) {
+        values.push(params.is_active);
+        conditions.push(`e.is_active = $${values.length}`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const baseFrom = `FROM employees e LEFT JOIN users u       ON u.id = e.user_id LEFT JOIN departments d ON d.id = e.department_id LEFT JOIN positions p   ON p.id = e.position_id LEFT JOIN employees m   ON m.id = e.manager_id ${where}`;
+    const countResult = await pool.query<{ count: string }>(
+        `SELECT COUNT(*) ${baseFrom}`, values,
     );
-  }
+    const total = Number(countResult.rows[0]?.count ?? 0);
 
-  if (params.department_id) {
-    values.push(params.department_id);
-    conditions.push(`e.department_id = $${values.length}`);
-  }
+    const offset = (params.page - 1) * params.limit;
+    values.push(params.limit, offset);
 
-  if (params.is_active !== undefined) {
-    values.push(params.is_active);
-    conditions.push(`e.is_active = $${values.length}`);
-  }
-
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const baseFrom = `
-    FROM employees e
-    LEFT JOIN users u       ON u.id = e.user_id
-    LEFT JOIN departments d ON d.id = e.department_id
-    LEFT JOIN positions p   ON p.id = e.position_id
-    LEFT JOIN employees m   ON m.id = e.manager_id ${where}`;
-
-  const countResult = await pool.query<{ count: string }>(
-    `SELECT COUNT(*) ${baseFrom}`, values,
-  );
-  const total = Number(countResult.rows[0]?.count ?? 0);
-
-  const offset = (params.page - 1) * params.limit;
-  values.push(params.limit, offset);
-
-  const dataResult = await pool.query<EmployeeListItem>(
-    `SELECT e.id, e.employee_number, e.full_name, u.email, p.name AS position_name, d.name AS department_name, m.full_name AS manager_name, e.is_active ${baseFrom}
-    ORDER BY e.employee_number ASC
-    LIMIT $${values.length - 1} OFFSET $${values.length}`, values,
-  );
-  return { rows: dataResult.rows, total };
+    const dataResult = await pool.query<EmployeeListItem>(
+        `SELECT e.id, e.employee_number, e.full_name, u.email, p.name AS position_name, d.name AS department_name, m.full_name AS manager_name, e.is_active ${baseFrom}
+        ORDER BY e.employee_number ASC
+        LIMIT $${values.length - 1} OFFSET $${values.length}`, values,
+    );
+    return { rows: dataResult.rows, total };
 }

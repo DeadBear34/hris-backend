@@ -19,7 +19,7 @@ export function validateQuery(schema: ZodType) {
     const result = schema.safeParse(req.query);
 
     if (!result.success) {
-      return next(result.error);
+        return next(result.error);
     }
 
     res.locals.query = result.data;

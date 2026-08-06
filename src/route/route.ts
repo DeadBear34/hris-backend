@@ -15,11 +15,11 @@ router.get("/auth/me", authenticate, MeController);
 
 
 router.get(
-  "/employees",
-  authenticate,
-  authorize("hr", "admin"),
-  validateQuery(listEmployeeQuerySchema),
-  ListEmployeeController,
+    "/employees",
+    authenticate,
+    authorize("hr", "admin"),
+    validateQuery(listEmployeeQuerySchema),
+    ListEmployeeController,
 );
 
 router.get("/departments", authenticate, ListDepartmentController);

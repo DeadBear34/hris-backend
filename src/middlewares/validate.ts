@@ -13,3 +13,16 @@ export function validate(schema: ZodType) {
         next();
     };
 }
+
+export function validateQuery(schema: ZodType) {
+    return (req: Request, res: Response, next: NextFunction) => {
+    const result = schema.safeParse(req.query);
+
+    if (!result.success) {
+        return next(result.error);
+    }
+
+    res.locals.query = result.data;
+    next();
+  };
+}

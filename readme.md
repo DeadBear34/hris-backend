@@ -18,6 +18,7 @@ Saat ini cakupan yang tersedia adalah modul autentikasi. Modul manajemen karyawa
 | Validasi | Zod |
 | Logging | Pino |
 | Keamanan HTTP | Helmet, CORS |
+| Unit Test | Jest |
 
 ## Prasyarat
 
@@ -72,7 +73,7 @@ curl http://localhost:8080/health
 | `npm run dev` | Menjalankan server dengan `tsx watch` |
 | `npm run build` | Mengompilasi TypeScript ke JavaScript |
 | `npm start` | Menjalankan hasil build |
-| `npm test` | Menjalankan pengujian dengan Vitest |
+| `npm test` | Menjalankan pengujian dengan Jest |
 | `npm run lint` | Memeriksa kode dengan ESLint |
 | `npm run format` | Merapikan kode dengan Prettier |
 | `npx tsc --noEmit` | Memeriksa tipe tanpa menghasilkan berkas |

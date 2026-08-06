@@ -18,6 +18,7 @@ Saat ini cakupan yang tersedia adalah modul autentikasi. Modul manajemen karyawa
 | Validasi | Zod |
 | Logging | Pino |
 | Keamanan HTTP | Helmet, CORS |
+| Unit Test | Jest |
 
 ## Prasyarat
 

@@ -1,10 +1,14 @@
 import type { Request, Response, NextFunction } from "express";
+import { pool } from "../config/databaseConnection.js";
 import * as userModel from "../models/user.js";
+import * as employeeModel from "../models/employee.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
-import { BadRequest, Conflict, Unauthorized } from "../helpers/appError.js";
+import { Conflict, Unauthorized, NotFound } from "../helpers/appError.js";
 
 export async function RegisterController(req: Request, res: Response, next: NextFunction) {
+  const client = await pool.connect();
+
   try {
     const { email, password, full_name, phone, gender } = req.body;
 
@@ -16,21 +20,36 @@ export async function RegisterController(req: Request, res: Response, next: Next
 
     const hashed = await hashPassword(password);
 
-    const user = await userModel.insertUser(email, hashed, full_name, phone, gender, "employee", new Date());
+    await client.query("BEGIN");
+
+    const user = await userModel.insertUser(client, email, hashed, "employee", new Date());
+
+    const employee = await employeeModel.insertEmployee(client, user.id, full_name, phone, gender);
+
+    await client.query("COMMIT");
 
     res.status(201).json({
-    success: true,
-    data: {
+      success: true,
+      message: "Pendaftaran berhasil. Akun kamu menunggu persetujuan dari HR sebelum dapat digunakan.",
+      data: {
         id: user.id,
         email: user.email,
-        full_name: user.full_name,
-        phone: user.phone,
-        gender: user.gender,
         role: user.role,
+        is_active: user.is_active,
+        employee: {
+          id: employee.id,
+          employee_number: employee.employee_number,
+          full_name: employee.full_name,
+          phone: employee.phone,
+          gender: employee.gender,
+        },
       },
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     next(err);
+  } finally {
+    client.release();
   }
 }
 
@@ -51,14 +70,21 @@ export async function LoginController(req: Request, res: Response, next: NextFun
     }
 
     if (!user.is_active) {
-      throw Unauthorized("Akun tidak aktif");
+      if (!user.approved_at) {
+        throw Unauthorized("Akun kamu masih menunggu persetujuan dari HR");
+      }
+      throw Unauthorized("Akun tidak aktif, silakan hubungi HR");
     }
+
+    const employee = await employeeModel.findByUserId(user.id);
 
     const token = createToken({
       id: user.id,
       email: user.email,
       role: user.role,
     });
+
+    await userModel.updateLastLogin(user.id);
 
     res.json({
       success: true,
@@ -67,8 +93,9 @@ export async function LoginController(req: Request, res: Response, next: NextFun
         user: {
           id: user.id,
           email: user.email,
-          full_name: user.full_name,
           role: user.role,
+          full_name: employee?.full_name ?? null,
+          employee_number: employee?.employee_number ?? null,
         },
       },
     });
@@ -86,18 +113,30 @@ export async function MeController(req: Request, res: Response, next: NextFuncti
     const user = await userModel.findById(req.user.id);
 
     if (!user) {
-      throw Unauthorized("User tidak ditemukan");
+      throw NotFound("User tidak ditemukan");
     }
+
+    const employee = await employeeModel.findByUserId(user.id);
 
     res.json({
       success: true,
       data: {
         id: user.id,
         email: user.email,
-        full_name: user.full_name,
-        phone: user.phone,
-        gender: user.gender,
         role: user.role,
+        is_active: user.is_active,
+        last_login_at: user.last_login_at,
+        employee: employee
+          ? {
+              id: employee.id,
+              employee_number: employee.employee_number,
+              full_name: employee.full_name,
+              phone: employee.phone,
+              gender: employee.gender,
+              employment_status: employee.employment_status,
+              join_date: employee.join_date,
+            }
+          : null,
       },
     });
   } catch (err) {

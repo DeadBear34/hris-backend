@@ -93,8 +93,10 @@ export async function createEmployee(
     `INSERT INTO employees
        (full_name, phone, gender, birth_date, address,
         department_id, position_id, manager_id, employment_status, join_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-             COALESCE($9, 'probation'), COALESCE($10, current_date))
+     VALUES ($1, $2, $3::employee_gender, $4::date, $5,
+             $6::uuid, $7::uuid, $8::uuid,
+             COALESCE($9::employment_status, 'probation'),
+             COALESCE($10::date, current_date))
      RETURNING *`,
     [
       data.full_name,

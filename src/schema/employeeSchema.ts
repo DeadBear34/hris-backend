@@ -11,7 +11,7 @@ export const listEmployeeQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
-export const createEmployeeSchema = z.object({
+const employeeDataSchema = z.object({
   full_name: z
     .string({ message: "Nama lengkap wajib diisi" })
     .trim()
@@ -31,8 +31,11 @@ export const createEmployeeSchema = z.object({
   }),
 
   birth_date: z.iso.date("Tanggal lahir tidak valid").optional(),
-  address: z.string().trim().max(500).optional(),
-
+  address: z
+    .string()
+    .trim()
+    .max(500, "Alamat maksimal 500 karakter")
+    .optional(),
   department_id: z.uuid("Departemen tidak valid").optional(),
   position_id: z.uuid("Jabatan tidak valid").optional(),
   manager_id: z.uuid("Manajer tidak valid").optional(),
@@ -44,11 +47,22 @@ export const createEmployeeSchema = z.object({
   join_date: z.iso.date("Tanggal bergabung tidak valid").optional(),
 });
 
-export const updateEmployeeSchema = createEmployeeSchema.partial().extend({
-  is_active: z.boolean().optional(),
-  resign_date: z.iso.date("Tanggal resign tidak valid").optional(),
+export const createEmployeeSchema = employeeDataSchema.extend({
+  email: z
+    .string({ message: "Email wajib diisi" })
+    .trim()
+    .toLowerCase()
+    .pipe(z.email("Format email tidak valid, contoh: nama@domain.com")),
+
+  password: z
+    .string({ message: "Password wajib diisi" })
+    .min(8, "Password minimal 8 karakter")
+    .max(72, "Password maksimal 72 karakter"),
+
+  role: z.enum(["employee", "hr", "admin"]).optional(),
 });
 
-export const idParamSchema = z.object({
-  id: z.uuid("ID tidak valid"),
+export const updateEmployeeSchema = employeeDataSchema.partial().extend({
+  is_active: z.boolean().optional(),
+  resign_date: z.iso.date("Tanggal resign tidak valid").optional(),
 });

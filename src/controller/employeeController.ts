@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
+import { pool } from "../config/databaseConnection.js";
 import * as employeeModel from "../models/employee.js";
+import * as userModel from "../models/user.js";
 import * as departmentModel from "../models/department.js";
 import * as positionModel from "../models/position.js";
 import type {
@@ -7,10 +9,17 @@ import type {
   CreateEmployeeInput,
   UpdateEmployeeInput,
 } from "../models/employee.js";
-import { BadRequest, NotFound } from "../helpers/appError.js";
+import type { UserRole } from "../models/user.js";
+import { hashPassword } from "../helpers/password.js";
+import {
+  BadRequest,
+  NotFound,
+  Conflict,
+  Unauthorized,
+} from "../helpers/appError.js";
 
 async function validasiRelasi(
-  data: CreateEmployeeInput | UpdateEmployeeInput,
+  data: Partial<CreateEmployeeInput>,
   currentId?: string,
 ) {
   if (data.department_id) {
@@ -79,16 +88,62 @@ export async function CreateEmployeeController(
   res: Response,
   next: NextFunction,
 ) {
+  const client = await pool.connect();
+
   try {
-    const data = req.body as CreateEmployeeInput;
+    if (!req.user) throw Unauthorized("Belum login");
 
-    await validasiRelasi(data);
+    const { email, password, role, ...employeeData } =
+      req.body as CreateEmployeeInput & {
+        email: string;
+        password: string;
+        role?: UserRole;
+      };
 
-    const employee = await employeeModel.createEmployee(data);
+    const existing = await userModel.findByEmail(email);
+    if (existing) throw Conflict("Email sudah terdaftar");
 
-    res.status(201).json({ success: true, data: employee });
+    await validasiRelasi(employeeData);
+
+    const hashed = await hashPassword(password);
+
+    await client.query("BEGIN");
+
+    const user = await userModel.insertUserByAdmin(
+      client,
+      email,
+      hashed,
+      role ?? "employee",
+      req.user.id,
+    );
+
+    const employee = await employeeModel.createEmployee(
+      client,
+      user.id,
+      employeeData,
+    );
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      success: true,
+      message:
+        "Karyawan berhasil ditambahkan. Sampaikan password awal kepada karyawan dan minta menggantinya saat login pertama.",
+      data: {
+        employee,
+        account: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          must_change_password: user.must_change_password,
+        },
+      },
+    });
   } catch (err) {
+    await client.query("ROLLBACK");
     next(err);
+  } finally {
+    client.release();
   }
 }
 
@@ -119,17 +174,36 @@ export async function DeleteEmployeeController(
   res: Response,
   next: NextFunction,
 ) {
+  const client = await pool.connect();
+
   try {
     const { id } = res.locals.params as { id: string };
 
-    const employee = await employeeModel.softDeleteEmployee(id);
-    if (!employee) throw NotFound("Karyawan tidak ditemukan");
+    const existing = await employeeModel.findById(id);
+    if (!existing) throw NotFound("Karyawan tidak ditemukan");
 
-    res.json({
-      success: true,
-      message: "Karyawan berhasil dihapus",
-    });
+    const bawahan = await employeeModel.countSubordinates(id);
+    if (bawahan > 0) {
+      throw BadRequest(
+        `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${bawahan} karyawan`,
+      );
+    }
+
+    await client.query("BEGIN");
+
+    await employeeModel.softDeleteEmployee(client, id);
+
+    if (existing.user_id) {
+      await userModel.softDeleteUser(client, existing.user_id);
+    }
+
+    await client.query("COMMIT");
+
+    res.json({ success: true, message: "Karyawan berhasil dihapus" });
   } catch (err) {
+    await client.query("ROLLBACK");
     next(err);
+  } finally {
+    client.release();
   }
 }

@@ -166,3 +166,28 @@ export async function MeController(
     next(err);
   }
 }
+
+export async function ChangePasswordController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw Unauthorized("Belum login");
+
+    const { current_password, new_password } = req.body;
+
+    const user = await userModel.findByEmail(req.user.email);
+    if (!user) throw NotFound("User tidak ditemukan");
+
+    const valid = await verifyPassword(user.password, current_password);
+    if (!valid) throw Unauthorized("Password saat ini salah");
+
+    const hashed = await hashPassword(new_password);
+    await userModel.updatePassword(user.id, hashed);
+
+    res.json({ success: true, message: "Password berhasil diubah" });
+  } catch (err) {
+    next(err);
+  }
+}

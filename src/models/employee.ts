@@ -64,6 +64,17 @@ export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
   resign_date?: string;
 };
 
+const COLUMN_CAST: Record<string, string> = {
+  gender: "::employee_gender",
+  employment_status: "::employment_status",
+  birth_date: "::date",
+  join_date: "::date",
+  resign_date: "::date",
+  department_id: "::uuid",
+  position_id: "::uuid",
+  manager_id: "::uuid",
+};
+
 export async function insertEmployee(
   db: Executor,
   user_id: string,
@@ -73,7 +84,7 @@ export async function insertEmployee(
 ): Promise<Employee> {
   const result = await db.query<Employee>(
     `INSERT INTO employees (user_id, full_name, phone, gender)
-     VALUES ($1, $2, $3, $4)
+     VALUES ($1::uuid, $2, $3, $4::employee_gender)
      RETURNING *`,
     [user_id, full_name, phone, gender],
   );
@@ -87,18 +98,21 @@ export async function insertEmployee(
 }
 
 export async function createEmployee(
+  db: Executor,
+  user_id: string | null,
   data: CreateEmployeeInput,
 ): Promise<Employee> {
-  const result = await pool.query<Employee>(
+  const result = await db.query<Employee>(
     `INSERT INTO employees
-       (full_name, phone, gender, birth_date, address,
+       (user_id, full_name, phone, gender, birth_date, address,
         department_id, position_id, manager_id, employment_status, join_date)
-     VALUES ($1, $2, $3::employee_gender, $4::date, $5,
-             $6::uuid, $7::uuid, $8::uuid,
-             COALESCE($9::employment_status, 'probation'),
-             COALESCE($10::date, current_date))
+     VALUES ($1::uuid, $2, $3, $4::employee_gender, $5::date, $6,
+             $7::uuid, $8::uuid, $9::uuid,
+             COALESCE($10::employment_status, 'probation'),
+             COALESCE($11::date, current_date))
      RETURNING *`,
     [
+      user_id,
       data.full_name,
       data.phone,
       data.gender,
@@ -130,7 +144,8 @@ export async function updateEmployee(
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
     values.push(value);
-    fields.push(`${key} = $${values.length}`);
+    const cast = COLUMN_CAST[key] ?? "";
+    fields.push(`${key} = $${values.length}${cast}`);
   }
 
   if (fields.length === 0) {
@@ -143,7 +158,7 @@ export async function updateEmployee(
   const result = await pool.query<Employee>(
     `UPDATE employees
      SET ${fields.join(", ")}
-     WHERE id = $${values.length} AND deleted_at IS NULL
+     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
      RETURNING *`,
     values,
   );
@@ -151,11 +166,14 @@ export async function updateEmployee(
   return result.rows[0] ?? null;
 }
 
-export async function softDeleteEmployee(id: string): Promise<Employee | null> {
-  const result = await pool.query<Employee>(
+export async function softDeleteEmployee(
+  db: Executor,
+  id: string,
+): Promise<Employee | null> {
+  const result = await db.query<Employee>(
     `UPDATE employees
      SET deleted_at = now(), is_active = false, updated_at = now()
-     WHERE id = $1 AND deleted_at IS NULL
+     WHERE id = $1::uuid AND deleted_at IS NULL
      RETURNING *`,
     [id],
   );
@@ -165,7 +183,7 @@ export async function softDeleteEmployee(id: string): Promise<Employee | null> {
 
 export async function findById(id: string): Promise<Employee | null> {
   const result = await pool.query<Employee>(
-    "SELECT * FROM employees WHERE id = $1 AND deleted_at IS NULL",
+    "SELECT * FROM employees WHERE id = $1::uuid AND deleted_at IS NULL",
     [id],
   );
   return result.rows[0] ?? null;
@@ -173,7 +191,7 @@ export async function findById(id: string): Promise<Employee | null> {
 
 export async function findByUserId(user_id: string): Promise<Employee | null> {
   const result = await pool.query<Employee>(
-    "SELECT * FROM employees WHERE user_id = $1 AND deleted_at IS NULL",
+    "SELECT * FROM employees WHERE user_id = $1::uuid AND deleted_at IS NULL",
     [user_id],
   );
   return result.rows[0] ?? null;
@@ -192,10 +210,18 @@ export async function findDetailById(
      LEFT JOIN departments d ON d.id = e.department_id
      LEFT JOIN positions p   ON p.id = e.position_id
      LEFT JOIN employees m   ON m.id = e.manager_id
-     WHERE e.id = $1 AND e.deleted_at IS NULL`,
+     WHERE e.id = $1::uuid AND e.deleted_at IS NULL`,
     [id],
   );
   return result.rows[0] ?? null;
+}
+
+export async function countSubordinates(id: string): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    "SELECT COUNT(*) FROM employees WHERE manager_id = $1::uuid AND deleted_at IS NULL",
+    [id],
+  );
+  return Number(result.rows[0]?.count ?? 0);
 }
 
 export async function listEmployees(
@@ -214,7 +240,7 @@ export async function listEmployees(
 
   if (params.department_id) {
     values.push(params.department_id);
-    conditions.push(`e.department_id = $${values.length}`);
+    conditions.push(`e.department_id = $${values.length}::uuid`);
   }
 
   if (params.is_active !== undefined) {

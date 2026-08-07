@@ -3,6 +3,7 @@ import {
   RegisterController,
   LoginController,
   MeController,
+  ChangePasswordController,
 } from "../controller/userController.js";
 import {
   ListEmployeeController,
@@ -31,12 +32,15 @@ import {
   validateQuery,
   validateParams,
 } from "../middlewares/validate.js";
-import { loginSchema, registerSchema } from "../schema/authSchema.js";
+import {
+  loginSchema,
+  registerSchema,
+  changePasswordSchema,
+} from "../schema/authSchema.js";
 import {
   listEmployeeQuerySchema,
   createEmployeeSchema,
   updateEmployeeSchema,
-  idParamSchema,
 } from "../schema/employeeSchema.js";
 import {
   createDepartmentSchema,
@@ -46,14 +50,20 @@ import {
   createPositionSchema,
   updatePositionSchema,
 } from "../schema/positionSchema.js";
+import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
+const hrOnly = [authenticate, authorize("hr", "admin")];
 
 router.post("/auth/register", validate(registerSchema), RegisterController);
 router.post("/auth/login", validate(loginSchema), LoginController);
 router.get("/auth/me", authenticate, MeController);
-
-const hrOnly = [authenticate, authorize("hr", "admin")];
+router.patch(
+  "/auth/password",
+  authenticate,
+  validate(changePasswordSchema),
+  ChangePasswordController,
+);
 
 router.get(
   "/employees",

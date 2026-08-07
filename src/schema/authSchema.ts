@@ -48,3 +48,19 @@ export const loginSchema = z.object({
     .string({ message: "Password wajib diisi" })
     .min(1, "Password wajib diisi"),
 });
+
+export const changePasswordSchema = z
+  .object({
+    current_password: z
+      .string({ message: "Password saat ini wajib diisi" })
+      .min(1, "Password saat ini wajib diisi"),
+
+    new_password: z
+      .string({ message: "Password baru wajib diisi" })
+      .min(8, "Password baru minimal 8 karakter")
+      .max(72, "Password baru maksimal 72 karakter"),
+  })
+  .refine((data) => data.current_password !== data.new_password, {
+    message: "Password baru harus berbeda dari password saat ini",
+    path: ["new_password"],
+  });

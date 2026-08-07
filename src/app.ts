@@ -12,7 +12,7 @@ app.use(cors({ origin: env.CORS_ORIGIN }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
-    res.json({ success: true, message: "Server berjalan" });
+  res.json({ success: true, message: "Server berjalan" });
 });
 
 app.use("/api/v1", router);

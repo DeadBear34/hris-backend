@@ -20,6 +20,15 @@ export interface User {
   updated_at: Date;
 }
 
+export interface PendingUser {
+  id: string;
+  email: string;
+  role: UserRole;
+  full_name: string | null;
+  phone: string | null;
+  created_at: Date;
+}
+
 const SAFE_COLUMNS = `id, email, role, is_active, terms_accepted_at,
   approved_at, approved_by, last_login_at, must_change_password,
   deleted_at, created_at, updated_at`;
@@ -140,4 +149,15 @@ export async function softDeleteUser(db: Executor, id: string): Promise<void> {
      WHERE id = $1 AND deleted_at IS NULL`,
     [id],
   );
+}
+
+export async function findPending(): Promise<PendingUser[]> {
+  const result = await pool.query<PendingUser>(
+    `SELECT u.id, u.email, u.role, e.full_name, e.phone, u.created_at
+     FROM users u
+     LEFT JOIN employees e ON e.user_id = u.id AND e.deleted_at IS NULL
+     WHERE u.approved_at IS NULL AND u.deleted_at IS NULL
+     ORDER BY u.created_at ASC`,
+  );
+  return result.rows;
 }

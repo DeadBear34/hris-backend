@@ -18,6 +18,8 @@ export interface PositionInput {
   is_active?: boolean;
 }
 
+const UPDATABLE_COLUMNS = ["code", "name", "level", "is_active"] as const;
+
 export async function findAll(): Promise<Position[]> {
   const result = await pool.query<Position>(
     "SELECT * FROM positions WHERE deleted_at IS NULL ORDER BY level ASC, name ASC",
@@ -27,7 +29,7 @@ export async function findAll(): Promise<Position[]> {
 
 export async function findById(id: string): Promise<Position | null> {
   const result = await pool.query<Position>(
-    "SELECT * FROM positions WHERE id = $1 AND deleted_at IS NULL",
+    "SELECT * FROM positions WHERE id = $1::uuid AND deleted_at IS NULL",
     [id],
   );
   return result.rows[0] ?? null;
@@ -44,7 +46,7 @@ export async function findByCode(code: string): Promise<Position | null> {
 export async function createPosition(data: PositionInput): Promise<Position> {
   const result = await pool.query<Position>(
     `INSERT INTO positions (code, name, level)
-     VALUES ($1, $2, COALESCE($3, 1))
+     VALUES ($1, $2, COALESCE($3::int, 1))
      RETURNING *`,
     [data.code, data.name, data.level ?? null],
   );
@@ -66,6 +68,8 @@ export async function updatePosition(
 
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
+    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
+
     values.push(value);
     fields.push(`${key} = $${values.length}`);
   }
@@ -80,7 +84,7 @@ export async function updatePosition(
   const result = await pool.query<Position>(
     `UPDATE positions
      SET ${fields.join(", ")}
-     WHERE id = $${values.length} AND deleted_at IS NULL
+     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
      RETURNING *`,
     values,
   );
@@ -92,7 +96,7 @@ export async function softDeletePosition(id: string): Promise<Position | null> {
   const result = await pool.query<Position>(
     `UPDATE positions
      SET deleted_at = now(), is_active = false, updated_at = now()
-     WHERE id = $1 AND deleted_at IS NULL
+     WHERE id = $1::uuid AND deleted_at IS NULL
      RETURNING *`,
     [id],
   );
@@ -102,7 +106,8 @@ export async function softDeletePosition(id: string): Promise<Position | null> {
 
 export async function countEmployees(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
-    "SELECT COUNT(*) FROM employees WHERE position_id = $1 AND deleted_at IS NULL",
+    `SELECT COUNT(*) FROM employees
+     WHERE position_id = $1::uuid AND deleted_at IS NULL`,
     [id],
   );
   return Number(result.rows[0]?.count ?? 0);

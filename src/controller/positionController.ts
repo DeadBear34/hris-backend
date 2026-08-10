@@ -69,6 +69,17 @@ export async function UpdatePositionController(
       if (duplicate) throw Conflict("Kode jabatan sudah digunakan");
     }
 
+    if (data.is_active === false && existing.is_active) {
+      const jumlah = await positionModel.countEmployees(id);
+
+      if (jumlah > 0) {
+        throw BadRequest(
+          `Jabatan tidak dapat dinonaktifkan karena masih digunakan oleh ${jumlah} karyawan`,
+          { employee_count: jumlah },
+        );
+      }
+    }
+
     const position = await positionModel.updatePosition(id, data);
 
     res.json({ success: true, data: position });
@@ -91,7 +102,8 @@ export async function DeletePositionController(
     const jumlah = await positionModel.countEmployees(id);
     if (jumlah > 0) {
       throw BadRequest(
-        `Jabatan tidak dapat dihapus karena masih digunakan oleh ${jumlah} karyawan`,
+        `Jabatan tidak dapat dihapus karena masih digunakan oleh ${jumlah} karyawan. Pindahkan karyawan ke jabatan lain terlebih dahulu.`,
+        { employee_count: jumlah },
       );
     }
 

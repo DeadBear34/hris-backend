@@ -64,3 +64,7 @@ export const changePasswordSchema = z
     message: "Password baru harus berbeda dari password saat ini",
     path: ["new_password"],
   });
+
+export const setUserActiveSchema = z.object({
+  is_active: z.boolean({ message: "Status aktif wajib diisi" }),
+});

@@ -39,6 +39,19 @@ async function validasiRelasi(
 
     const manager = await employeeModel.findById(data.manager_id);
     if (!manager) throw BadRequest("Manajer tidak ditemukan");
+
+    if (currentId) {
+      const siklus = await employeeModel.isDescendantOf(
+        data.manager_id,
+        currentId,
+      );
+
+      if (siklus) {
+        throw BadRequest(
+          "Manajer yang dipilih merupakan bawahan dari karyawan ini, sehingga akan membentuk struktur melingkar",
+        );
+      }
+    }
   }
 }
 
@@ -183,6 +196,7 @@ export async function DeleteEmployeeController(
     if (!existing) throw NotFound("Karyawan tidak ditemukan");
 
     const bawahan = await employeeModel.findSubordinates(id);
+
     if (bawahan.length > 0) {
       throw BadRequest(
         `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${bawahan.length} karyawan. Pindahkan mereka ke manajer lain terlebih dahulu.`,

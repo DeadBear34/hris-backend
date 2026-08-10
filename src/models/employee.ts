@@ -64,6 +64,21 @@ export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
   resign_date?: string;
 };
 
+const UPDATABLE_COLUMNS = [
+  "full_name",
+  "phone",
+  "gender",
+  "birth_date",
+  "address",
+  "department_id",
+  "position_id",
+  "manager_id",
+  "employment_status",
+  "join_date",
+  "resign_date",
+  "is_active",
+] as const;
+
 const COLUMN_CAST: Record<string, string> = {
   gender: "::employee_gender",
   employment_status: "::employment_status",
@@ -143,6 +158,8 @@ export async function updateEmployee(
 
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
+    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
+
     values.push(value);
     const cast = COLUMN_CAST[key] ?? "";
     fields.push(`${key} = $${values.length}${cast}`);
@@ -289,4 +306,28 @@ export async function findSubordinates(
     [id],
   );
   return result.rows;
+}
+
+export async function isDescendantOf(
+  candidateManagerId: string,
+  employeeId: string,
+): Promise<boolean> {
+  const result = await pool.query<{ id: string }>(
+    `WITH RECURSIVE rantai AS (
+       SELECT id, manager_id
+       FROM employees
+       WHERE id = $1::uuid AND deleted_at IS NULL
+
+       UNION ALL
+
+       SELECT e.id, e.manager_id
+       FROM employees e
+       JOIN rantai r ON e.id = r.manager_id
+       WHERE e.deleted_at IS NULL
+     )
+     SELECT id FROM rantai WHERE id = $2::uuid`,
+    [candidateManagerId, employeeId],
+  );
+
+  return result.rows.length > 0;
 }

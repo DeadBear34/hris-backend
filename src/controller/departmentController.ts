@@ -69,6 +69,17 @@ export async function UpdateDepartmentController(
       if (duplicate) throw Conflict("Kode departemen sudah digunakan");
     }
 
+    if (data.is_active === false && existing.is_active) {
+      const jumlah = await departmentModel.countEmployees(id);
+
+      if (jumlah > 0) {
+        throw BadRequest(
+          `Departemen tidak dapat dinonaktifkan karena masih memiliki ${jumlah} karyawan`,
+          { employee_count: jumlah },
+        );
+      }
+    }
+
     const department = await departmentModel.updateDepartment(id, data);
 
     res.json({ success: true, data: department });
@@ -91,7 +102,8 @@ export async function DeleteDepartmentController(
     const jumlah = await departmentModel.countEmployees(id);
     if (jumlah > 0) {
       throw BadRequest(
-        `Departemen tidak dapat dihapus karena masih memiliki ${jumlah} karyawan`,
+        `Departemen tidak dapat dihapus karena masih memiliki ${jumlah} karyawan. Pindahkan karyawan ke departemen lain terlebih dahulu.`,
+        { employee_count: jumlah },
       );
     }
 

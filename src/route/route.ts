@@ -4,6 +4,9 @@ import {
   LoginController,
   MeController,
   ChangePasswordController,
+  ListPendingUserController,
+  ApproveUserController,
+  SetUserActiveController,
 } from "../controller/userController.js";
 import {
   ListEmployeeController,
@@ -36,6 +39,7 @@ import {
   loginSchema,
   registerSchema,
   changePasswordSchema,
+  setUserActiveSchema,
 } from "../schema/authSchema.js";
 import {
   listEmployeeQuerySchema,
@@ -53,16 +57,37 @@ import {
 import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
+const loggedIn = [authenticate];
 const hrOnly = [authenticate, authorize("hr", "admin")];
 
 router.post("/auth/register", validate(registerSchema), RegisterController);
+
 router.post("/auth/login", validate(loginSchema), LoginController);
-router.get("/auth/me", authenticate, MeController);
+
+router.get("/auth/me", ...loggedIn, MeController);
+
 router.patch(
   "/auth/password",
-  authenticate,
+  ...loggedIn,
   validate(changePasswordSchema),
   ChangePasswordController,
+);
+
+router.get("/users/pending", ...hrOnly, ListPendingUserController);
+
+router.patch(
+  "/users/:id/approve",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  ApproveUserController,
+);
+
+router.patch(
+  "/users/:id/status",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  validate(setUserActiveSchema),
+  SetUserActiveController,
 );
 
 router.get(
@@ -71,18 +96,21 @@ router.get(
   validateQuery(listEmployeeQuerySchema),
   ListEmployeeController,
 );
+
 router.post(
   "/employees",
   ...hrOnly,
   validate(createEmployeeSchema),
   CreateEmployeeController,
 );
+
 router.get(
   "/employees/:id",
   ...hrOnly,
   validateParams(idParamSchema),
   DetailEmployeeController,
 );
+
 router.patch(
   "/employees/:id",
   ...hrOnly,
@@ -90,6 +118,7 @@ router.patch(
   validate(updateEmployeeSchema),
   UpdateEmployeeController,
 );
+
 router.delete(
   "/employees/:id",
   ...hrOnly,
@@ -97,19 +126,22 @@ router.delete(
   DeleteEmployeeController,
 );
 
-router.get("/departments", authenticate, ListDepartmentController);
+router.get("/departments", ...loggedIn, ListDepartmentController);
+
+router.get(
+  "/departments/:id",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  DetailDepartmentController,
+);
+
 router.post(
   "/departments",
   ...hrOnly,
   validate(createDepartmentSchema),
   CreateDepartmentController,
 );
-router.get(
-  "/departments/:id",
-  ...hrOnly,
-  validateParams(idParamSchema),
-  DetailDepartmentController,
-);
+
 router.patch(
   "/departments/:id",
   ...hrOnly,
@@ -117,6 +149,7 @@ router.patch(
   validate(updateDepartmentSchema),
   UpdateDepartmentController,
 );
+
 router.delete(
   "/departments/:id",
   ...hrOnly,
@@ -124,19 +157,27 @@ router.delete(
   DeleteDepartmentController,
 );
 
-router.get("/positions", authenticate, ListPositionController);
+// ---------------------------------------------------------------
+// Jabatan
+// Aturan akses sama dengan departemen
+// ---------------------------------------------------------------
+
+router.get("/positions", ...loggedIn, ListPositionController);
+
+router.get(
+  "/positions/:id",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  DetailPositionController,
+);
+
 router.post(
   "/positions",
   ...hrOnly,
   validate(createPositionSchema),
   CreatePositionController,
 );
-router.get(
-  "/positions/:id",
-  ...hrOnly,
-  validateParams(idParamSchema),
-  DetailPositionController,
-);
+
 router.patch(
   "/positions/:id",
   ...hrOnly,
@@ -144,6 +185,7 @@ router.patch(
   validate(updatePositionSchema),
   UpdatePositionController,
 );
+
 router.delete(
   "/positions/:id",
   ...hrOnly,

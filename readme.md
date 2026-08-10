@@ -6,19 +6,20 @@ Saat ini cakupan yang tersedia adalah modul autentikasi. Modul manajemen karyawa
 
 ## Tech Stack
 
-| Komponen | Teknologi |
-| --- | --- |
-| Runtime | Node.js 22 |
-| Bahasa | TypeScript |
-| Framework | Express 5 |
-| Database | PostgreSQL (Supabase) |
-| Driver DB | node-postgres (`pg`) |
-| Autentikasi | JSON Web Token |
-| Hashing | Argon2id |
-| Validasi | Zod |
-| Logging | Pino |
-| Keamanan HTTP | Helmet, CORS |
-| Unit Test | Jest |
+| Komponen        | Teknologi             |
+| --------------- | --------------------- |
+| Runtime         | Node.js 22            |
+| Bahasa          | TypeScript            |
+| Framework       | Express 5             |
+| Database        | PostgreSQL (Supabase) |
+| Driver DB       | node-postgres (`pg`)  |
+| Autentikasi     | JSON Web Token        |
+| Hashing         | Argon2id              |
+| Validasi        | Zod                   |
+| Logging         | Pino                  |
+| Keamanan HTTP   | Helmet, CORS          |
+| Unit Test       | Jest                  |
+| Formatting code | Prittier              |
 
 ## Prasyarat
 
@@ -41,16 +42,15 @@ Salin `.env.example` menjadi `.env`, lalu isi nilainya.
 cp .env.example .env
 ```
 
-| Variabel | Wajib | Default | Keterangan |
-| --- | --- | --- | --- |
-| `NODE_ENV` | tidak | `development` | `development`, `test`, atau `production` |
-| `PORT` | tidak | `8080` | Port yang didengarkan server |
-| `CORS_ORIGIN` | tidak | `http://localhost:5173` | Origin frontend yang diizinkan |
-| `LOG_LEVEL` | tidak | `info` | `debug`, `info`, `warn`, atau `error` |
-| `DATABASE_URL` | ya | — | Connection string PostgreSQL dari Supabase (tab Direct connection) |
-| `JWT_SECRET` | ya | — | Kunci penandatangan token, minimal 32 karakter |
-| `JWT_EXPIRES_IN` | tidak | `24h` | Masa berlaku access token |
-
+| Variabel         | Wajib | Default                 | Keterangan                                                         |
+| ---------------- | ----- | ----------------------- | ------------------------------------------------------------------ |
+| `NODE_ENV`       | tidak | `development`           | `development`, `test`, atau `production`                           |
+| `PORT`           | tidak | `8080`                  | Port yang didengarkan server                                       |
+| `CORS_ORIGIN`    | tidak | `http://localhost:5173` | Origin frontend yang diizinkan                                     |
+| `LOG_LEVEL`      | tidak | `info`                  | `debug`, `info`, `warn`, atau `error`                              |
+| `DATABASE_URL`   | ya    | —                       | Connection string PostgreSQL dari Supabase (tab Direct connection) |
+| `JWT_SECRET`     | ya    | —                       | Kunci penandatangan token, minimal 32 karakter                     |
+| `JWT_EXPIRES_IN` | tidak | `24h`                   | Masa berlaku access token                                          |
 
 ## Menjalankan Aplikasi
 
@@ -68,12 +68,13 @@ curl http://localhost:8080/health
 
 ## Script yang Tersedia
 
-| Perintah | Kegunaan |
-| --- | --- |
-| `npm run dev` | Menjalankan server dengan `tsx watch` |
-| `npm run build` | Mengompilasi TypeScript ke JavaScript |
-| `npm start` | Menjalankan hasil build |
-| `npm test` | Menjalankan pengujian dengan Jest |
-| `npm run lint` | Memeriksa kode dengan ESLint |
-| `npm run format` | Merapikan kode dengan Prettier |
+| Perintah           | Kegunaan                                 |
+| ------------------ | ---------------------------------------- |
+| `npm run dev`      | Menjalankan server dengan `tsx watch`    |
+| `npm run build`    | Mengompilasi TypeScript ke JavaScript    |
+| `npm start`        | Menjalankan hasil build                  |
+| `npm test`         | Menjalankan pengujian dengan Jest        |
+| `npm run lint`     | Memeriksa kode dengan ESLint             |
+| `npm run format`   | Merapikan kode dengan Prettier           |
 | `npx tsc --noEmit` | Memeriksa tipe tanpa menghasilkan berkas |
+| `npm format`       | Memperbaiki pemformatan code             |

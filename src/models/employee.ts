@@ -216,14 +216,6 @@ export async function findDetailById(
   return result.rows[0] ?? null;
 }
 
-export async function countSubordinates(id: string): Promise<number> {
-  const result = await pool.query<{ count: string }>(
-    "SELECT COUNT(*) FROM employees WHERE manager_id = $1::uuid AND deleted_at IS NULL",
-    [id],
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
-
 export async function listEmployees(
   params: ListParams,
 ): Promise<{ rows: EmployeeListItem[]; total: number }> {
@@ -280,4 +272,21 @@ export async function listEmployees(
   );
 
   return { rows: dataResult.rows, total };
+}
+
+export async function findSubordinates(
+  id: string,
+): Promise<{ id: string; employee_number: string; full_name: string }[]> {
+  const result = await pool.query<{
+    id: string;
+    employee_number: string;
+    full_name: string;
+  }>(
+    `SELECT id, employee_number, full_name
+     FROM employees
+     WHERE manager_id = $1::uuid AND deleted_at IS NULL
+     ORDER BY employee_number ASC`,
+    [id],
+  );
+  return result.rows;
 }

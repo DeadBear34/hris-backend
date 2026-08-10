@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { success, ZodError } from "zod";
+import { ZodError } from "zod";
 import { AppError } from "../helpers/appError.js";
 import { logger } from "../config/logger.js";
 
@@ -16,7 +16,7 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ) {
-  //error dari validasi si zod
+  // error dari validasi zod
   if (err instanceof ZodError) {
     return res.status(400).json({
       success: false,
@@ -29,7 +29,7 @@ export function errorHandler(
     });
   }
 
-  //penanganan kalo json format tidak valid
+  // penanganan kalau format JSON tidak valid
   if (err instanceof SyntaxError && "body" in err) {
     return res.status(400).json({
       success: false,
@@ -38,16 +38,17 @@ export function errorHandler(
     });
   }
 
-  //error yang di sengaja dilempar sendiri
+  // error yang sengaja dilempar sendiri
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       success: false,
       message: err.message,
       code: err.code,
+      ...(err.details ? { details: err.details } : {}),
     });
   }
 
-  //error yang ngga terduga
+  // error yang tidak terduga
   logger.error(err);
   return res.status(500).json({
     success: false,

@@ -182,10 +182,11 @@ export async function DeleteEmployeeController(
     const existing = await employeeModel.findById(id);
     if (!existing) throw NotFound("Karyawan tidak ditemukan");
 
-    const bawahan = await employeeModel.countSubordinates(id);
-    if (bawahan > 0) {
+    const bawahan = await employeeModel.findSubordinates(id);
+    if (bawahan.length > 0) {
       throw BadRequest(
-        `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${bawahan} karyawan`,
+        `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${bawahan.length} karyawan. Pindahkan mereka ke manajer lain terlebih dahulu.`,
+        { subordinates: bawahan },
       );
     }
 

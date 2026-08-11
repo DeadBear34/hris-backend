@@ -1,10 +1,19 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { authenticate, authorize } from "../../src/middlewares/auth.js";
-import { createToken } from "../../src/helpers/jwt.js";
-import { AppError } from "../../src/helpers/appError.js";
-import { env } from "../../src/config/env.js";
+
+jest.unstable_mockModule("../../src/models/user.js", () => ({
+  findSessionInfo: jest.fn(),
+}));
+
+const userModel = await import("../../src/models/user.js");
+const { authenticate, authorize } =
+  await import("../../src/middlewares/auth.js");
+const { createToken } = await import("../../src/helpers/jwt.js");
+const { AppError } = await import("../../src/helpers/appError.js");
+const { env } = await import("../../src/config/env.js");
+
+type AppErrorType = InstanceType<typeof AppError>;
 
 const payload = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -18,8 +27,8 @@ function siapkanReq(authorization?: string) {
   return { headers: authorization ? { authorization } : {} } as Request;
 }
 
-function ambilError(next: NextFunction): AppError {
-  const [err] = (next as jest.Mock).mock.calls[0] as [AppError];
+function ambilError(next: NextFunction): AppErrorType {
+  const [err] = (next as jest.Mock).mock.calls[0] as [AppErrorType];
   return err;
 }
 
@@ -27,82 +36,178 @@ describe("authenticate", () => {
   let next: NextFunction;
 
   beforeEach(() => {
+    jest.clearAllMocks();
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
     next = jest.fn() as unknown as NextFunction;
   });
 
-  it("meneruskan request dengan token yang valid", () => {
+  it("meneruskan request dengan token yang valid", async () => {
     const req = siapkanReq(`Bearer ${token}`);
 
-    authenticate(req, {} as Response, next);
+    await authenticate(req, {} as Response, next);
 
     expect(next).toHaveBeenCalledWith();
   });
 
-  it("menempelkan data pengguna ke request", () => {
+  it("menempelkan data pengguna ke request", async () => {
     const req = siapkanReq(`Bearer ${token}`);
 
-    authenticate(req, {} as Response, next);
+    await authenticate(req, {} as Response, next);
 
     expect(req.user?.id).toBe(payload.id);
     expect(req.user?.role).toBe("hr");
   });
 
-  it("menolak request tanpa header Authorization", () => {
-    authenticate(siapkanReq(), {} as Response, next);
+  it("menolak request tanpa header Authorization", async () => {
+    await authenticate(siapkanReq(), {} as Response, next);
 
     expect(ambilError(next).statusCode).toBe(401);
   });
 
-  it("menolak header tanpa awalan Bearer", () => {
-    authenticate(siapkanReq(token), {} as Response, next);
+  it("menolak header tanpa awalan Bearer", async () => {
+    await authenticate(siapkanReq(token), {} as Response, next);
 
     expect(ambilError(next).statusCode).toBe(401);
   });
 
-  it("menolak header Bearer tanpa token", () => {
-    authenticate(siapkanReq("Bearer "), {} as Response, next);
+  it("menolak header Bearer tanpa token", async () => {
+    await authenticate(siapkanReq("Bearer "), {} as Response, next);
 
     expect(ambilError(next).statusCode).toBe(401);
   });
 
-  it("menolak token yang diubah isinya", () => {
-    authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
+  it("menolak token yang diubah isinya", async () => {
+    await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
 
     expect(ambilError(next).statusCode).toBe(401);
   });
 
-  it("menolak token yang ditandatangani kunci lain", () => {
+  it("menolak token yang ditandatangani kunci lain", async () => {
     const tokenPalsu = jwt.sign(payload, "kunci-lain-yang-panjang-sekali-32");
 
-    authenticate(siapkanReq(`Bearer ${tokenPalsu}`), {} as Response, next);
+    await authenticate(
+      siapkanReq(`Bearer ${tokenPalsu}`),
+      {} as Response,
+      next,
+    );
 
     expect(ambilError(next).statusCode).toBe(401);
   });
 
-  it("menolak token yang sudah kedaluwarsa", () => {
+  it("menolak token yang sudah kedaluwarsa", async () => {
     const tokenExpired = jwt.sign(payload, env.JWT_SECRET, {
       expiresIn: "-1s",
     });
 
-    authenticate(siapkanReq(`Bearer ${tokenExpired}`), {} as Response, next);
+    await authenticate(
+      siapkanReq(`Bearer ${tokenExpired}`),
+      {} as Response,
+      next,
+    );
 
     expect(ambilError(next).statusCode).toBe(401);
   });
 
-  it("tidak membocorkan alasan teknis kegagalan token", () => {
-    authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
+  it("tidak membocorkan alasan teknis kegagalan token", async () => {
+    await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
 
     expect(ambilError(next).message).toBe(
       "Token tidak valid atau sudah kedaluwarsa",
     );
   });
 
-  it("tidak mengisi req.user saat token ditolak", () => {
+  it("tidak mengisi req.user saat token ditolak", async () => {
     const req = siapkanReq(`Bearer ${token}x`);
 
-    authenticate(req, {} as Response, next);
+    await authenticate(req, {} as Response, next);
 
     expect(req.user).toBeUndefined();
+  });
+
+  it("tidak memeriksa database jika token sudah ditolak", async () => {
+    await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
+
+    expect(userModel.findSessionInfo).not.toHaveBeenCalled();
+  });
+});
+
+describe("authenticate terhadap perubahan password", () => {
+  let next: NextFunction;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    next = jest.fn() as unknown as NextFunction;
+  });
+
+  function sesi(password_changed_at: Date | null) {
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: payload.id,
+      password_changed_at,
+    } as never);
+  }
+
+  it("menolak token yang diterbitkan sebelum password diubah", async () => {
+    sesi(new Date(Date.now() + 60_000));
+
+    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+
+    const err = ambilError(next);
+
+    expect(err.statusCode).toBe(401);
+    expect(err.message).toContain("password telah diubah");
+  });
+
+  it("tidak mengisi req.user saat sesi sudah dibatalkan", async () => {
+    sesi(new Date(Date.now() + 60_000));
+
+    const req = siapkanReq(`Bearer ${token}`);
+    await authenticate(req, {} as Response, next);
+
+    expect(req.user).toBeUndefined();
+  });
+
+  it("menerima token yang diterbitkan setelah password diubah", async () => {
+    sesi(new Date(Date.now() - 60_000));
+
+    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("menerima token saat password belum pernah diubah", async () => {
+    sesi(null);
+
+    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("menerima token yang diterbitkan pada detik yang sama", async () => {
+    sesi(new Date());
+
+    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("membiarkan controller menangani user yang sudah dihapus", async () => {
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+
+    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("meneruskan error database ke penanganan error", async () => {
+    (userModel.findSessionInfo as jest.Mock).mockRejectedValue(
+      new Error("koneksi putus") as never,
+    );
+
+    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+
+    const [err] = (next as jest.Mock).mock.calls[0] as [Error];
+
+    expect(err.message).toBe("koneksi putus");
   });
 });
 

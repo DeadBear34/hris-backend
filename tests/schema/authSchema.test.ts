@@ -3,6 +3,10 @@ import {
   registerSchema,
   loginSchema,
   changePasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from "../../src/schema/authSchema.js";
 
 const validRegister = {
@@ -387,5 +391,257 @@ describe("changePasswordSchema", () => {
     const result = changePasswordSchema.safeParse({});
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("verifyEmailSchema", () => {
+  const validVerify = { email: "ismail@awan.io", code: "123456" };
+
+  it("menerima email dan kode enam digit", () => {
+    const result = verifyEmailSchema.safeParse(validVerify);
+
+    expect(result.success).toBe(true);
+  });
+
+  it("mengubah email menjadi huruf kecil", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      email: "Ismail@Awan.IO",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBe("ismail@awan.io");
+    }
+  });
+
+  it("menerima kode yang diawali angka nol", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      code: "000123",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("membuang spasi di sekitar kode", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      code: " 123456 ",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.code).toBe("123456");
+    }
+  });
+
+  it("menolak kode kurang dari enam digit", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      code: "12345",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak kode lebih dari enam digit", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      code: "1234567",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak kode yang mengandung huruf", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      code: "12a456",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("6 digit angka");
+    }
+  });
+
+  it("menolak kode berupa angka, bukan teks", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      code: 123456,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak email tidak valid", () => {
+    const result = verifyEmailSchema.safeParse({
+      ...validVerify,
+      email: "bukanemail",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak body kosong dan menyebut kedua field", () => {
+    const result = verifyEmailSchema.safeParse({});
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fields = result.error.issues.map((i) => i.path.join("."));
+
+      expect(fields).toContain("email");
+      expect(fields).toContain("code");
+    }
+  });
+});
+
+describe("resendVerificationSchema", () => {
+  it("menerima email yang valid", () => {
+    const result = resendVerificationSchema.safeParse({
+      email: "ismail@awan.io",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("mengubah email menjadi huruf kecil dan membuang spasi", () => {
+    const result = resendVerificationSchema.safeParse({
+      email: "  Ismail@Awan.IO  ",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBe("ismail@awan.io");
+    }
+  });
+
+  it("menolak email kosong", () => {
+    const result = resendVerificationSchema.safeParse({ email: "" });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak body kosong", () => {
+    const result = resendVerificationSchema.safeParse({});
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("forgotPasswordSchema", () => {
+  it("menerima email yang valid", () => {
+    const result = forgotPasswordSchema.safeParse({ email: "ismail@awan.io" });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("menolak email tidak valid", () => {
+    const result = forgotPasswordSchema.safeParse({ email: "bukanemail" });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("membuang field selain email", () => {
+    const result = forgotPasswordSchema.safeParse({
+      email: "ismail@awan.io",
+      role: "admin",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("role");
+    }
+  });
+});
+
+describe("resetPasswordSchema", () => {
+  const validReset = {
+    email: "ismail@awan.io",
+    token: "a".repeat(64),
+    password: "passwordbaru456",
+    password_confirmation: "passwordbaru456",
+  };
+
+  it("menerima data yang valid", () => {
+    const result = resetPasswordSchema.safeParse(validReset);
+
+    expect(result.success).toBe(true);
+  });
+
+  it("menolak konfirmasi password yang berbeda", () => {
+    const result = resetPasswordSchema.safeParse({
+      ...validReset,
+      password_confirmation: "passwordlain789",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.path).toContain("password_confirmation");
+      expect(result.error.issues[0]?.message).toContain("tidak sama");
+    }
+  });
+
+  it("menolak konfirmasi password yang tidak dikirim", () => {
+    const { password_confirmation, ...tanpaKonfirmasi } = validReset;
+    const result = resetPasswordSchema.safeParse(tanpaKonfirmasi);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak password baru kurang dari 8 karakter", () => {
+    const result = resetPasswordSchema.safeParse({
+      ...validReset,
+      password: "abc",
+      password_confirmation: "abc",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak password baru melebihi 72 karakter", () => {
+    const panjang = "a".repeat(73);
+    const result = resetPasswordSchema.safeParse({
+      ...validReset,
+      password: panjang,
+      password_confirmation: panjang,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak token kosong", () => {
+    const result = resetPasswordSchema.safeParse({ ...validReset, token: "" });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak token yang tidak dikirim", () => {
+    const { token, ...tanpaToken } = validReset;
+    const result = resetPasswordSchema.safeParse(tanpaToken);
+
+    expect(result.success).toBe(false);
+  });
+
+  it("menolak email tidak valid", () => {
+    const result = resetPasswordSchema.safeParse({
+      ...validReset,
+      email: "bukanemail",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("membuang spasi di sekitar token", () => {
+    const result = resetPasswordSchema.safeParse({
+      ...validReset,
+      token: `  ${validReset.token}  `,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.token).toBe(validReset.token);
+    }
   });
 });

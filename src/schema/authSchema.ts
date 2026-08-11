@@ -68,3 +68,50 @@ export const changePasswordSchema = z
 export const setUserActiveSchema = z.object({
   is_active: z.boolean({ message: "Status aktif wajib diisi" }),
 });
+
+const emailField = z
+  .string({ message: "Email wajib diisi" })
+  .trim()
+  .toLowerCase()
+  .min(1, "Email wajib diisi")
+  .pipe(z.email("Format email tidak valid, contoh: nama@domain.com"));
+
+export const verifyEmailSchema = z.object({
+  email: emailField,
+
+  code: z
+    .string({ message: "Kode verifikasi wajib diisi" })
+    .trim()
+    .regex(/^\d{6}$/, "Kode verifikasi harus terdiri dari 6 digit angka"),
+});
+
+export const resendVerificationSchema = z.object({
+  email: emailField,
+});
+
+export const forgotPasswordSchema = z.object({
+  email: emailField,
+});
+
+export const resetPasswordSchema = z
+  .object({
+    email: emailField,
+
+    token: z
+      .string({ message: "Token wajib diisi" })
+      .trim()
+      .min(1, "Token wajib diisi"),
+
+    password: z
+      .string({ message: "Password baru wajib diisi" })
+      .min(8, "Password baru minimal 8 karakter")
+      .max(72, "Password baru maksimal 72 karakter"),
+
+    password_confirmation: z.string({
+      message: "Konfirmasi password wajib diisi",
+    }),
+  })
+  .refine((data) => data.password === data.password_confirmation, {
+    message: "Konfirmasi password tidak sama dengan password baru",
+    path: ["password_confirmation"],
+  });

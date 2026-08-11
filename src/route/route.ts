@@ -7,6 +7,10 @@ import {
   ListPendingUserController,
   ApproveUserController,
   SetUserActiveController,
+  VerifyEmailController,
+  ResendVerificationController,
+  ForgotPasswordController,
+  ResetPasswordController,
 } from "../controller/userController.js";
 import {
   ListEmployeeController,
@@ -40,6 +44,10 @@ import {
   registerSchema,
   changePasswordSchema,
   setUserActiveSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from "../schema/authSchema.js";
 import {
   listEmployeeQuerySchema,
@@ -63,6 +71,30 @@ const hrOnly = [authenticate, authorize("hr", "admin")];
 router.post("/auth/register", validate(registerSchema), RegisterController);
 
 router.post("/auth/login", validate(loginSchema), LoginController);
+
+router.post(
+  "/auth/verify-email",
+  validate(verifyEmailSchema),
+  VerifyEmailController,
+);
+
+router.post(
+  "/auth/resend-verification",
+  validate(resendVerificationSchema),
+  ResendVerificationController,
+);
+
+router.post(
+  "/auth/forgot-password",
+  validate(forgotPasswordSchema),
+  ForgotPasswordController,
+);
+
+router.post(
+  "/auth/reset-password",
+  validate(resetPasswordSchema),
+  ResetPasswordController,
+);
 
 router.get("/auth/me", ...loggedIn, MeController);
 

@@ -22,3 +22,6 @@ logs/
 .DS_Store
 Thumbs.db
 *~
+
+src/scripts/seed.ts
+tests/scripts/seed.test.ts

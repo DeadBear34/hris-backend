@@ -15,9 +15,16 @@ export interface User {
   approved_by: string | null;
   last_login_at: Date | null;
   must_change_password: boolean;
+  email_verified_at: Date | null;
+  password_changed_at: Date | null;
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface SessionInfo {
+  id: string;
+  password_changed_at: Date | null;
 }
 
 export interface PendingUser {
@@ -31,6 +38,7 @@ export interface PendingUser {
 
 const SAFE_COLUMNS = `id, email, role, is_active, terms_accepted_at,
   approved_at, approved_by, last_login_at, must_change_password,
+  email_verified_at, password_changed_at,
   deleted_at, created_at, updated_at`;
 
 export async function insertUser(
@@ -101,16 +109,43 @@ export async function updateLastLogin(id: string): Promise<void> {
   ]);
 }
 
+/**
+ * password_changed_at ikut diperbarui karena dipakai middleware authenticate
+ * untuk membatalkan token JWT yang diterbitkan sebelum password berubah.
+ */
 export async function updatePassword(
   id: string,
   password: string,
 ): Promise<void> {
   await pool.query(
     `UPDATE users
-     SET password = $2, must_change_password = false, updated_at = now()
+     SET password = $2, must_change_password = false,
+         password_changed_at = now(), updated_at = now()
      WHERE id = $1`,
     [id, password],
   );
+}
+
+export async function setEmailVerified(id: string): Promise<User | null> {
+  const result = await pool.query<User>(
+    `UPDATE users
+     SET email_verified_at = now(), updated_at = now()
+     WHERE id = $1::uuid AND deleted_at IS NULL AND email_verified_at IS NULL
+     RETURNING ${SAFE_COLUMNS}`,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function findSessionInfo(id: string): Promise<SessionInfo | null> {
+  const result = await pool.query<SessionInfo>(
+    `SELECT id, password_changed_at FROM users
+     WHERE id = $1::uuid AND deleted_at IS NULL`,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
 }
 
 export async function approveUser(
@@ -157,6 +192,7 @@ export async function findPending(): Promise<PendingUser[]> {
      FROM users u
      LEFT JOIN employees e ON e.user_id = u.id AND e.deleted_at IS NULL
      WHERE u.approved_at IS NULL AND u.deleted_at IS NULL
+       AND u.email_verified_at IS NOT NULL
      ORDER BY u.created_at ASC`,
   );
   return result.rows;

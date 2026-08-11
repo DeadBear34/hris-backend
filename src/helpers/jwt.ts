@@ -5,6 +5,9 @@ export interface TokenPayload {
   id: string;
   email: string;
   role: string;
+  /** Diisi otomatis oleh jsonwebtoken saat token diterbitkan. */
+  iat?: number;
+  exp?: number;
 }
 
 export function createToken(payload: TokenPayload): string {

@@ -1,10 +1,12 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 
+// middleware authenticate memeriksa password_changed_at lewat model user,
+// jadi pool harus mengembalikan hasil kosong alih-alih undefined
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
   pool: {
     connect: jest.fn(),
-    query: jest.fn(),
+    query: jest.fn(() => Promise.resolve({ rows: [] })),
   },
 }));
 

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken, type TokenPayload } from "../helpers/jwt.js";
+import * as userModel from "../models/user.js";
 import { Unauthorized, Forbidden } from "../helpers/appError.js";
 
 declare global {
@@ -10,7 +11,13 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, _res: Response, next: NextFunction) {
+export async function authenticate(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) {
+  let payload: TokenPayload;
+
   try {
     const header = req.headers.authorization;
 
@@ -24,10 +31,30 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
       throw Unauthorized("Token tidak valid");
     }
 
-    req.user = verifyToken(token);
+    payload = verifyToken(token);
+  } catch (err) {
+    return next(Unauthorized("Token tidak valid atau sudah kedaluwarsa"));
+  }
+
+  try {
+    const sesi = await userModel.findSessionInfo(payload.id);
+
+    if (sesi?.password_changed_at && payload.iat !== undefined) {
+      const diubahPada = Math.floor(sesi.password_changed_at.getTime() / 1000);
+
+      if (payload.iat < diubahPada) {
+        return next(
+          Unauthorized(
+            "Sesi sudah tidak berlaku karena password telah diubah, silakan login kembali",
+          ),
+        );
+      }
+    }
+
+    req.user = payload;
     next();
   } catch (err) {
-    next(Unauthorized("Token tidak valid atau sudah kedaluwarsa"));
+    next(err);
   }
 }
 

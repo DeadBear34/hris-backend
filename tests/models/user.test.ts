@@ -334,6 +334,153 @@ describe("updatePassword", () => {
 
     expect(sql).toContain("must_change_password = false");
   });
+
+  it("mencatat waktu perubahan password untuk membatalkan sesi lama", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await userModel.updatePassword(fakeUser.id, "hash-baru");
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("password_changed_at = now()");
+  });
+});
+
+describe("setEmailVerified", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({
+      rows: [{ ...fakeUser, email_verified_at: new Date() }],
+    } as never);
+  });
+
+  it("mengisi kolom email_verified_at", async () => {
+    await userModel.setEmailVerified(fakeUser.id);
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("email_verified_at = now()");
+    expect(values).toEqual([fakeUser.id]);
+  });
+
+  it("tidak menandai ulang email yang sudah terverifikasi", async () => {
+    await userModel.setEmailVerified(fakeUser.id);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("email_verified_at IS NULL");
+  });
+
+  it("tidak mengembalikan kolom password", async () => {
+    await userModel.setEmailVerified(fakeUser.id);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+    const returning = sql.split("RETURNING")[1] ?? "";
+
+    expect(returning).not.toMatch(KOLOM_PASSWORD);
+  });
+
+  it("mengembalikan null jika user tidak ditemukan", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    const user = await userModel.setEmailVerified(fakeUser.id);
+
+    expect(user).toBeNull();
+  });
+});
+
+describe("findSessionInfo", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("hanya mengambil kolom yang dibutuhkan pemeriksaan sesi", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await userModel.findSessionInfo(fakeUser.id);
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("SELECT id, password_changed_at");
+    expect(sql).not.toMatch(KOLOM_PASSWORD);
+    expect(values).toEqual([fakeUser.id]);
+  });
+
+  it("mengabaikan user yang sudah dihapus", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await userModel.findSessionInfo(fakeUser.id);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("deleted_at IS NULL");
+  });
+
+  it("mengembalikan null jika user tidak ada", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    const sesi = await userModel.findSessionInfo(fakeUser.id);
+
+    expect(sesi).toBeNull();
+  });
+
+  it("mengembalikan waktu perubahan password terakhir", async () => {
+    const waktu = new Date();
+    mockQuery.mockResolvedValue({
+      rows: [{ id: fakeUser.id, password_changed_at: waktu }],
+    } as never);
+
+    const sesi = await userModel.findSessionInfo(fakeUser.id);
+
+    expect(sesi?.password_changed_at).toBe(waktu);
+  });
+});
+
+describe("findPending", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+  });
+
+  it("hanya menampilkan akun yang emailnya sudah terverifikasi", async () => {
+    await userModel.findPending();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("u.email_verified_at IS NOT NULL");
+  });
+
+  it("hanya menampilkan akun yang belum disetujui", async () => {
+    await userModel.findPending();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("u.approved_at IS NULL");
+  });
+
+  it("mengabaikan akun yang sudah dihapus", async () => {
+    await userModel.findPending();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("u.deleted_at IS NULL");
+  });
+
+  it("tidak mengambil kolom password", async () => {
+    await userModel.findPending();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toMatch(KOLOM_PASSWORD);
+  });
+
+  it("mengurutkan dari pendaftar paling lama", async () => {
+    await userModel.findPending();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("ORDER BY u.created_at ASC");
+  });
 });
 
 describe("approveUser", () => {

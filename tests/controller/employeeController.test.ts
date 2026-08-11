@@ -24,6 +24,8 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   setUserActive: jest.fn(),
   softDeleteUser: jest.fn(),
   findPending: jest.fn(),
+  setEmailVerified: jest.fn(),
+  findSessionInfo: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({

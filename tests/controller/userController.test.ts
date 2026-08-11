@@ -24,6 +24,24 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   setUserActive: jest.fn(),
   softDeleteUser: jest.fn(),
   findPending: jest.fn(),
+  setEmailVerified: jest.fn(),
+  findSessionInfo: jest.fn(),
+}));
+
+jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
+  createToken: jest.fn(),
+  findLatest: jest.fn(),
+  findLatestActive: jest.fn(),
+  incrementAttempts: jest.fn(),
+  markConsumed: jest.fn(),
+  invalidateActive: jest.fn(),
+}));
+
+// mailer selalu dimock supaya pengujian tidak pernah mengirim email sungguhan
+const mockSendMail = jest.fn(() => Promise.resolve());
+
+jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
+  sendMail: mockSendMail,
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
@@ -40,6 +58,7 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
 
 const userModel = await import("../../src/models/user.js");
 const employeeModel = await import("../../src/models/employee.js");
+const tokenModel = await import("../../src/models/verificationToken.js");
 const { hashPassword } = await import("../../src/helpers/password.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
@@ -63,6 +82,8 @@ const fakeUser = {
   approved_by: null,
   last_login_at: null,
   must_change_password: false,
+  email_verified_at: new Date(),
+  password_changed_at: null,
   deleted_at: null,
   created_at: new Date(),
   updated_at: new Date(),

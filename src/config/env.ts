@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { z } from "zod";
 
+const kosongJadiUndefined = (nilai: unknown) =>
+  typeof nilai === "string" && nilai.trim() === "" ? undefined : nilai;
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -11,6 +14,18 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET minimal 32 karakter"),
   JWT_EXPIRES_IN: z.string().default("24h"),
+  RESEND_API_KEY: z.preprocess(
+    kosongJadiUndefined,
+    z.string().min(1).optional(),
+  ),
+  MAIL_FROM: z.preprocess(
+    kosongJadiUndefined,
+    z.string().default("HRIS <onboarding@resend.dev>"),
+  ),
+  APP_URL: z.preprocess(
+    kosongJadiUndefined,
+    z.string().default("http://localhost:5173"),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

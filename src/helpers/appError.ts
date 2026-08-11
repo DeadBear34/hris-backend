@@ -38,3 +38,10 @@ export function NotFound(message = "Data tidak ditemukan") {
 export function Conflict(message = "Data sudah ada", details?: unknown) {
   return new AppError(409, message, "CONFLICT", details);
 }
+
+export function TooManyRequests(
+  message = "Terlalu banyak permintaan, coba lagi nanti",
+  details?: unknown,
+) {
+  return new AppError(429, message, "TOO_MANY_REQUESTS", details);
+}

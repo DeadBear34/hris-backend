@@ -23,12 +23,15 @@ function ambilResend(): Resend {
 export type MailDriver = "log" | "resend";
 
 export function activeMailDriver(): MailDriver {
-  // pengujian tidak boleh pernah mengirim email sungguhan
   if (env.NODE_ENV === "test") return "log";
 
   if (env.MAIL_DRIVER) return env.MAIL_DRIVER;
 
   return env.NODE_ENV === "production" ? "resend" : "log";
+}
+
+export function isSecretLoggingAllowed(): boolean {
+  return env.NODE_ENV !== "production";
 }
 
 export async function sendMail(mail: MailInput): Promise<void> {

@@ -84,6 +84,36 @@ describe("activeMailDriver", () => {
   });
 });
 
+describe("isSecretLoggingAllowed", () => {
+  it("mengizinkan pencetakan rahasia di development", async () => {
+    const { isSecretLoggingAllowed } = await muatMailer();
+
+    expect(isSecretLoggingAllowed()).toBe(true);
+  });
+
+  it("mengizinkan pencetakan rahasia saat pengujian", async () => {
+    env.NODE_ENV = "test";
+    const { isSecretLoggingAllowed } = await muatMailer();
+
+    expect(isSecretLoggingAllowed()).toBe(true);
+  });
+
+  it("melarang pencetakan rahasia di production", async () => {
+    env.NODE_ENV = "production";
+    const { isSecretLoggingAllowed } = await muatMailer();
+
+    expect(isSecretLoggingAllowed()).toBe(false);
+  });
+
+  it("tidak terpengaruh oleh MAIL_DRIVER", async () => {
+    env.NODE_ENV = "production";
+    env.MAIL_DRIVER = "log";
+    const { isSecretLoggingAllowed } = await muatMailer();
+
+    expect(isSecretLoggingAllowed()).toBe(false);
+  });
+});
+
 describe("pengiriman sungguhan di development", () => {
   beforeEach(() => {
     env.NODE_ENV = "development";

@@ -11,7 +11,7 @@ import type {
 } from "../models/verificationToken.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
-import { sendMail } from "../helpers/mailer.js";
+import { sendMail, isSecretLoggingAllowed } from "../helpers/mailer.js";
 import {
   verificationCodeEmail,
   passwordResetEmail,
@@ -60,20 +60,27 @@ function konteksPermintaan(req: Request): KonteksPermintaan {
   };
 }
 
-/**
- * Kegagalan pengiriman email tidak boleh membatalkan alur utama, jadi
- * errornya cukup dicatat ke log.
- */
 async function kirimEmailTanpaMenggagalkan(
   kirim: () => Promise<void>,
   pesanGagal: string,
   konteks: Record<string, unknown>,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await kirim();
+    return true;
   } catch (err) {
     logger.error({ err, ...konteks }, pesanGagal);
+    return false;
   }
+}
+
+function cetakCadanganKeLog(
+  pesan: string,
+  data: Record<string, unknown>,
+): void {
+  if (!isSecretLoggingAllowed()) return;
+
+  logger.warn(data, pesan);
 }
 
 async function terbitkanKodeVerifikasi(
@@ -103,11 +110,18 @@ async function kirimKodeVerifikasi(
   const kode = await terbitkanKodeVerifikasi(email, konteks);
   const isi = verificationCodeEmail(kode, KODE_BERLAKU_MENIT, nama);
 
-  await kirimEmailTanpaMenggagalkan(
+  const terkirim = await kirimEmailTanpaMenggagalkan(
     () => sendMail({ to: email, subject: isi.subject, html: isi.html }),
     "Gagal mengirim email verifikasi",
     { email },
   );
+
+  if (!terkirim) {
+    cetakCadanganKeLog(
+      "Email gagal dikirim, kode verifikasi dicetak di sini agar pengembangan dapat dilanjutkan",
+      { email, kode_verifikasi: kode },
+    );
+  }
 }
 
 async function naikkanPercobaan(token: VerificationToken): Promise<void> {
@@ -402,11 +416,18 @@ export async function ForgotPasswordController(
         employee?.full_name ?? null,
       );
 
-      await kirimEmailTanpaMenggagalkan(
+      const terkirim = await kirimEmailTanpaMenggagalkan(
         () => sendMail({ to: email, subject: isi.subject, html: isi.html }),
         "Gagal mengirim email reset password",
         { email },
       );
+
+      if (!terkirim) {
+        cetakCadanganKeLog(
+          "Email gagal dikirim, tautan reset password dicetak di sini agar pengembangan dapat dilanjutkan",
+          { email, tautan_reset: tautan },
+        );
+      }
     }
 
     res.json({ success: true, message: PESAN_LUPA_PASSWORD });

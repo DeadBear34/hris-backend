@@ -57,10 +57,13 @@ const mockSendMail = jest.fn(() => Promise.resolve());
 
 jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
   sendMail: mockSendMail,
+  isSecretLoggingAllowed: () => true,
 }));
 
+const mockLoggerWarn = jest.fn();
+
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), warn: mockLoggerWarn, error: jest.fn() },
 }));
 
 const userModel = await import("../../src/models/user.js");
@@ -325,6 +328,55 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .send({ email: EMAIL });
 
     expect(res.status).toBe(200);
+  });
+
+  it("mencetak tautan reset ke log saat pengiriman email gagal", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
+    mockSendMail.mockRejectedValue(new Error("smtp mati") as never);
+
+    await request(app)
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: EMAIL });
+
+    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+      Object.hasOwn(data as object, "tautan_reset"),
+    ) as [{ email: string; tautan_reset: string }, string];
+
+    expect(cadangan).toBeDefined();
+    expect(cadangan[0].email).toBe(EMAIL);
+    expect(cadangan[0].tautan_reset).toContain(
+      `${env.APP_URL}/reset-password?token=`,
+    );
+    expect(cadangan[0].tautan_reset).toMatch(/token=[0-9a-f]{64}/);
+  });
+
+  it("tidak mencetak tautan reset saat pengiriman email berhasil", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
+
+    await request(app)
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: EMAIL });
+
+    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+      Object.hasOwn(data as object, "tautan_reset"),
+    );
+
+    expect(cadangan).toBeUndefined();
+  });
+
+  it("tidak mencetak tautan untuk email yang tidak terdaftar", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    mockSendMail.mockRejectedValue(new Error("smtp mati") as never);
+
+    await request(app)
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: "tidakada@awan.io" });
+
+    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+      Object.hasOwn(data as object, "tautan_reset"),
+    );
+
+    expect(cadangan).toBeUndefined();
   });
 
   it("tidak pernah menyertakan password di dalam email", async () => {

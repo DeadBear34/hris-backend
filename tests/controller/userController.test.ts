@@ -42,6 +42,7 @@ const mockSendMail = jest.fn(() => Promise.resolve());
 
 jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
   sendMail: mockSendMail,
+  isSecretLoggingAllowed: () => true,
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({

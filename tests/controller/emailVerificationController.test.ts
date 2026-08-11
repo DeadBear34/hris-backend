@@ -62,16 +62,20 @@ const mockSendMail = jest.fn(() => Promise.resolve());
 
 jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
   sendMail: mockSendMail,
+  isSecretLoggingAllowed: () => true,
 }));
 
+const mockLoggerWarn = jest.fn();
+
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), warn: mockLoggerWarn, error: jest.fn() },
 }));
 
 const userModel = await import("../../src/models/user.js");
 const employeeModel = await import("../../src/models/employee.js");
 const tokenModel = await import("../../src/models/verificationToken.js");
-const { hashPassword } = await import("../../src/helpers/password.js");
+const { hashPassword, verifyPassword } =
+  await import("../../src/helpers/password.js");
 const { app } = await import("../../src/app.js");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -282,6 +286,51 @@ describe("POST /api/v1/auth/register menerbitkan kode verifikasi", () => {
 
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
     expect(mockClient.query).not.toHaveBeenCalledWith("ROLLBACK");
+  });
+
+  it("mencetak kode verifikasi ke log saat pengiriman email gagal", async () => {
+    siapkanRegisterBaru();
+    mockSendMail.mockRejectedValue(new Error("smtp mati") as never);
+
+    await request(app).post("/api/v1/auth/register").send(registerBody);
+
+    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+      Object.hasOwn(data as object, "kode_verifikasi"),
+    ) as [{ email: string; kode_verifikasi: string }, string];
+
+    expect(cadangan).toBeDefined();
+    expect(cadangan[0].email).toBe(EMAIL);
+    expect(cadangan[0].kode_verifikasi).toMatch(/^\d{6}$/);
+  });
+
+  it("mencetak kode yang sama dengan yang hashnya tersimpan", async () => {
+    siapkanRegisterBaru();
+    mockSendMail.mockRejectedValue(new Error("smtp mati") as never);
+
+    await request(app).post("/api/v1/auth/register").send(registerBody);
+
+    const [data] = (tokenModel.createToken as jest.Mock).mock.calls[0] as [
+      { token_hash: string },
+    ];
+    const cadangan = mockLoggerWarn.mock.calls.find(([d]) =>
+      Object.hasOwn(d as object, "kode_verifikasi"),
+    ) as [{ kode_verifikasi: string }, string];
+
+    await expect(
+      verifyPassword(data.token_hash, cadangan[0].kode_verifikasi),
+    ).resolves.toBe(true);
+  });
+
+  it("tidak mencetak kode ke log saat pengiriman email berhasil", async () => {
+    siapkanRegisterBaru();
+
+    await request(app).post("/api/v1/auth/register").send(registerBody);
+
+    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+      Object.hasOwn(data as object, "kode_verifikasi"),
+    );
+
+    expect(cadangan).toBeUndefined();
   });
 });
 

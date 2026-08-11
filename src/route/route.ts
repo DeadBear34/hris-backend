@@ -157,11 +157,6 @@ router.delete(
   DeleteDepartmentController,
 );
 
-// ---------------------------------------------------------------
-// Jabatan
-// Aturan akses sama dengan departemen
-// ---------------------------------------------------------------
-
 router.get("/positions", ...loggedIn, ListPositionController);
 
 router.get(

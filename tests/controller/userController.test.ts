@@ -23,6 +23,7 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   approveUser: jest.fn(),
   setUserActive: jest.fn(),
   softDeleteUser: jest.fn(),
+  findPending: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
@@ -91,6 +92,23 @@ const fakeEmployee = {
 const token = createToken({
   id: fakeUser.id,
   email: fakeUser.email,
+  role: "employee",
+});
+
+// id berupa uuid yang sah, dibutuhkan karena rute pengelolaan akun
+// memvalidasi parameter :id sebagai uuid
+const HR_ID = "77777777-7777-4777-8777-777777777777";
+const TARGET_ID = "88888888-8888-4888-8888-888888888888";
+
+const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
+const adminToken = createToken({
+  id: HR_ID,
+  email: "admin@awan.io",
+  role: "admin",
+});
+const employeeToken = createToken({
+  id: TARGET_ID,
+  email: "karyawan@awan.io",
   role: "employee",
 });
 
@@ -646,5 +664,338 @@ describe("PATCH /api/v1/auth/password", () => {
     expect(id).toBe(fakeUser.id);
     expect(passwordTersimpan).not.toBe("passwordbaru456");
     expect(passwordTersimpan).toContain("$argon2id$");
+  });
+});
+
+describe("GET /api/v1/users/pending", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menolak request tanpa token", async () => {
+    const res = await request(app).get("/api/v1/users/pending");
+
+    expect(res.status).toBe(401);
+  });
+
+  it("menolak karyawan biasa", async () => {
+    const res = await request(app)
+      .get("/api/v1/users/pending")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(403);
+    expect(userModel.findPending).not.toHaveBeenCalled();
+  });
+
+  it("mengizinkan HR", async () => {
+    (userModel.findPending as jest.Mock).mockResolvedValue([
+      {
+        id: TARGET_ID,
+        email: "baru@awan.io",
+        role: "employee",
+        full_name: "Karyawan Baru",
+        phone: "+628123456789",
+        created_at: new Date(),
+      },
+    ] as never);
+
+    const res = await request(app)
+      .get("/api/v1/users/pending")
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].full_name).toBe("Karyawan Baru");
+  });
+
+  it("mengizinkan admin", async () => {
+    (userModel.findPending as jest.Mock).mockResolvedValue([] as never);
+
+    const res = await request(app)
+      .get("/api/v1/users/pending")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("mengembalikan daftar kosong jika tidak ada akun menunggu", async () => {
+    (userModel.findPending as jest.Mock).mockResolvedValue([] as never);
+
+    const res = await request(app)
+      .get("/api/v1/users/pending")
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.body.data).toEqual([]);
+  });
+
+  it("tidak membocorkan password akun yang menunggu persetujuan", async () => {
+    (userModel.findPending as jest.Mock).mockResolvedValue([
+      { id: TARGET_ID, email: "baru@awan.io", role: "employee" },
+    ] as never);
+
+    const res = await request(app)
+      .get("/api/v1/users/pending")
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(JSON.stringify(res.body)).not.toContain("password");
+  });
+});
+
+describe("PATCH /api/v1/users/:id/approve", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menolak request tanpa token", async () => {
+    const res = await request(app).patch(`/api/v1/users/${TARGET_ID}/approve`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("menolak karyawan biasa", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(403);
+    expect(userModel.approveUser).not.toHaveBeenCalled();
+  });
+
+  it("menolak id yang bukan uuid", async () => {
+    const res = await request(app)
+      .patch("/api/v1/users/123/approve")
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.status).toBe(400);
+    expect(userModel.findById).not.toHaveBeenCalled();
+  });
+
+  it("mengembalikan 404 jika akun tidak ada", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.status).toBe(404);
+    expect(userModel.approveUser).not.toHaveBeenCalled();
+  });
+
+  it("menolak akun yang sudah pernah disetujui", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      approved_at: new Date(),
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("sudah pernah disetujui");
+    expect(userModel.approveUser).not.toHaveBeenCalled();
+  });
+
+  it("menyetujui akun yang masih menunggu", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      is_active: false,
+      approved_at: null,
+    } as never);
+    (userModel.approveUser as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      id: TARGET_ID,
+      is_active: true,
+      approved_at: new Date(),
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.is_active).toBe(true);
+  });
+
+  it("mencatat HR yang menyetujui", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      approved_at: null,
+    } as never);
+    (userModel.approveUser as jest.Mock).mockResolvedValue(fakeUser as never);
+
+    await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(userModel.approveUser).toHaveBeenCalledWith(TARGET_ID, HR_ID);
+  });
+
+  it("tidak mengembalikan password dalam respons", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      approved_at: null,
+    } as never);
+    (userModel.approveUser as jest.Mock).mockResolvedValue(fakeUser as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${hrToken}`);
+
+    expect(res.body.data).not.toHaveProperty("password");
+  });
+});
+
+describe("PATCH /api/v1/users/:id/status", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menolak request tanpa token", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("menolak karyawan biasa", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(403);
+    expect(userModel.setUserActive).not.toHaveBeenCalled();
+  });
+
+  it("menolak id yang bukan uuid", async () => {
+    const res = await request(app)
+      .patch("/api/v1/users/123/status")
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("menolak body tanpa is_active", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("menolak is_active yang bukan boolean", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: "false" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("mencegah HR mengubah status akunnya sendiri", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/users/${HR_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("akun sendiri");
+    expect(userModel.setUserActive).not.toHaveBeenCalled();
+  });
+
+  it("mengembalikan 404 jika akun tidak ada", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("menolak pengaktifan akun yang belum pernah disetujui", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      approved_at: null,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: true });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("belum pernah disetujui");
+    expect(userModel.setUserActive).not.toHaveBeenCalled();
+  });
+
+  it("tetap mengizinkan penonaktifan akun yang belum disetujui", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      approved_at: null,
+    } as never);
+    (userModel.setUserActive as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      is_active: false,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("menonaktifkan akun yang sudah disetujui", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue(fakeUser as never);
+    (userModel.setUserActive as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      is_active: false,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toContain("dinonaktifkan");
+    expect(userModel.setUserActive).toHaveBeenCalledWith(TARGET_ID, false);
+  });
+
+  it("mengaktifkan kembali akun yang sudah disetujui", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      is_active: false,
+    } as never);
+    (userModel.setUserActive as jest.Mock).mockResolvedValue(fakeUser as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toContain("diaktifkan");
+    expect(userModel.setUserActive).toHaveBeenCalledWith(TARGET_ID, true);
+  });
+
+  it("tidak mengembalikan password dalam respons", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue(fakeUser as never);
+    (userModel.setUserActive as jest.Mock).mockResolvedValue(fakeUser as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/status`)
+      .set("Authorization", `Bearer ${hrToken}`)
+      .send({ is_active: false });
+
+    expect(res.body.data).not.toHaveProperty("password");
   });
 });

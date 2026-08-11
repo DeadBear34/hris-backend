@@ -43,31 +43,47 @@ Salin `.env.example` menjadi `.env`, lalu isi nilainya.
 cp .env.example .env
 ```
 
-| Variabel         | Wajib | Default                               | Keterangan                                                         |
-| ---------------- | ----- | ------------------------------------- | ------------------------------------------------------------------ |
-| `NODE_ENV`       | tidak | `development`                         | `development`, `test`, atau `production`                           |
-| `PORT`           | tidak | `8080`                                | Port yang didengarkan server                                       |
-| `CORS_ORIGIN`    | tidak | `http://localhost:5173`               | Origin frontend yang diizinkan                                     |
-| `LOG_LEVEL`      | tidak | `info`                                | `debug`, `info`, `warn`, atau `error`                              |
-| `DATABASE_URL`   | ya    | —                                     | Connection string PostgreSQL dari Supabase (tab Direct connection) |
-| `JWT_SECRET`     | ya    | —                                     | Kunci penandatangan token, minimal 32 karakter                     |
-| `JWT_EXPIRES_IN` | tidak | `24h`                                 | Masa berlaku access token                                          |
-| `RESEND_API_KEY` | tidak | —                                     | Kunci API Resend, hanya wajib saat `NODE_ENV=production`           |
-| `MAIL_FROM`      | tidak | `HRIS Awanio <onboarding@resend.dev>` | Alamat pengirim email                                              |
-| `APP_URL`        | tidak | `http://localhost:5173`               | Alamat frontend, dipakai menyusun tautan di dalam email            |
+| Variabel         | Wajib | Default                               | Keterangan                                                           |
+| ---------------- | ----- | ------------------------------------- | -------------------------------------------------------------------- |
+| `NODE_ENV`       | tidak | `development`                         | `development`, `test`, atau `production`                             |
+| `PORT`           | tidak | `8080`                                | Port yang didengarkan server                                         |
+| `CORS_ORIGIN`    | tidak | `http://localhost:5173`               | Origin frontend yang diizinkan                                       |
+| `LOG_LEVEL`      | tidak | `info`                                | `debug`, `info`, `warn`, atau `error`                                |
+| `DATABASE_URL`   | ya    | —                                     | Connection string PostgreSQL dari Supabase (tab Direct connection)   |
+| `JWT_SECRET`     | ya    | —                                     | Kunci penandatangan token, minimal 32 karakter                       |
+| `JWT_EXPIRES_IN` | tidak | `24h`                                 | Masa berlaku access token                                            |
+| `RESEND_API_KEY` | tidak | —                                     | Kunci API Resend, wajib kalau email benar-benar dikirim              |
+| `MAIL_DRIVER`    | tidak | mengikuti `NODE_ENV`                  | `log` untuk mencetak email ke log, `resend` untuk mengirim sungguhan |
+| `MAIL_FROM`      | tidak | `HRIS Awanio <onboarding@resend.dev>` | Alamat pengirim email                                                |
+| `APP_URL`        | tidak | `http://localhost:5173`               | Alamat frontend, dipakai menyusun tautan di dalam email              |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai.
 
 ## Pengiriman Email
 
-Lapisan email ada di `src/helpers/mailer.ts` dan memilih mode berdasarkan `NODE_ENV`.
+Lapisan email ada di `src/helpers/mailer.ts` dan punya dua mode.
 
-| Mode                | Perilaku                                                    |
-| ------------------- | ----------------------------------------------------------- |
-| Selain `production` | Isi email dicetak ke log Pino, tidak ada email yang dikirim |
-| `production`        | Email dikirim lewat Resend memakai `RESEND_API_KEY`         |
+| Mode     | Perilaku                                                      |
+| -------- | ------------------------------------------------------------- |
+| `log`    | Isi email dicetak ke log Pino, tidak ada email yang dikirim   |
+| `resend` | Email dikirim sungguhan lewat Resend memakai `RESEND_API_KEY` |
 
-Karena itu pengembangan dan pengujian tidak memerlukan `RESEND_API_KEY`. Kode verifikasi dan tautan reset dapat dibaca langsung dari log server.
+Mode dipilih lewat `MAIL_DRIVER`. Kalau variabel itu tidak diisi, modenya mengikuti `NODE_ENV`: `production` memakai `resend`, selain itu memakai `log`.
+
+Artinya pengiriman sungguhan di luar production harus dinyalakan dengan sengaja. Untuk menguji OTP di development, isi `MAIL_DRIVER=resend` beserta `RESEND_API_KEY`:
+
+```bash
+MAIL_DRIVER=resend
+RESEND_API_KEY=re_xxxxxxxx
+```
+
+Sebaliknya, `MAIL_DRIVER=log` dapat dipakai untuk mematikan pengiriman walau aplikasi berjalan di production.
+
+Saat `NODE_ENV=test` mode selalu dipaksa ke `log`, sehingga menjalankan `npm test` tidak akan pernah mengirim email sungguhan apa pun isi `MAIL_DRIVER`.
+
+Tanpa `MAIL_DRIVER=resend`, pengembangan dan pengujian tidak memerlukan `RESEND_API_KEY` sama sekali. Kode verifikasi dan tautan reset dapat dibaca langsung dari log server.
+
+Perlu diingat, alamat bawaan `onboarding@resend.dev` adalah alamat khusus pengujian dari Resend. Untuk mengirim ke alamat mana pun secara bebas, verifikasi domain sendiri di `resend.com/domains` lalu ganti `MAIL_FROM`.
 
 Isi email disusun di `src/helpers/emailTemplate.ts` untuk empat keperluan: kode verifikasi email, tautan reset password, pemberitahuan password telah diubah, dan pemberitahuan akun telah disetujui HR. Tidak ada template yang memuat password pengguna.
 

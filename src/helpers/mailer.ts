@@ -20,15 +20,22 @@ function ambilResend(): Resend {
   return resend;
 }
 
-/**
- * Di luar mode production email hanya dicetak ke log supaya pengembangan
- * dan pengujian tidak pernah mengirim email sungguhan.
- */
+export type MailDriver = "log" | "resend";
+
+export function activeMailDriver(): MailDriver {
+  // pengujian tidak boleh pernah mengirim email sungguhan
+  if (env.NODE_ENV === "test") return "log";
+
+  if (env.MAIL_DRIVER) return env.MAIL_DRIVER;
+
+  return env.NODE_ENV === "production" ? "resend" : "log";
+}
+
 export async function sendMail(mail: MailInput): Promise<void> {
-  if (env.NODE_ENV !== "production") {
+  if (activeMailDriver() === "log") {
     logger.info(
       { to: mail.to, subject: mail.subject, html: mail.html },
-      "Email tidak dikirim karena aplikasi tidak berjalan di mode production",
+      "Email tidak dikirim, MAIL_DRIVER sedang memakai mode log",
     );
     return;
   }

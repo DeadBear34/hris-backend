@@ -21,6 +21,7 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
 const env = {
   NODE_ENV: "development",
   MAIL_FROM: "HRIS Awanio <no-reply@awan.io>",
+  MAIL_DRIVER: undefined as "log" | "resend" | undefined,
   RESEND_API_KEY: undefined as string | undefined,
 };
 
@@ -40,8 +41,94 @@ async function muatMailer() {
 beforeEach(() => {
   jest.clearAllMocks();
   env.NODE_ENV = "development";
+  env.MAIL_DRIVER = undefined;
   env.RESEND_API_KEY = undefined;
   mockSend.mockResolvedValue({ data: { id: "surat-1" }, error: null } as never);
+});
+
+describe("activeMailDriver", () => {
+  it("memakai mode log di development jika tidak diatur", async () => {
+    const { activeMailDriver } = await muatMailer();
+
+    expect(activeMailDriver()).toBe("log");
+  });
+
+  it("memakai Resend di production jika tidak diatur", async () => {
+    env.NODE_ENV = "production";
+    const { activeMailDriver } = await muatMailer();
+
+    expect(activeMailDriver()).toBe("resend");
+  });
+
+  it("mendahulukan MAIL_DRIVER daripada NODE_ENV", async () => {
+    env.MAIL_DRIVER = "resend";
+    const { activeMailDriver } = await muatMailer();
+
+    expect(activeMailDriver()).toBe("resend");
+  });
+
+  it("dapat mematikan pengiriman di production lewat MAIL_DRIVER", async () => {
+    env.NODE_ENV = "production";
+    env.MAIL_DRIVER = "log";
+    const { activeMailDriver } = await muatMailer();
+
+    expect(activeMailDriver()).toBe("log");
+  });
+
+  it("tidak pernah mengirim saat pengujian meski MAIL_DRIVER diisi resend", async () => {
+    env.NODE_ENV = "test";
+    env.MAIL_DRIVER = "resend";
+    const { activeMailDriver } = await muatMailer();
+
+    expect(activeMailDriver()).toBe("log");
+  });
+});
+
+describe("pengiriman sungguhan di development", () => {
+  beforeEach(() => {
+    env.NODE_ENV = "development";
+    env.MAIL_DRIVER = "resend";
+    env.RESEND_API_KEY = "re_kunci_rahasia";
+  });
+
+  it("mengirim lewat Resend saat MAIL_DRIVER bernilai resend", async () => {
+    const { sendMail } = await muatMailer();
+
+    await sendMail(surat);
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+  });
+
+  it("tidak mencetak isi email ke log", async () => {
+    const { sendMail } = await muatMailer();
+
+    await sendMail(surat);
+
+    expect(mockLoggerInfo).not.toHaveBeenCalled();
+  });
+
+  it("tetap melempar error jika RESEND_API_KEY belum diisi", async () => {
+    env.RESEND_API_KEY = undefined;
+
+    const { sendMail } = await muatMailer();
+
+    await expect(sendMail(surat)).rejects.toThrow("RESEND_API_KEY");
+  });
+});
+
+describe("pengujian tidak pernah mengirim email", () => {
+  it("tetap memakai mode log walau kunci dan driver tersedia", async () => {
+    env.NODE_ENV = "test";
+    env.MAIL_DRIVER = "resend";
+    env.RESEND_API_KEY = "re_kunci_rahasia";
+
+    const { sendMail } = await muatMailer();
+
+    await sendMail(surat);
+
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockLoggerInfo).toHaveBeenCalled();
+  });
 });
 
 describe("mode pengembangan", () => {

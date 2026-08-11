@@ -18,6 +18,11 @@ export const envSchema = z.object({
     kosongJadiUndefined,
     z.string().min(1).optional(),
   ),
+
+  MAIL_DRIVER: z.preprocess(
+    kosongJadiUndefined,
+    z.enum(["log", "resend"]).optional(),
+  ),
   MAIL_FROM: z.preprocess(
     kosongJadiUndefined,
     z.string().default("HRIS <onboarding@resend.dev>"),

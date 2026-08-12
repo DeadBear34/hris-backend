@@ -41,8 +41,6 @@ const PESAN_KODE_TIDAK_VALID =
 const PESAN_TAUTAN_TIDAK_VALID =
   "Tautan reset password tidak valid atau sudah kedaluwarsa";
 
-// dipakai pada endpoint yang tidak boleh membocorkan apakah sebuah email
-// terdaftar di sistem
 const PESAN_KIRIM_ULANG =
   "Kalau email tersebut terdaftar dan belum diverifikasi, kode verifikasi baru sudah kami kirim.";
 const PESAN_LUPA_PASSWORD =

@@ -31,6 +31,21 @@ export const envSchema = z.object({
     kosongJadiUndefined,
     z.string().default("http://localhost:5173"),
   ),
+
+  // penyimpanan lampiran cuti. dibuat opsional supaya aplikasi tetap jalan
+  // tanpa Supabase, hanya fitur unggah lampiran yang tidak tersedia
+  SUPABASE_URL: z.preprocess(
+    kosongJadiUndefined,
+    z.string().min(1).optional(),
+  ),
+  SUPABASE_SERVICE_ROLE_KEY: z.preprocess(
+    kosongJadiUndefined,
+    z.string().min(1).optional(),
+  ),
+  SUPABASE_STORAGE_BUCKET: z.preprocess(
+    kosongJadiUndefined,
+    z.string().default("leave-attachments"),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

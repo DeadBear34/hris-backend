@@ -109,10 +109,6 @@ export async function updateLastLogin(id: string): Promise<void> {
   ]);
 }
 
-/**
- * password_changed_at ikut diperbarui karena dipakai middleware authenticate
- * untuk membatalkan token JWT yang diterbitkan sebelum password berubah.
- */
 export async function updatePassword(
   id: string,
   password: string,

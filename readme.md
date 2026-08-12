@@ -56,6 +56,9 @@ cp .env.example .env
 | `MAIL_DRIVER`    | tidak | mengikuti `NODE_ENV`                  | `log` untuk mencetak email ke log, `resend` untuk mengirim sungguhan |
 | `MAIL_FROM`      | tidak | `HRIS Awanio <onboarding@resend.dev>` | Alamat pengirim email                                                |
 | `APP_URL`        | tidak | `http://localhost:5173`               | Alamat frontend, dipakai menyusun tautan di dalam email              |
+| `SUPABASE_URL`   | tidak | —                                     | Alamat proyek Supabase, wajib untuk fitur lampiran cuti              |
+| `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                          | Service role key Supabase, wajib untuk fitur lampiran cuti           |
+| `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`        | Nama bucket privat penyimpan lampiran cuti                           |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai.
 
@@ -147,6 +150,139 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`.
 | `POST`   | `/positions`       | HR, Admin | Menambah jabatan                           |
 | `PATCH`  | `/positions/:id`   | HR, Admin | Mengubah jabatan                           |
 | `DELETE` | `/positions/:id`   | HR, Admin | Menghapus jabatan                          |
+
+### Hari Libur dan Jenis Cuti
+
+| Metode   | Endpoint           | Akses     | Keterangan                                     |
+| -------- | ------------------ | --------- | ---------------------------------------------- |
+| `GET`    | `/holidays`        | Login     | Daftar hari libur, dapat disaring per tahun    |
+| `GET`    | `/holidays/:id`    | Login     | Detail satu hari libur                         |
+| `POST`   | `/holidays`        | HR, Admin | Menambah hari libur atau cuti bersama          |
+| `PATCH`  | `/holidays/:id`    | HR, Admin | Mengubah hari libur                            |
+| `DELETE` | `/holidays/:id`    | HR, Admin | Menghapus hari libur                           |
+| `GET`    | `/leave-types`     | Login     | Daftar jenis cuti untuk pilihan formulir       |
+| `GET`    | `/leave-types/:id` | Login     | Detail satu jenis cuti                         |
+| `POST`   | `/leave-types`     | HR, Admin | Menambah jenis cuti                            |
+| `PATCH`  | `/leave-types/:id` | HR, Admin | Mengubah jenis cuti                            |
+| `DELETE` | `/leave-types/:id` | HR, Admin | Menghapus jenis cuti yang belum pernah dipakai |
+
+Hari libur dapat dibaca semua pengguna karena dipakai frontend untuk menghitung perkiraan durasi cuti sebelum pengajuan dikirim.
+
+### Pengajuan Cuti
+
+| Metode  | Endpoint                       | Akses            | Keterangan                                       |
+| ------- | ------------------------------ | ---------------- | ------------------------------------------------ |
+| `GET`   | `/leave-requests/me`           | Login            | Pengajuan milik sendiri                          |
+| `GET`   | `/leave-requests/approvals`    | Login            | Pengajuan yang perlu disetujui pengguna ini      |
+| `GET`   | `/leave-requests`              | HR, Admin        | Seluruh pengajuan dengan filter lengkap          |
+| `GET`   | `/leave-requests/:id`          | Pihak terkait    | Detail pengajuan beserta lampirannya             |
+| `POST`  | `/leave-requests`              | Login            | Membuat pengajuan baru                           |
+| `PATCH` | `/leave-requests/:id/approve`  | Penyetuju, HR    | Menyetujui pengajuan                             |
+| `PATCH` | `/leave-requests/:id/reject`   | Penyetuju, HR    | Menolak pengajuan                                |
+| `PATCH` | `/leave-requests/:id/cancel`   | Pemohon          | Membatalkan pengajuan sendiri                    |
+
+Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `start_date`, `end_date`, `page`, dan `limit`. Rentang tanggal dicocokkan sebagai irisan, sehingga pengajuan yang sebagian saja masuk rentang tetap muncul.
+
+### Saldo Cuti
+
+| Metode | Endpoint                       | Akses     | Keterangan                                  |
+| ------ | ------------------------------ | --------- | ------------------------------------------- |
+| `GET`  | `/leave-balances/me`           | Login     | Saldo sendiri per jenis cuti                |
+| `GET`  | `/leave-balances/me/ledger`    | Login     | Riwayat transaksi saldo sendiri             |
+| `GET`  | `/leave-balances/:id`          | HR, Admin | Saldo karyawan lain                         |
+| `POST` | `/leave-balances/adjustments`  | HR, Admin | Penyesuaian manual saldo                    |
+
+### Lampiran Cuti
+
+| Metode | Endpoint                            | Akses         | Keterangan                          |
+| ------ | ----------------------------------- | ------------- | ----------------------------------- |
+| `GET`  | `/leave-requests/:id/attachments`   | Pihak terkait | Daftar lampiran sebuah pengajuan    |
+| `POST` | `/leave-requests/:id/attachments`   | Pihak terkait | Mengunggah bukti, field `file`      |
+| `GET`  | `/leave-attachments/:id/url`        | Pihak terkait | Signed URL berlaku 15 menit         |
+
+## Alur Persetujuan Cuti
+
+Penyetuju ditentukan satu aturan saja: **atasan langsung pemohon** berdasarkan `manager_id` pada tabel `employees`. Tidak ada percabangan berdasarkan role, karena aturan tunggal ini sudah menutup seluruh kasus.
+
+```
+Pemohon punya manager_id?
+├── ya    → approver_id diisi id atasan
+└── tidak → approver_id dibiarkan NULL, menjadi tanggung jawab HR
+```
+
+Direktur yang tidak punya atasan, HR yang mengajukan cuti, maupun manajer yang mengajukan ke atasannya sendiri semuanya mengikuti aturan yang sama. Pengajuan tanpa penyetuju ikut muncul pada `/leave-requests/approvals` milik HR dan admin.
+
+Di luar itu, role `hr` dan `admin` boleh melihat seluruh pengajuan dan menyetujui pengajuan mana pun sebagai jalur darurat, misalnya ketika atasan sedang berhalangan.
+
+### Transisi status
+
+```
+                  approve
+        ┌──────────────────────► approved ──────┐
+        │                                        │ cancel
+     pending ──── reject ─────► rejected         │ (sebelum tanggal mulai)
+        │                                        ▼
+        └──── cancel ──────────────────────► cancelled
+```
+
+Transisi selain empat panah di atas ditolak, termasuk mengubah status ke dirinya sendiri dan mengembalikan status apa pun ke `pending`. Pembatalan pengajuan yang sudah disetujui hanya boleh dilakukan selama tanggal mulainya belum lewat.
+
+Pembatalan hanya boleh dilakukan pemohon sendiri, bahkan HR pun tidak dapat membatalkan cuti orang lain.
+
+### Perhitungan durasi
+
+Durasi dihitung dalam hari kerja: Sabtu, Minggu, dan tanggal yang terdaftar di tabel `holidays` diabaikan. Cuti Jumat sampai Senin bernilai **dua** hari kerja, bukan empat. Rentang yang seluruhnya jatuh pada akhir pekan ditolak karena tidak memuat satu pun hari kerja.
+
+### Validasi saat pengajuan dibuat
+
+| Aturan                    | Sumber                                  |
+| ------------------------- | --------------------------------------- |
+| Rentang tanggal masuk akal | Skema Zod dan constraint database       |
+| Tidak untuk tanggal lampau | Dikecualikan untuk jenis cuti kode `SICK` |
+| Batas hari per pengajuan  | `max_days_per_request`                  |
+| Minimal pemberitahuan     | `min_notice_days`                       |
+| Saldo mencukupi           | Penjumlahan ledger, bila `deducts_balance` |
+| Kesesuaian gender         | `gender_restriction`                    |
+| Tidak tumpang tindih      | `no_overlapping_leave` dan pemeriksaan awal |
+
+Skema database tidak punya penanda khusus untuk cuti sakit, sedangkan hanya cuti sakit yang boleh diajukan mundur. Penandanya memakai kode jenis cuti `SICK`, didefinisikan sebagai konstanta di `src/controller/leaveRequestController.ts`.
+
+Kewajiban lampiran diperiksa saat **persetujuan**, bukan saat pengajuan dibuat, karena lampiran hanya dapat diunggah setelah pengajuannya ada. Respons pembuatan pengajuan menyertakan `attachment_required` agar frontend tahu perlu meminta unggahan.
+
+## Cara Kerja Ledger Saldo Cuti
+
+Saldo tidak pernah disimpan sebagai kolom tunggal. Yang tersimpan adalah baris-baris transaksi di `leave_balance_transactions`, dan saldo dihitung dengan menjumlahkan seluruhnya. Pendekatan ini membuat setiap perubahan dapat ditelusuri dan mustahil menyimpang dari riwayatnya.
+
+| Tipe         | Nilai    | Kapan dicatat                               |
+| ------------ | -------- | ------------------------------------------- |
+| `accrual`    | positif  | Pemberian jatah tahunan                     |
+| `hold`       | negatif  | Saat pengajuan dibuat, saldo ditahan        |
+| `deduction`  | negatif  | Hasil perubahan `hold` setelah disetujui    |
+| `refund`     | positif  | Saat pengajuan ditolak atau dibatalkan      |
+| `adjustment` | bebas    | Penyesuaian manual oleh HR                  |
+
+Alur satu pengajuan tiga hari dengan jatah awal 12 hari:
+
+```
+accrual   +12  → saldo 12
+hold       -3  → saldo  9   pengajuan dibuat, saldo tertahan
+                             ┌── disetujui: hold berubah jadi deduction, saldo tetap 9
+                             └── ditolak  : refund +3, saldo kembali 12
+```
+
+Saat disetujui, baris `hold` **diubah jenisnya** menjadi `deduction` tanpa mengubah nilainya, sehingga hasil penjumlahan tidak bergeser. Saat ditolak atau dibatalkan, baris `refund` baru ditambahkan.
+
+Penahanan sejak pengajuan dibuat inilah yang mencegah seorang karyawan mengajukan dua cuti sekaligus yang totalnya melebihi saldonya. Seluruh perubahan status berada dalam satu transaksi database bersama pencatatan ledger-nya, sehingga status dan saldo tidak pernah berbeda arah.
+
+## Penanganan Lampiran
+
+Bucket Supabase bersifat privat. Yang disimpan di database hanya `storage_path`, bukan URL, karena signed URL punya masa berlaku dan akan kedaluwarsa. Tautan diterbitkan ulang setiap kali diminta dengan masa berlaku lima belas menit.
+
+Tipe berkas ditentukan dari **magic bytes**, bukan dari ekstensi nama berkas maupun header `Content-Type`, karena keduanya dikirim klien dan mudah dipalsukan. Hanya `image/jpeg`, `image/png`, dan `image/webp` yang diterima, maksimal 5 MB.
+
+Nama berkas yang disimpan dibuat ulang sebagai UUID di bawah folder id pengajuan, sehingga nama asli dari pengguna tidak pernah ikut menentukan lokasi berkas. Nama aslinya tetap dicatat pada kolom `file_name` untuk ditampilkan.
+
+Berkas disimpan permanen dan tidak dihapus saat pengajuan ditolak atau dibatalkan, karena tetap dibutuhkan sebagai bukti riwayat.
 
 ## Alur Verifikasi Email
 

@@ -33,7 +33,43 @@ import {
   UpdatePositionController,
   DeletePositionController,
 } from "../controller/positionController.js";
+import {
+  ListHolidayController,
+  DetailHolidayController,
+  CreateHolidayController,
+  UpdateHolidayController,
+  DeleteHolidayController,
+} from "../controller/holidayController.js";
+import {
+  ListLeaveTypeController,
+  DetailLeaveTypeController,
+  CreateLeaveTypeController,
+  UpdateLeaveTypeController,
+  DeleteLeaveTypeController,
+} from "../controller/leaveTypeController.js";
+import {
+  ListMyLeaveRequestController,
+  ListApprovalLeaveRequestController,
+  ListAllLeaveRequestController,
+  DetailLeaveRequestController,
+  CreateLeaveRequestController,
+  ApproveLeaveRequestController,
+  RejectLeaveRequestController,
+  CancelLeaveRequestController,
+} from "../controller/leaveRequestController.js";
+import {
+  MyLeaveBalanceController,
+  EmployeeLeaveBalanceController,
+  MyLeaveLedgerController,
+  AdjustLeaveBalanceController,
+} from "../controller/leaveBalanceController.js";
+import {
+  UploadLeaveAttachmentController,
+  ListLeaveAttachmentController,
+  SignedUrlLeaveAttachmentController,
+} from "../controller/leaveAttachmentController.js";
 import { authenticate, authorize } from "../middlewares/auth.js";
+import { uploadSingleImage } from "../middlewares/upload.js";
 import {
   validate,
   validateQuery,
@@ -62,6 +98,25 @@ import {
   createPositionSchema,
   updatePositionSchema,
 } from "../schema/positionSchema.js";
+import {
+  listHolidayQuerySchema,
+  createHolidaySchema,
+  updateHolidaySchema,
+} from "../schema/holidaySchema.js";
+import {
+  createLeaveTypeSchema,
+  updateLeaveTypeSchema,
+} from "../schema/leaveTypeSchema.js";
+import {
+  listLeaveRequestQuerySchema,
+  createLeaveRequestSchema,
+  decideLeaveRequestSchema,
+} from "../schema/leaveRequestSchema.js";
+import {
+  balanceQuerySchema,
+  listLedgerQuerySchema,
+  adjustBalanceSchema,
+} from "../schema/leaveBalanceSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
@@ -218,6 +273,205 @@ router.delete(
   ...hrOnly,
   validateParams(idParamSchema),
   DeletePositionController,
+);
+
+// ---------------------------------------------------------------
+// Hari libur
+// Dibaca semua pengguna karena dipakai menghitung durasi cuti,
+// hanya HR dan admin yang boleh mengubahnya
+// ---------------------------------------------------------------
+
+router.get(
+  "/holidays",
+  ...loggedIn,
+  validateQuery(listHolidayQuerySchema),
+  ListHolidayController,
+);
+
+router.get(
+  "/holidays/:id",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  DetailHolidayController,
+);
+
+router.post(
+  "/holidays",
+  ...hrOnly,
+  validate(createHolidaySchema),
+  CreateHolidayController,
+);
+
+router.patch(
+  "/holidays/:id",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  validate(updateHolidaySchema),
+  UpdateHolidayController,
+);
+
+router.delete(
+  "/holidays/:id",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  DeleteHolidayController,
+);
+
+// ---------------------------------------------------------------
+// Jenis cuti
+// ---------------------------------------------------------------
+
+router.get("/leave-types", ...loggedIn, ListLeaveTypeController);
+
+router.get(
+  "/leave-types/:id",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  DetailLeaveTypeController,
+);
+
+router.post(
+  "/leave-types",
+  ...hrOnly,
+  validate(createLeaveTypeSchema),
+  CreateLeaveTypeController,
+);
+
+router.patch(
+  "/leave-types/:id",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  validate(updateLeaveTypeSchema),
+  UpdateLeaveTypeController,
+);
+
+router.delete(
+  "/leave-types/:id",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  DeleteLeaveTypeController,
+);
+
+// ---------------------------------------------------------------
+// Saldo cuti
+// Didaftarkan sebelum rute berparameter agar tidak tertangkap /:id
+// ---------------------------------------------------------------
+
+router.get(
+  "/leave-balances/me",
+  ...loggedIn,
+  validateQuery(balanceQuerySchema),
+  MyLeaveBalanceController,
+);
+
+router.get(
+  "/leave-balances/me/ledger",
+  ...loggedIn,
+  validateQuery(listLedgerQuerySchema),
+  MyLeaveLedgerController,
+);
+
+router.post(
+  "/leave-balances/adjustments",
+  ...hrOnly,
+  validate(adjustBalanceSchema),
+  AdjustLeaveBalanceController,
+);
+
+router.get(
+  "/leave-balances/:id",
+  ...hrOnly,
+  validateParams(idParamSchema),
+  validateQuery(balanceQuerySchema),
+  EmployeeLeaveBalanceController,
+);
+
+// ---------------------------------------------------------------
+// Pengajuan cuti
+// ---------------------------------------------------------------
+
+router.get(
+  "/leave-requests/me",
+  ...loggedIn,
+  validateQuery(listLeaveRequestQuerySchema),
+  ListMyLeaveRequestController,
+);
+
+router.get(
+  "/leave-requests/approvals",
+  ...loggedIn,
+  validateQuery(listLeaveRequestQuerySchema),
+  ListApprovalLeaveRequestController,
+);
+
+router.get(
+  "/leave-requests",
+  ...hrOnly,
+  validateQuery(listLeaveRequestQuerySchema),
+  ListAllLeaveRequestController,
+);
+
+router.post(
+  "/leave-requests",
+  ...loggedIn,
+  validate(createLeaveRequestSchema),
+  CreateLeaveRequestController,
+);
+
+router.get(
+  "/leave-requests/:id",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  DetailLeaveRequestController,
+);
+
+router.patch(
+  "/leave-requests/:id/approve",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  validate(decideLeaveRequestSchema),
+  ApproveLeaveRequestController,
+);
+
+router.patch(
+  "/leave-requests/:id/reject",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  validate(decideLeaveRequestSchema),
+  RejectLeaveRequestController,
+);
+
+router.patch(
+  "/leave-requests/:id/cancel",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  CancelLeaveRequestController,
+);
+
+// ---------------------------------------------------------------
+// Lampiran pengajuan cuti
+// ---------------------------------------------------------------
+
+router.get(
+  "/leave-requests/:id/attachments",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  ListLeaveAttachmentController,
+);
+
+router.post(
+  "/leave-requests/:id/attachments",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  uploadSingleImage("file"),
+  UploadLeaveAttachmentController,
+);
+
+router.get(
+  "/leave-attachments/:id/url",
+  ...loggedIn,
+  validateParams(idParamSchema),
+  SignedUrlLeaveAttachmentController,
 );
 
 export default router;

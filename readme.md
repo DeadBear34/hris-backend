@@ -43,22 +43,22 @@ Salin `.env.example` menjadi `.env`, lalu isi nilainya.
 cp .env.example .env
 ```
 
-| Variabel         | Wajib | Default                               | Keterangan                                                           |
-| ---------------- | ----- | ------------------------------------- | -------------------------------------------------------------------- |
-| `NODE_ENV`       | tidak | `development`                         | `development`, `test`, atau `production`                             |
-| `PORT`           | tidak | `8080`                                | Port yang didengarkan server                                         |
-| `CORS_ORIGIN`    | tidak | `http://localhost:5173`               | Origin frontend yang diizinkan                                       |
-| `LOG_LEVEL`      | tidak | `info`                                | `debug`, `info`, `warn`, atau `error`                                |
-| `DATABASE_URL`   | ya    | —                                     | Connection string PostgreSQL dari Supabase (tab Direct connection)   |
-| `JWT_SECRET`     | ya    | —                                     | Kunci penandatangan token, minimal 32 karakter                       |
-| `JWT_EXPIRES_IN` | tidak | `24h`                                 | Masa berlaku access token                                            |
-| `RESEND_API_KEY` | tidak | —                                     | Kunci API Resend, wajib kalau email benar-benar dikirim              |
-| `MAIL_DRIVER`    | tidak | mengikuti `NODE_ENV`                  | `log` untuk mencetak email ke log, `resend` untuk mengirim sungguhan |
-| `MAIL_FROM`      | tidak | `HRIS Awanio <onboarding@resend.dev>` | Alamat pengirim email                                                |
-| `APP_URL`        | tidak | `http://localhost:5173`               | Alamat frontend, dipakai menyusun tautan di dalam email              |
-| `SUPABASE_URL`   | tidak | —                                     | Alamat proyek Supabase, wajib untuk fitur lampiran cuti              |
-| `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                          | Service role key Supabase, wajib untuk fitur lampiran cuti           |
-| `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`        | Nama bucket privat penyimpan lampiran cuti                           |
+| Variabel                    | Wajib | Default                               | Keterangan                                                           |
+| --------------------------- | ----- | ------------------------------------- | -------------------------------------------------------------------- |
+| `NODE_ENV`                  | tidak | `development`                         | `development`, `test`, atau `production`                             |
+| `PORT`                      | tidak | `8080`                                | Port yang didengarkan server                                         |
+| `CORS_ORIGIN`               | tidak | `http://localhost:5173`               | Origin frontend yang diizinkan                                       |
+| `LOG_LEVEL`                 | tidak | `info`                                | `debug`, `info`, `warn`, atau `error`                                |
+| `DATABASE_URL`              | ya    | —                                     | Connection string PostgreSQL dari Supabase (tab Direct connection)   |
+| `JWT_SECRET`                | ya    | —                                     | Kunci penandatangan token, minimal 32 karakter                       |
+| `JWT_EXPIRES_IN`            | tidak | `24h`                                 | Masa berlaku access token                                            |
+| `RESEND_API_KEY`            | tidak | —                                     | Kunci API Resend, wajib kalau email benar-benar dikirim              |
+| `MAIL_DRIVER`               | tidak | mengikuti `NODE_ENV`                  | `log` untuk mencetak email ke log, `resend` untuk mengirim sungguhan |
+| `MAIL_FROM`                 | tidak | `HRIS Awanio <onboarding@resend.dev>` | Alamat pengirim email                                                |
+| `APP_URL`                   | tidak | `http://localhost:5173`               | Alamat frontend, dipakai menyusun tautan di dalam email              |
+| `SUPABASE_URL`              | tidak | —                                     | Alamat proyek Supabase, wajib untuk fitur lampiran cuti              |
+| `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                                     | Service role key Supabase, wajib untuk fitur lampiran cuti           |
+| `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`                   | Nama bucket privat penyimpan lampiran cuti                           |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai.
 
@@ -170,35 +170,35 @@ Hari libur dapat dibaca semua pengguna karena dipakai frontend untuk menghitung 
 
 ### Pengajuan Cuti
 
-| Metode  | Endpoint                       | Akses            | Keterangan                                       |
-| ------- | ------------------------------ | ---------------- | ------------------------------------------------ |
-| `GET`   | `/leave-requests/me`           | Login            | Pengajuan milik sendiri                          |
-| `GET`   | `/leave-requests/approvals`    | Login            | Pengajuan yang perlu disetujui pengguna ini      |
-| `GET`   | `/leave-requests`              | HR, Admin        | Seluruh pengajuan dengan filter lengkap          |
-| `GET`   | `/leave-requests/:id`          | Pihak terkait    | Detail pengajuan beserta lampirannya             |
-| `POST`  | `/leave-requests`              | Login            | Membuat pengajuan baru                           |
-| `PATCH` | `/leave-requests/:id/approve`  | Penyetuju, HR    | Menyetujui pengajuan                             |
-| `PATCH` | `/leave-requests/:id/reject`   | Penyetuju, HR    | Menolak pengajuan                                |
-| `PATCH` | `/leave-requests/:id/cancel`   | Pemohon          | Membatalkan pengajuan sendiri                    |
+| Metode  | Endpoint                      | Akses         | Keterangan                                  |
+| ------- | ----------------------------- | ------------- | ------------------------------------------- |
+| `GET`   | `/leave-requests/me`          | Login         | Pengajuan milik sendiri                     |
+| `GET`   | `/leave-requests/approvals`   | Login         | Pengajuan yang perlu disetujui pengguna ini |
+| `GET`   | `/leave-requests`             | HR, Admin     | Seluruh pengajuan dengan filter lengkap     |
+| `GET`   | `/leave-requests/:id`         | Pihak terkait | Detail pengajuan beserta lampirannya        |
+| `POST`  | `/leave-requests`             | Login         | Membuat pengajuan baru                      |
+| `PATCH` | `/leave-requests/:id/approve` | Penyetuju, HR | Menyetujui pengajuan                        |
+| `PATCH` | `/leave-requests/:id/reject`  | Penyetuju, HR | Menolak pengajuan                           |
+| `PATCH` | `/leave-requests/:id/cancel`  | Pemohon       | Membatalkan pengajuan sendiri               |
 
 Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `start_date`, `end_date`, `page`, dan `limit`. Rentang tanggal dicocokkan sebagai irisan, sehingga pengajuan yang sebagian saja masuk rentang tetap muncul.
 
 ### Saldo Cuti
 
-| Metode | Endpoint                       | Akses     | Keterangan                                  |
-| ------ | ------------------------------ | --------- | ------------------------------------------- |
-| `GET`  | `/leave-balances/me`           | Login     | Saldo sendiri per jenis cuti                |
-| `GET`  | `/leave-balances/me/ledger`    | Login     | Riwayat transaksi saldo sendiri             |
-| `GET`  | `/leave-balances/:id`          | HR, Admin | Saldo karyawan lain                         |
-| `POST` | `/leave-balances/adjustments`  | HR, Admin | Penyesuaian manual saldo                    |
+| Metode | Endpoint                      | Akses     | Keterangan                      |
+| ------ | ----------------------------- | --------- | ------------------------------- |
+| `GET`  | `/leave-balances/me`          | Login     | Saldo sendiri per jenis cuti    |
+| `GET`  | `/leave-balances/me/ledger`   | Login     | Riwayat transaksi saldo sendiri |
+| `GET`  | `/leave-balances/:id`         | HR, Admin | Saldo karyawan lain             |
+| `POST` | `/leave-balances/adjustments` | HR, Admin | Penyesuaian manual saldo        |
 
 ### Lampiran Cuti
 
-| Metode | Endpoint                            | Akses         | Keterangan                          |
-| ------ | ----------------------------------- | ------------- | ----------------------------------- |
-| `GET`  | `/leave-requests/:id/attachments`   | Pihak terkait | Daftar lampiran sebuah pengajuan    |
-| `POST` | `/leave-requests/:id/attachments`   | Pihak terkait | Mengunggah bukti, field `file`      |
-| `GET`  | `/leave-attachments/:id/url`        | Pihak terkait | Signed URL berlaku 15 menit         |
+| Metode | Endpoint                          | Akses         | Keterangan                       |
+| ------ | --------------------------------- | ------------- | -------------------------------- |
+| `GET`  | `/leave-requests/:id/attachments` | Pihak terkait | Daftar lampiran sebuah pengajuan |
+| `POST` | `/leave-requests/:id/attachments` | Pihak terkait | Mengunggah bukti, field `file`   |
+| `GET`  | `/leave-attachments/:id/url`      | Pihak terkait | Signed URL berlaku 15 menit      |
 
 ## Alur Persetujuan Cuti
 
@@ -235,15 +235,15 @@ Durasi dihitung dalam hari kerja: Sabtu, Minggu, dan tanggal yang terdaftar di t
 
 ### Validasi saat pengajuan dibuat
 
-| Aturan                    | Sumber                                  |
-| ------------------------- | --------------------------------------- |
-| Rentang tanggal masuk akal | Skema Zod dan constraint database       |
-| Tidak untuk tanggal lampau | Dikecualikan untuk jenis cuti kode `SICK` |
-| Batas hari per pengajuan  | `max_days_per_request`                  |
-| Minimal pemberitahuan     | `min_notice_days`                       |
-| Saldo mencukupi           | Penjumlahan ledger, bila `deducts_balance` |
-| Kesesuaian gender         | `gender_restriction`                    |
-| Tidak tumpang tindih      | `no_overlapping_leave` dan pemeriksaan awal |
+| Aturan                     | Sumber                                      |
+| -------------------------- | ------------------------------------------- |
+| Rentang tanggal masuk akal | Skema Zod dan constraint database           |
+| Tidak untuk tanggal lampau | Dikecualikan untuk jenis cuti kode `SICK`   |
+| Batas hari per pengajuan   | `max_days_per_request`                      |
+| Minimal pemberitahuan      | `min_notice_days`                           |
+| Saldo mencukupi            | Penjumlahan ledger, bila `deducts_balance`  |
+| Kesesuaian gender          | `gender_restriction`                        |
+| Tidak tumpang tindih       | `no_overlapping_leave` dan pemeriksaan awal |
 
 Skema database tidak punya penanda khusus untuk cuti sakit, sedangkan hanya cuti sakit yang boleh diajukan mundur. Penandanya memakai kode jenis cuti `SICK`, didefinisikan sebagai konstanta di `src/controller/leaveRequestController.ts`.
 
@@ -253,13 +253,13 @@ Kewajiban lampiran diperiksa saat **persetujuan**, bukan saat pengajuan dibuat, 
 
 Saldo tidak pernah disimpan sebagai kolom tunggal. Yang tersimpan adalah baris-baris transaksi di `leave_balance_transactions`, dan saldo dihitung dengan menjumlahkan seluruhnya. Pendekatan ini membuat setiap perubahan dapat ditelusuri dan mustahil menyimpang dari riwayatnya.
 
-| Tipe         | Nilai    | Kapan dicatat                               |
-| ------------ | -------- | ------------------------------------------- |
-| `accrual`    | positif  | Pemberian jatah tahunan                     |
-| `hold`       | negatif  | Saat pengajuan dibuat, saldo ditahan        |
-| `deduction`  | negatif  | Hasil perubahan `hold` setelah disetujui    |
-| `refund`     | positif  | Saat pengajuan ditolak atau dibatalkan      |
-| `adjustment` | bebas    | Penyesuaian manual oleh HR                  |
+| Tipe         | Nilai   | Kapan dicatat                            |
+| ------------ | ------- | ---------------------------------------- |
+| `accrual`    | positif | Pemberian jatah tahunan                  |
+| `hold`       | negatif | Saat pengajuan dibuat, saldo ditahan     |
+| `deduction`  | negatif | Hasil perubahan `hold` setelah disetujui |
+| `refund`     | positif | Saat pengajuan ditolak atau dibatalkan   |
+| `adjustment` | bebas   | Penyesuaian manual oleh HR               |
 
 Alur satu pengajuan tiga hari dengan jatah awal 12 hari:
 

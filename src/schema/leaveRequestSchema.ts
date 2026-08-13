@@ -4,7 +4,8 @@ const LEAVE_STATUS = ["pending", "approved", "rejected", "cancelled"] as const;
 
 export const listLeaveRequestQuerySchema = z
   .object({
-    status: z.enum(LEAVE_STATUS, { message: "Status cuti tidak valid" })
+    status: z
+      .enum(LEAVE_STATUS, { message: "Status cuti tidak valid" })
       .optional(),
     employee_id: z.uuid("Karyawan tidak valid").optional(),
     leave_type_id: z.uuid("Jenis cuti tidak valid").optional(),

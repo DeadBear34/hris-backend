@@ -187,9 +187,7 @@ beforeEach(() => {
     fakeRequest() as never,
   );
   (balanceModel.balanceFor as jest.Mock).mockResolvedValue(12 as never);
-  (balanceModel.createTransaction as jest.Mock).mockResolvedValue(
-    {} as never,
-  );
+  (balanceModel.createTransaction as jest.Mock).mockResolvedValue({} as never);
   (balanceModel.convertHoldToDeduction as jest.Mock).mockResolvedValue(
     [] as never,
   );

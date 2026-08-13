@@ -34,10 +34,7 @@ export const envSchema = z.object({
 
   // penyimpanan lampiran cuti. dibuat opsional supaya aplikasi tetap jalan
   // tanpa Supabase, hanya fitur unggah lampiran yang tidak tersedia
-  SUPABASE_URL: z.preprocess(
-    kosongJadiUndefined,
-    z.string().min(1).optional(),
-  ),
+  SUPABASE_URL: z.preprocess(kosongJadiUndefined, z.string().min(1).optional()),
   SUPABASE_SERVICE_ROLE_KEY: z.preprocess(
     kosongJadiUndefined,
     z.string().min(1).optional(),

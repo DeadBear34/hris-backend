@@ -32,10 +32,10 @@ async function pastikanBolehMengakses(
     );
   }
 
-  const isHrAtauAdmin = req.user.role === "hr" || req.user.role === "admin";
+  const isAdmin = req.user.role === "admin";
 
   const boleh =
-    isHrAtauAdmin ||
+    isAdmin ||
     request.employee_id === employee.id ||
     request.approver_id === employee.id;
 

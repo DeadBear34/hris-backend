@@ -18,7 +18,7 @@ type AppErrorType = InstanceType<typeof AppError>;
 const payload = {
   id: "11111111-1111-4111-8111-111111111111",
   email: "ismail@awan.io",
-  role: "hr",
+  role: "admin",
 };
 
 const token = createToken(payload);
@@ -55,7 +55,7 @@ describe("authenticate", () => {
     await authenticate(req, {} as Response, next);
 
     expect(req.user?.id).toBe(payload.id);
-    expect(req.user?.role).toBe("hr");
+    expect(req.user?.role).toBe("admin");
   });
 
   it("menolak request tanpa header Authorization", async () => {
@@ -219,7 +219,7 @@ describe("authorize", () => {
   });
 
   it("meloloskan role yang diizinkan", () => {
-    const req = { user: { ...payload, role: "hr" } } as Request;
+    const req = { user: { ...payload, role: "admin" } } as Request;
 
     authorize("hr", "admin")(req, {} as Response, next);
 
@@ -246,7 +246,7 @@ describe("authorize", () => {
   });
 
   it("menolak request yang belum melewati authenticate", () => {
-    authorize("hr")({} as Request, {} as Response, next);
+    authorize("admin")({} as Request, {} as Response, next);
 
     expect(ambilError(next).statusCode).toBe(401);
   });
@@ -262,7 +262,7 @@ describe("authorize", () => {
   it("membedakan role secara persis, bukan sebagian kata", () => {
     const req = { user: { ...payload, role: "hrd" } } as Request;
 
-    authorize("hr")(req, {} as Response, next);
+    authorize("admin")(req, {} as Response, next);
 
     expect(ambilError(next).statusCode).toBe(403);
   });

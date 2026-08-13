@@ -73,7 +73,7 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const hrToken = createToken({ id: USER_ID, email: "hr@awan.io", role: "hr" });
+const adminToken = createToken({ id: USER_ID, email: "admin2@awan.io", role: "admin" });
 
 const JPEG = Buffer.concat([
   Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
@@ -241,13 +241,13 @@ describe("POST /api/v1/leave-requests/:id/attachments", () => {
     expect(res.status).toBe(201);
   });
 
-  it("mengizinkan HR", async () => {
+  it("mengizinkan admin", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       id: LAIN_ID,
     } as never);
 
-    const res = await unggah(JPEG, "bukti.jpg", hrToken);
+    const res = await unggah(JPEG, "bukti.jpg", adminToken);
 
     expect(res.status).toBe(201);
   });
@@ -362,13 +362,13 @@ describe("GET /api/v1/leave-attachments/:id/url", () => {
     expect(mockSignedUrl).not.toHaveBeenCalled();
   });
 
-  it("mengizinkan HR melihat lampiran siapa pun", async () => {
+  it("mengizinkan admin melihat lampiran siapa pun", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       id: LAIN_ID,
     } as never);
 
-    const res = await ambilUrl(hrToken);
+    const res = await ambilUrl(adminToken);
 
     expect(res.status).toBe(200);
   });

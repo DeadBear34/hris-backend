@@ -162,7 +162,7 @@ describe("createEmployeeSchema", () => {
   it("menerima data lengkap", () => {
     const result = createEmployeeSchema.safeParse({
       ...validCreate,
-      role: "hr",
+      role: "admin",
       birth_date: "1998-05-20",
       address: "Jalan Merdeka 10",
       department_id: DEPARTMENT_ID,
@@ -233,7 +233,7 @@ describe("createEmployeeSchema", () => {
   });
 
   it("menerima seluruh pilihan role", () => {
-    for (const role of ["employee", "hr", "admin"]) {
+    for (const role of ["employee", "admin"]) {
       const result = createEmployeeSchema.safeParse({ ...validCreate, role });
 
       expect(result.success).toBe(true);

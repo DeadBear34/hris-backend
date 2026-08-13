@@ -42,7 +42,6 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const hrToken = createToken({ id: USER_ID, email: "hr@awan.io", role: "hr" });
 const adminToken = createToken({
   id: USER_ID,
   email: "admin@awan.io",
@@ -151,10 +150,10 @@ describe("hari libur", () => {
     expect(holidayModel.createHoliday).not.toHaveBeenCalled();
   });
 
-  it("mengizinkan HR menambah hari libur", async () => {
+  it("mengizinkan admin menambah hari libur", async () => {
     const res = await request(app)
       .post("/api/v1/holidays")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(201);
@@ -176,7 +175,7 @@ describe("hari libur", () => {
 
     const res = await request(app)
       .post("/api/v1/holidays")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(409);
@@ -188,7 +187,7 @@ describe("hari libur", () => {
 
     const res = await request(app)
       .patch(`/api/v1/holidays/${HOLIDAY_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "Nama Baru" });
 
     expect(res.status).toBe(404);
@@ -197,7 +196,7 @@ describe("hari libur", () => {
   it("tidak memeriksa duplikat saat tanggal tidak berubah", async () => {
     const res = await request(app)
       .patch(`/api/v1/holidays/${HOLIDAY_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ holiday_date: fakeHoliday.holiday_date });
 
     expect(res.status).toBe(200);
@@ -207,7 +206,7 @@ describe("hari libur", () => {
   it("menghapus hari libur yang ada", async () => {
     const res = await request(app)
       .delete(`/api/v1/holidays/${HOLIDAY_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(holidayModel.deleteHoliday).toHaveBeenCalledWith(HOLIDAY_ID);
@@ -216,7 +215,7 @@ describe("hari libur", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .delete("/api/v1/holidays/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -256,7 +255,7 @@ describe("jenis cuti", () => {
 
     const res = await request(app)
       .post("/api/v1/leave-types")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(409);
@@ -265,7 +264,7 @@ describe("jenis cuti", () => {
   it("menyimpan kode dalam huruf besar", async () => {
     await request(app)
       .post("/api/v1/leave-types")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...body, code: "annual" });
 
     const [data] = (leaveTypeModel.createLeaveType as jest.Mock).mock
@@ -281,7 +280,7 @@ describe("jenis cuti", () => {
 
     const res = await request(app)
       .delete(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.details.leave_request_count).toBe(4);
@@ -295,7 +294,7 @@ describe("jenis cuti", () => {
 
     const res = await request(app)
       .delete(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.message).toContain("Nonaktifkan");
   });
@@ -303,7 +302,7 @@ describe("jenis cuti", () => {
   it("menghapus jenis cuti yang belum pernah dipakai", async () => {
     const res = await request(app)
       .delete(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(leaveTypeModel.softDeleteLeaveType).toHaveBeenCalledWith(
@@ -324,7 +323,7 @@ describe("jenis cuti", () => {
   it("menolak batasan gender di luar pilihan", async () => {
     const res = await request(app)
       .post("/api/v1/leave-types")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...body, gender_restriction: "lainnya" });
 
     expect(res.status).toBe(400);

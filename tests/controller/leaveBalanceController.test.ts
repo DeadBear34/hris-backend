@@ -48,7 +48,7 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const hrToken = createToken({ id: USER_ID, email: "hr@awan.io", role: "hr" });
+const adminToken = createToken({ id: USER_ID, email: "admin2@awan.io", role: "admin" });
 
 const TAHUN_INI = new Date().getUTCFullYear();
 
@@ -188,10 +188,10 @@ describe("GET /api/v1/leave-balances/:id", () => {
     expect(res.status).toBe(403);
   });
 
-  it("mengizinkan HR melihat saldo karyawan lain", async () => {
+  it("mengizinkan admin melihat saldo karyawan lain", async () => {
     const res = await request(app)
       .get(`/api/v1/leave-balances/${LAIN_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.employee_id).toBe(LAIN_ID);
@@ -202,7 +202,7 @@ describe("GET /api/v1/leave-balances/:id", () => {
 
     const res = await request(app)
       .get(`/api/v1/leave-balances/${LAIN_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
   });
@@ -230,7 +230,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("mencatat penyesuaian sebagai transaksi adjustment", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(201);
@@ -246,7 +246,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("mencatat siapa yang melakukan penyesuaian", async () => {
     await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     const [, data] = (balanceModel.createTransaction as jest.Mock).mock
@@ -258,7 +258,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("menerima penyesuaian bernilai negatif", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...body, amount: -2 });
 
     expect(res.status).toBe(201);
@@ -267,7 +267,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("menolak penyesuaian bernilai nol", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...body, amount: 0 });
 
     expect(res.status).toBe(400);
@@ -278,7 +278,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
 
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(tanpaAlasan);
 
     expect(res.status).toBe(400);
@@ -289,7 +289,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
 
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(400);
@@ -301,7 +301,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
 
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(400);
@@ -311,7 +311,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("mengembalikan saldo terbaru setelah penyesuaian", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.body.data.balance).toBe(9);

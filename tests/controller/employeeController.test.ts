@@ -68,16 +68,15 @@ const positionModel = await import("../../src/models/position.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
-const HR_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const DEPARTMENT_ID = "33333333-3333-4333-8333-333333333333";
 const POSITION_ID = "44444444-4444-4444-8444-444444444444";
 const MANAGER_ID = "55555555-5555-4555-8555-555555555555";
 const USER_ID = "66666666-6666-4666-8666-666666666666";
 
-const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 const adminToken = createToken({
-  id: HR_ID,
+  id: ADMIN_ID,
   email: "admin@awan.io",
   role: "admin",
 });
@@ -174,12 +173,12 @@ describe("GET /api/v1/employees", () => {
     expect(employeeModel.listEmployees).not.toHaveBeenCalled();
   });
 
-  it("mengizinkan HR", async () => {
+  it("mengizinkan admin", async () => {
     siapkanDaftar();
 
     const res = await request(app)
       .get("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
@@ -200,7 +199,7 @@ describe("GET /api/v1/employees", () => {
 
     const res = await request(app)
       .get("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.meta.page).toBe(1);
     expect(res.body.meta.limit).toBe(10);
@@ -211,7 +210,7 @@ describe("GET /api/v1/employees", () => {
 
     const res = await request(app)
       .get("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.meta.total).toBe(25);
     expect(res.body.meta.total_pages).toBe(3);
@@ -225,7 +224,7 @@ describe("GET /api/v1/employees", () => {
 
     const res = await request(app)
       .get("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.meta.total_pages).toBe(0);
     expect(res.body.data).toEqual([]);
@@ -243,7 +242,7 @@ describe("GET /api/v1/employees", () => {
         page: "2",
         limit: "5",
       })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     const [params] = (employeeModel.listEmployees as jest.Mock).mock
       .calls[0] as [Record<string, unknown>];
@@ -261,7 +260,7 @@ describe("GET /api/v1/employees", () => {
     const res = await request(app)
       .get("/api/v1/employees")
       .query({ department_id: "abc" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION_ERROR");
@@ -271,7 +270,7 @@ describe("GET /api/v1/employees", () => {
     const res = await request(app)
       .get("/api/v1/employees")
       .query({ limit: "500" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -280,7 +279,7 @@ describe("GET /api/v1/employees", () => {
     const res = await request(app)
       .get("/api/v1/employees")
       .query({ page: "0" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -292,7 +291,7 @@ describe("GET /api/v1/employees", () => {
 
     const res = await request(app)
       .get("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(500);
     expect(res.body.message).not.toContain("koneksi putus");
@@ -317,7 +316,7 @@ describe("GET /api/v1/employees/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .get("/api/v1/employees/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(employeeModel.findDetailById).not.toHaveBeenCalled();
@@ -330,7 +329,7 @@ describe("GET /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .get(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("NOT_FOUND");
@@ -343,7 +342,7 @@ describe("GET /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .get(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.department_name).toBe("Teknologi Informasi");
@@ -389,7 +388,7 @@ describe("POST /api/v1/employees", () => {
   it("menolak body kosong", async () => {
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({});
 
     expect(res.status).toBe(400);
@@ -403,7 +402,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     expect(res.status).toBe(409);
@@ -416,7 +415,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...validCreate, department_id: DEPARTMENT_ID });
 
     expect(res.status).toBe(400);
@@ -429,7 +428,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...validCreate, position_id: POSITION_ID });
 
     expect(res.status).toBe(400);
@@ -442,7 +441,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...validCreate, manager_id: MANAGER_ID });
 
     expect(res.status).toBe(400);
@@ -454,7 +453,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     expect(res.status).toBe(201);
@@ -466,7 +465,7 @@ describe("POST /api/v1/employees", () => {
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     const [, , passwordTersimpan] = (userModel.insertUserByAdmin as jest.Mock)
@@ -481,7 +480,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     expect(JSON.stringify(res.body)).not.toContain("password123");
@@ -492,7 +491,7 @@ describe("POST /api/v1/employees", () => {
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     const [, , , role] = (userModel.insertUserByAdmin as jest.Mock).mock
@@ -501,32 +500,32 @@ describe("POST /api/v1/employees", () => {
     expect(role).toBe("employee");
   });
 
-  it("memakai role yang dipilih HR", async () => {
+  it("memakai role yang dipilih admin", async () => {
     siapkanBerhasil();
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
-      .send({ ...validCreate, role: "hr" });
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...validCreate, role: "admin" });
 
     const [, , , role] = (userModel.insertUserByAdmin as jest.Mock).mock
       .calls[0] as [unknown, string, string, string];
 
-    expect(role).toBe("hr");
+    expect(role).toBe("admin");
   });
 
-  it("mencatat HR yang membuat akun", async () => {
+  it("mencatat Admin yang membuat akun", async () => {
     siapkanBerhasil();
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     const [, , , , approvedBy] = (userModel.insertUserByAdmin as jest.Mock).mock
       .calls[0] as [unknown, string, string, string, string];
 
-    expect(approvedBy).toBe(HR_ID);
+    expect(approvedBy).toBe(ADMIN_ID);
   });
 
   it("tidak menyimpan data akun ke tabel karyawan", async () => {
@@ -534,8 +533,8 @@ describe("POST /api/v1/employees", () => {
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
-      .send({ ...validCreate, role: "hr" });
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...validCreate, role: "admin" });
 
     const [, , data] = (employeeModel.createEmployee as jest.Mock).mock
       .calls[0] as [unknown, string, Record<string, unknown>];
@@ -551,7 +550,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     expect(res.body.data.account.must_change_password).toBe(true);
@@ -562,7 +561,7 @@ describe("POST /api/v1/employees", () => {
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     const [dbUser] = (userModel.insertUserByAdmin as jest.Mock).mock
@@ -581,7 +580,7 @@ describe("POST /api/v1/employees", () => {
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     const [, userId] = (employeeModel.createEmployee as jest.Mock).mock
@@ -598,7 +597,7 @@ describe("POST /api/v1/employees", () => {
 
     const res = await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
@@ -614,7 +613,7 @@ describe("POST /api/v1/employees", () => {
 
     await request(app)
       .post("/api/v1/employees")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
     expect(mockClient.release).toHaveBeenCalled();
@@ -661,7 +660,7 @@ describe("PATCH /api/v1/employees/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .patch("/api/v1/employees/123")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ full_name: "Nama Baru" });
 
     expect(res.status).toBe(400);
@@ -670,7 +669,7 @@ describe("PATCH /api/v1/employees/:id", () => {
   it("menolak nomor telepon dengan format salah", async () => {
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ phone: "08123456789" });
 
     expect(res.status).toBe(400);
@@ -682,7 +681,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ full_name: "Nama Baru" });
 
     expect(res.status).toBe(404);
@@ -693,7 +692,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ full_name: "Nama Baru" });
 
     expect(res.status).toBe(200);
@@ -705,7 +704,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ full_name: "Nama Baru", is_active: false });
 
     const [id, data] = (employeeModel.updateEmployee as jest.Mock).mock
@@ -720,7 +719,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ manager_id: EMPLOYEE_ID });
 
     expect(res.status).toBe(400);
@@ -736,7 +735,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ manager_id: MANAGER_ID });
 
     expect(res.status).toBe(400);
@@ -749,7 +748,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ manager_id: MANAGER_ID });
 
     expect(res.status).toBe(200);
@@ -765,7 +764,7 @@ describe("PATCH /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ department_id: DEPARTMENT_ID });
 
     expect(res.status).toBe(400);
@@ -802,7 +801,7 @@ describe("DELETE /api/v1/employees/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .delete("/api/v1/employees/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -812,7 +811,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
     expect(employeeModel.softDeleteEmployee).not.toHaveBeenCalled();
@@ -827,14 +826,14 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("2 karyawan");
     expect(employeeModel.softDeleteEmployee).not.toHaveBeenCalled();
   });
 
-  it("menyertakan daftar bawahan agar HR tahu siapa yang harus dipindah", async () => {
+  it("menyertakan daftar bawahan agar Admin tahu siapa yang harus dipindah", async () => {
     siapkanBerhasil();
     (employeeModel.findSubordinates as jest.Mock).mockResolvedValue([
       { id: "1", employee_number: "002", full_name: "Bawahan Satu" },
@@ -842,7 +841,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.details.subordinates).toHaveLength(1);
     expect(res.body.details.subordinates[0].full_name).toBe("Bawahan Satu");
@@ -853,7 +852,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.message).toContain("berhasil dihapus");
@@ -864,7 +863,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(userModel.softDeleteUser).toHaveBeenCalledWith(mockClient, USER_ID);
     expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
@@ -880,7 +879,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(userModel.softDeleteUser).not.toHaveBeenCalled();
@@ -894,7 +893,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
@@ -906,7 +905,7 @@ describe("DELETE /api/v1/employees/:id", () => {
 
     await request(app)
       .delete(`/api/v1/employees/${EMPLOYEE_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(mockClient.release).toHaveBeenCalled();
   });

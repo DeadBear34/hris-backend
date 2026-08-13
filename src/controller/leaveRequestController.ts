@@ -30,7 +30,7 @@ const KODE_CUTI_SAKIT = "SICK";
 
 interface Pemohon {
   employee: Employee;
-  isHrAtauAdmin: boolean;
+  isAdmin: boolean;
 }
 
 async function ambilPemohon(req: Request): Promise<Pemohon> {
@@ -46,7 +46,7 @@ async function ambilPemohon(req: Request): Promise<Pemohon> {
 
   return {
     employee,
-    isHrAtauAdmin: req.user.role === "hr" || req.user.role === "admin",
+    isAdmin: req.user.role === "admin",
   };
 }
 
@@ -56,14 +56,14 @@ function tentukanPenyetuju(employee: Employee): string | null {
 
 function bolehMelihat(request: LeaveRequest, pemohon: Pemohon): boolean {
   return (
-    pemohon.isHrAtauAdmin ||
+    pemohon.isAdmin ||
     request.employee_id === pemohon.employee.id ||
     request.approver_id === pemohon.employee.id
   );
 }
 
 function bolehMemutuskan(request: LeaveRequest, pemohon: Pemohon): boolean {
-  return pemohon.isHrAtauAdmin || request.approver_id === pemohon.employee.id;
+  return pemohon.isAdmin || request.approver_id === pemohon.employee.id;
 }
 
 function periodeDari(tanggal: string): number {
@@ -202,7 +202,7 @@ export async function ListApprovalLeaveRequestController(
     const { rows, total } = await leaveRequestModel.listRequests({
       ...query,
       approver_id: pemohon.employee.id,
-      include_unassigned: pemohon.isHrAtauAdmin,
+      include_unassigned: pemohon.isAdmin,
     });
 
     res.json({

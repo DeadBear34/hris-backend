@@ -119,12 +119,11 @@ const token = createToken({
 
 // id berupa uuid yang sah, dibutuhkan karena rute pengelolaan akun
 // memvalidasi parameter :id sebagai uuid
-const HR_ID = "77777777-7777-4777-8777-777777777777";
+const ADMIN_ID = "77777777-7777-4777-8777-777777777777";
 const TARGET_ID = "88888888-8888-4888-8888-888888888888";
 
-const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 const adminToken = createToken({
-  id: HR_ID,
+  id: ADMIN_ID,
   email: "admin@awan.io",
   role: "admin",
 });
@@ -557,7 +556,7 @@ describe("GET /api/v1/auth/me", () => {
   it("mengambil data terbaru dari database, bukan dari isi token", async () => {
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
-      role: "hr",
+      role: "admin",
     } as never);
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
       fakeEmployee as never,
@@ -567,7 +566,7 @@ describe("GET /api/v1/auth/me", () => {
       .get("/api/v1/auth/me")
       .set("Authorization", `Bearer ${token}`);
 
-    expect(res.body.data.role).toBe("hr");
+    expect(res.body.data.role).toBe("admin");
   });
 
   it("mengembalikan employee null jika belum terhubung", async () => {
@@ -709,7 +708,7 @@ describe("GET /api/v1/users/pending", () => {
     expect(userModel.findPending).not.toHaveBeenCalled();
   });
 
-  it("mengizinkan HR", async () => {
+  it("mengizinkan admin", async () => {
     (userModel.findPending as jest.Mock).mockResolvedValue([
       {
         id: TARGET_ID,
@@ -723,7 +722,7 @@ describe("GET /api/v1/users/pending", () => {
 
     const res = await request(app)
       .get("/api/v1/users/pending")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
@@ -745,7 +744,7 @@ describe("GET /api/v1/users/pending", () => {
 
     const res = await request(app)
       .get("/api/v1/users/pending")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.data).toEqual([]);
   });
@@ -757,7 +756,7 @@ describe("GET /api/v1/users/pending", () => {
 
     const res = await request(app)
       .get("/api/v1/users/pending")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(JSON.stringify(res.body)).not.toContain("password");
   });
@@ -786,7 +785,7 @@ describe("PATCH /api/v1/users/:id/approve", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .patch("/api/v1/users/123/approve")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(userModel.findById).not.toHaveBeenCalled();
@@ -797,7 +796,7 @@ describe("PATCH /api/v1/users/:id/approve", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
     expect(userModel.approveUser).not.toHaveBeenCalled();
@@ -811,7 +810,7 @@ describe("PATCH /api/v1/users/:id/approve", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("sudah pernah disetujui");
@@ -833,13 +832,13 @@ describe("PATCH /api/v1/users/:id/approve", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.is_active).toBe(true);
   });
 
-  it("mencatat HR yang menyetujui", async () => {
+  it("mencatat Admin yang menyetujui", async () => {
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
       approved_at: null,
@@ -848,9 +847,9 @@ describe("PATCH /api/v1/users/:id/approve", () => {
 
     await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
-    expect(userModel.approveUser).toHaveBeenCalledWith(TARGET_ID, HR_ID);
+    expect(userModel.approveUser).toHaveBeenCalledWith(TARGET_ID, ADMIN_ID);
   });
 
   it("tidak mengembalikan password dalam respons", async () => {
@@ -862,7 +861,7 @@ describe("PATCH /api/v1/users/:id/approve", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.data).not.toHaveProperty("password");
   });
@@ -894,7 +893,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .patch("/api/v1/users/123/status")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
@@ -903,7 +902,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
   it("menolak body tanpa is_active", async () => {
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({});
 
     expect(res.status).toBe(400);
@@ -913,7 +912,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
   it("menolak is_active yang bukan boolean", async () => {
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: "false" });
 
     expect(res.status).toBe(400);
@@ -921,8 +920,8 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
   it("mencegah HR mengubah status akunnya sendiri", async () => {
     const res = await request(app)
-      .patch(`/api/v1/users/${HR_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .patch(`/api/v1/users/${ADMIN_ID}/status`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
@@ -935,7 +934,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(404);
@@ -949,7 +948,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: true });
 
     expect(res.status).toBe(400);
@@ -969,7 +968,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(200);
@@ -984,7 +983,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(200);
@@ -1001,7 +1000,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: true });
 
     expect(res.status).toBe(200);
@@ -1015,7 +1014,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${TARGET_ID}/status`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.body.data).not.toHaveProperty("password");

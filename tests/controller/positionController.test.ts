@@ -25,12 +25,11 @@ const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
 const POSITION_ID = "44444444-4444-4444-8444-444444444444";
-const HR_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "66666666-6666-4666-8666-666666666666";
 
-const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 const adminToken = createToken({
-  id: HR_ID,
+  id: ADMIN_ID,
   email: "admin@awan.io",
   role: "admin",
 });
@@ -80,7 +79,7 @@ describe("GET /api/v1/positions", () => {
 
     const res = await request(app)
       .get("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.data).toEqual([]);
   });
@@ -92,7 +91,7 @@ describe("GET /api/v1/positions", () => {
 
     const res = await request(app)
       .get("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(500);
   });
@@ -108,7 +107,7 @@ describe("GET /api/v1/positions/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .get("/api/v1/positions/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(positionModel.findById).not.toHaveBeenCalled();
@@ -119,7 +118,7 @@ describe("GET /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .get(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe("Jabatan tidak ditemukan");
@@ -175,7 +174,7 @@ describe("POST /api/v1/positions", () => {
   it("menolak body kosong", async () => {
     const res = await request(app)
       .post("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({});
 
     expect(res.status).toBe(400);
@@ -185,7 +184,7 @@ describe("POST /api/v1/positions", () => {
   it("menolak level di luar rentang 1 sampai 10", async () => {
     const res = await request(app)
       .post("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...validBody, level: 99 });
 
     expect(res.status).toBe(400);
@@ -199,7 +198,7 @@ describe("POST /api/v1/positions", () => {
 
     const res = await request(app)
       .post("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validBody);
 
     expect(res.status).toBe(409);
@@ -214,7 +213,7 @@ describe("POST /api/v1/positions", () => {
 
     const res = await request(app)
       .post("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validBody);
 
     expect(res.status).toBe(201);
@@ -229,7 +228,7 @@ describe("POST /api/v1/positions", () => {
 
     await request(app)
       .post("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "swe", name: "Software Engineer" });
 
     const [data] = (positionModel.createPosition as jest.Mock).mock
@@ -246,7 +245,7 @@ describe("POST /api/v1/positions", () => {
 
     await request(app)
       .post("/api/v1/positions")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "SWE", name: "Software Engineer" });
 
     const [data] = (positionModel.createPosition as jest.Mock).mock
@@ -269,7 +268,7 @@ describe("PATCH /api/v1/positions/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .patch("/api/v1/positions/123")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ level: 5 });
 
     expect(res.status).toBe(400);
@@ -280,7 +279,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ level: 5 });
 
     expect(res.status).toBe(404);
@@ -297,7 +296,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ level: 5 });
 
     expect(res.status).toBe(200);
@@ -315,7 +314,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "PM" });
 
     expect(res.status).toBe(409);
@@ -332,7 +331,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "SWE" });
 
     expect(res.status).toBe(200);
@@ -347,7 +346,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
@@ -368,7 +367,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(200);
@@ -385,7 +384,7 @@ describe("PATCH /api/v1/positions/:id", () => {
 
     await request(app)
       .patch(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: true });
 
     expect(positionModel.countEmployees).not.toHaveBeenCalled();
@@ -404,7 +403,7 @@ describe("DELETE /api/v1/positions/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .delete("/api/v1/positions/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -414,7 +413,7 @@ describe("DELETE /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
     expect(positionModel.softDeletePosition).not.toHaveBeenCalled();
@@ -428,7 +427,7 @@ describe("DELETE /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.details.employee_count).toBe(2);
@@ -446,7 +445,7 @@ describe("DELETE /api/v1/positions/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/positions/${POSITION_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.message).toContain("berhasil dihapus");

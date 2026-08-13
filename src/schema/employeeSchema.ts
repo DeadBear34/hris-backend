@@ -59,7 +59,7 @@ export const createEmployeeSchema = employeeDataSchema.extend({
     .min(8, "Password minimal 8 karakter")
     .max(72, "Password maksimal 72 karakter"),
 
-  role: z.enum(["employee", "hr", "admin"]).optional(),
+  role: z.enum(["employee", "admin"]).optional(),
 });
 
 export const updateEmployeeSchema = employeeDataSchema.partial().extend({

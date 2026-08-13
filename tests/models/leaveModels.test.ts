@@ -294,7 +294,7 @@ describe("model leaveRequest", () => {
     expect(sql).not.toContain("approver_id IS NULL");
   });
 
-  it("menyertakan pengajuan tanpa penyetuju untuk HR", async () => {
+  it("menyertakan pengajuan tanpa penyetuju untuk admin", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ count: "0" }] } as never)
       .mockResolvedValueOnce({ rows: [] } as never);

@@ -17,14 +17,19 @@ mockClient.query.mockResolvedValue({ rows: [] } as never);
 const { createToken } = await import("../src/helpers/jwt.js");
 const { app } = await import("../src/app.js");
 
-const HR_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const TARGET_ID = "88888888-8888-4888-8888-888888888888";
 
-const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 const employeeToken = createToken({
   id: TARGET_ID,
   email: "karyawan@awan.io",
   role: "employee",
+});
+
+const adminToken = createToken({
+  id: ADMIN_ID,
+  email: "admin@awan.io",
+  role: "admin",
 });
 
 describe("GET /health", () => {
@@ -60,7 +65,7 @@ describe("penanganan route yang tidak dikenal", () => {
   it("menolak metode yang tidak disediakan sebuah route", async () => {
     const res = await request(app)
       .delete("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
   });

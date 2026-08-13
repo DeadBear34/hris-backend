@@ -121,7 +121,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const hrOnly = [authenticate, authorize("hr", "admin")];
+const adminOnly = [authenticate, authorize("admin")];
 
 router.post("/auth/register", validate(registerSchema), RegisterController);
 
@@ -160,18 +160,18 @@ router.patch(
   ChangePasswordController,
 );
 
-router.get("/users/pending", ...hrOnly, ListPendingUserController);
+router.get("/users/pending", ...adminOnly, ListPendingUserController);
 
 router.patch(
   "/users/:id/approve",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   ApproveUserController,
 );
 
 router.patch(
   "/users/:id/status",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validate(setUserActiveSchema),
   SetUserActiveController,
@@ -179,28 +179,28 @@ router.patch(
 
 router.get(
   "/employees",
-  ...hrOnly,
+  ...adminOnly,
   validateQuery(listEmployeeQuerySchema),
   ListEmployeeController,
 );
 
 router.post(
   "/employees",
-  ...hrOnly,
+  ...adminOnly,
   validate(createEmployeeSchema),
   CreateEmployeeController,
 );
 
 router.get(
   "/employees/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   DetailEmployeeController,
 );
 
 router.patch(
   "/employees/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validate(updateEmployeeSchema),
   UpdateEmployeeController,
@@ -208,7 +208,7 @@ router.patch(
 
 router.delete(
   "/employees/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   DeleteEmployeeController,
 );
@@ -224,14 +224,14 @@ router.get(
 
 router.post(
   "/departments",
-  ...hrOnly,
+  ...adminOnly,
   validate(createDepartmentSchema),
   CreateDepartmentController,
 );
 
 router.patch(
   "/departments/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validate(updateDepartmentSchema),
   UpdateDepartmentController,
@@ -239,7 +239,7 @@ router.patch(
 
 router.delete(
   "/departments/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   DeleteDepartmentController,
 );
@@ -255,14 +255,14 @@ router.get(
 
 router.post(
   "/positions",
-  ...hrOnly,
+  ...adminOnly,
   validate(createPositionSchema),
   CreatePositionController,
 );
 
 router.patch(
   "/positions/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validate(updatePositionSchema),
   UpdatePositionController,
@@ -270,7 +270,7 @@ router.patch(
 
 router.delete(
   "/positions/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   DeletePositionController,
 );
@@ -297,14 +297,14 @@ router.get(
 
 router.post(
   "/holidays",
-  ...hrOnly,
+  ...adminOnly,
   validate(createHolidaySchema),
   CreateHolidayController,
 );
 
 router.patch(
   "/holidays/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validate(updateHolidaySchema),
   UpdateHolidayController,
@@ -312,7 +312,7 @@ router.patch(
 
 router.delete(
   "/holidays/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   DeleteHolidayController,
 );
@@ -332,14 +332,14 @@ router.get(
 
 router.post(
   "/leave-types",
-  ...hrOnly,
+  ...adminOnly,
   validate(createLeaveTypeSchema),
   CreateLeaveTypeController,
 );
 
 router.patch(
   "/leave-types/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validate(updateLeaveTypeSchema),
   UpdateLeaveTypeController,
@@ -347,7 +347,7 @@ router.patch(
 
 router.delete(
   "/leave-types/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   DeleteLeaveTypeController,
 );
@@ -373,14 +373,14 @@ router.get(
 
 router.post(
   "/leave-balances/adjustments",
-  ...hrOnly,
+  ...adminOnly,
   validate(adjustBalanceSchema),
   AdjustLeaveBalanceController,
 );
 
 router.get(
   "/leave-balances/:id",
-  ...hrOnly,
+  ...adminOnly,
   validateParams(idParamSchema),
   validateQuery(balanceQuerySchema),
   EmployeeLeaveBalanceController,
@@ -406,7 +406,7 @@ router.get(
 
 router.get(
   "/leave-requests",
-  ...hrOnly,
+  ...adminOnly,
   validateQuery(listLeaveRequestQuerySchema),
   ListAllLeaveRequestController,
 );

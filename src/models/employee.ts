@@ -2,7 +2,9 @@ import { pool } from "../config/databaseConnection.js";
 import type { Executor } from "./user.js";
 
 export type EmployeeGender = "male" | "female";
-export type EmploymentStatus = "probation" | "contract" | "permanent" | "intern" | "resigned";
+
+export type EmploymentStatus =
+  "probation" | "contract" | "permanent" | "intern" | "resigned";
 
 export interface Employee {
   id: string;
@@ -20,36 +22,9 @@ export interface Employee {
   join_date: Date;
   resign_date: Date | null;
   is_active: boolean;
+  deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
-}
-
-export async function insertEmployee(db: Executor, user_id: string, full_name: string, phone: string, gender: EmployeeGender): Promise<Employee> {
-    const result = await db.query<Employee>(
-    `INSERT INTO employees (user_id, full_name, phone, gender)
-    VALUES ($1, $2, $3, $4)
-    RETURNING *`, [user_id, full_name, phone, gender]
-  );
-
-  const employee = result.rows[0];
-  if (!employee) {
-    throw new Error("Gagal menyimpan data karyawan");
-  }
-  return employee;
-}
-
-export async function findByUserId(user_id: string): Promise<Employee | null> {
-  const result = await pool.query<Employee>(
-    "SELECT * FROM employees WHERE user_id = $1", [user_id]
-  );
-  return result.rows[0] ?? null;
-}
-
-export async function findById(id: string): Promise<Employee | null> {
-  const result = await pool.query<Employee>(
-    "SELECT * FROM employees WHERE id = $1",[id]
-  );
-  return result.rows[0] ?? null;
 }
 
 export interface EmployeeListItem {
@@ -71,43 +46,288 @@ export interface ListParams {
   limit: number;
 }
 
-export async function listEmployees(params: ListParams): Promise<{ rows: EmployeeListItem[]; total: number }> {
-    const conditions: string[] = [];
-    const values: unknown[] = [];
+export interface CreateEmployeeInput {
+  full_name: string;
+  phone: string;
+  gender: EmployeeGender;
+  birth_date?: string;
+  address?: string;
+  department_id?: string;
+  position_id?: string;
+  manager_id?: string;
+  employment_status?: EmploymentStatus;
+  join_date?: string;
+}
 
-    if (params.search) {
-        values.push(`%${params.search}%`);
-        const i = values.length;
-        conditions.push(
-        `(e.full_name ILIKE $${i} OR e.employee_number ILIKE $${i} OR u.email ILIKE $${i})`,
-        );
-    }
+export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
+  is_active?: boolean;
+  resign_date?: string;
+};
 
-    if (params.department_id) {
-        values.push(params.department_id);
-        conditions.push(`e.department_id = $${values.length}`);
-    }
+const UPDATABLE_COLUMNS = [
+  "full_name",
+  "phone",
+  "gender",
+  "birth_date",
+  "address",
+  "department_id",
+  "position_id",
+  "manager_id",
+  "employment_status",
+  "join_date",
+  "resign_date",
+  "is_active",
+] as const;
 
-    if (params.is_active !== undefined) {
-        values.push(params.is_active);
-        conditions.push(`e.is_active = $${values.length}`);
-    }
+const COLUMN_CAST: Record<string, string> = {
+  gender: "::employee_gender",
+  employment_status: "::employment_status",
+  birth_date: "::date",
+  join_date: "::date",
+  resign_date: "::date",
+  department_id: "::uuid",
+  position_id: "::uuid",
+  manager_id: "::uuid",
+};
 
-    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+export async function insertEmployee(
+  db: Executor,
+  user_id: string,
+  full_name: string,
+  phone: string,
+  gender: EmployeeGender,
+): Promise<Employee> {
+  const result = await db.query<Employee>(
+    `INSERT INTO employees (user_id, full_name, phone, gender)
+     VALUES ($1::uuid, $2, $3, $4::employee_gender)
+     RETURNING *`,
+    [user_id, full_name, phone, gender],
+  );
 
-    const baseFrom = `FROM employees e LEFT JOIN users u       ON u.id = e.user_id LEFT JOIN departments d ON d.id = e.department_id LEFT JOIN positions p   ON p.id = e.position_id LEFT JOIN employees m   ON m.id = e.manager_id ${where}`;
-    const countResult = await pool.query<{ count: string }>(
-        `SELECT COUNT(*) ${baseFrom}`, values,
+  const employee = result.rows[0];
+  if (!employee) {
+    throw new Error("Gagal menyimpan data karyawan");
+  }
+
+  return employee;
+}
+
+export async function createEmployee(
+  db: Executor,
+  user_id: string | null,
+  data: CreateEmployeeInput,
+): Promise<Employee> {
+  const result = await db.query<Employee>(
+    `INSERT INTO employees
+       (user_id, full_name, phone, gender, birth_date, address,
+        department_id, position_id, manager_id, employment_status, join_date)
+     VALUES ($1::uuid, $2, $3, $4::employee_gender, $5::date, $6,
+             $7::uuid, $8::uuid, $9::uuid,
+             COALESCE($10::employment_status, 'probation'),
+             COALESCE($11::date, current_date))
+     RETURNING *`,
+    [
+      user_id,
+      data.full_name,
+      data.phone,
+      data.gender,
+      data.birth_date ?? null,
+      data.address ?? null,
+      data.department_id ?? null,
+      data.position_id ?? null,
+      data.manager_id ?? null,
+      data.employment_status ?? null,
+      data.join_date ?? null,
+    ],
+  );
+
+  const employee = result.rows[0];
+  if (!employee) {
+    throw new Error("Gagal menyimpan data karyawan");
+  }
+
+  return employee;
+}
+
+export async function updateEmployee(
+  id: string,
+  data: UpdateEmployeeInput,
+): Promise<Employee | null> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue;
+    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
+
+    values.push(value);
+    const cast = COLUMN_CAST[key] ?? "";
+    fields.push(`${key} = $${values.length}${cast}`);
+  }
+
+  if (fields.length === 0) {
+    return findById(id);
+  }
+
+  fields.push("updated_at = now()");
+  values.push(id);
+
+  const result = await pool.query<Employee>(
+    `UPDATE employees
+     SET ${fields.join(", ")}
+     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     RETURNING *`,
+    values,
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function softDeleteEmployee(
+  db: Executor,
+  id: string,
+): Promise<Employee | null> {
+  const result = await db.query<Employee>(
+    `UPDATE employees
+     SET deleted_at = now(), is_active = false, updated_at = now()
+     WHERE id = $1::uuid AND deleted_at IS NULL
+     RETURNING *`,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function findById(id: string): Promise<Employee | null> {
+  const result = await pool.query<Employee>(
+    "SELECT * FROM employees WHERE id = $1::uuid AND deleted_at IS NULL",
+    [id],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function findByUserId(user_id: string): Promise<Employee | null> {
+  const result = await pool.query<Employee>(
+    "SELECT * FROM employees WHERE user_id = $1::uuid AND deleted_at IS NULL",
+    [user_id],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function findDetailById(
+  id: string,
+): Promise<EmployeeListItem | null> {
+  const result = await pool.query<EmployeeListItem>(
+    `SELECT
+       e.id, e.employee_number, e.full_name, u.email,
+       p.name AS position_name, d.name AS department_name,
+       m.full_name AS manager_name, e.is_active
+     FROM employees e
+     LEFT JOIN users u       ON u.id = e.user_id
+     LEFT JOIN departments d ON d.id = e.department_id
+     LEFT JOIN positions p   ON p.id = e.position_id
+     LEFT JOIN employees m   ON m.id = e.manager_id
+     WHERE e.id = $1::uuid AND e.deleted_at IS NULL`,
+    [id],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function listEmployees(
+  params: ListParams,
+): Promise<{ rows: EmployeeListItem[]; total: number }> {
+  const conditions: string[] = ["e.deleted_at IS NULL"];
+  const values: unknown[] = [];
+
+  if (params.search) {
+    values.push(`%${params.search}%`);
+    const i = values.length;
+    conditions.push(
+      `(e.full_name ILIKE $${i} OR e.employee_number ILIKE $${i} OR u.email ILIKE $${i})`,
     );
-    const total = Number(countResult.rows[0]?.count ?? 0);
+  }
 
-    const offset = (params.page - 1) * params.limit;
-    values.push(params.limit, offset);
+  if (params.department_id) {
+    values.push(params.department_id);
+    conditions.push(`e.department_id = $${values.length}::uuid`);
+  }
 
-    const dataResult = await pool.query<EmployeeListItem>(
-        `SELECT e.id, e.employee_number, e.full_name, u.email, p.name AS position_name, d.name AS department_name, m.full_name AS manager_name, e.is_active ${baseFrom}
-        ORDER BY e.employee_number ASC
-        LIMIT $${values.length - 1} OFFSET $${values.length}`, values,
-    );
-    return { rows: dataResult.rows, total };
+  if (params.is_active !== undefined) {
+    values.push(params.is_active);
+    conditions.push(`e.is_active = $${values.length}`);
+  }
+
+  const where = `WHERE ${conditions.join(" AND ")}`;
+
+  const baseFrom = `
+    FROM employees e
+    LEFT JOIN users u       ON u.id = e.user_id
+    LEFT JOIN departments d ON d.id = e.department_id
+    LEFT JOIN positions p   ON p.id = e.position_id
+    LEFT JOIN employees m   ON m.id = e.manager_id
+    ${where}
+  `;
+
+  const countResult = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) ${baseFrom}`,
+    values,
+  );
+  const total = Number(countResult.rows[0]?.count ?? 0);
+
+  const offset = (params.page - 1) * params.limit;
+  values.push(params.limit, offset);
+
+  const dataResult = await pool.query<EmployeeListItem>(
+    `SELECT
+       e.id, e.employee_number, e.full_name, u.email,
+       p.name AS position_name, d.name AS department_name,
+       m.full_name AS manager_name, e.is_active
+     ${baseFrom}
+     ORDER BY e.employee_number ASC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values,
+  );
+
+  return { rows: dataResult.rows, total };
+}
+
+export async function findSubordinates(
+  id: string,
+): Promise<{ id: string; employee_number: string; full_name: string }[]> {
+  const result = await pool.query<{
+    id: string;
+    employee_number: string;
+    full_name: string;
+  }>(
+    `SELECT id, employee_number, full_name
+     FROM employees
+     WHERE manager_id = $1::uuid AND deleted_at IS NULL
+     ORDER BY employee_number ASC`,
+    [id],
+  );
+  return result.rows;
+}
+
+export async function isDescendantOf(
+  candidateManagerId: string,
+  employeeId: string,
+): Promise<boolean> {
+  const result = await pool.query<{ id: string }>(
+    `WITH RECURSIVE rantai AS (
+       SELECT id, manager_id
+       FROM employees
+       WHERE id = $1::uuid AND deleted_at IS NULL
+
+       UNION ALL
+
+       SELECT e.id, e.manager_id
+       FROM employees e
+       JOIN rantai r ON e.id = r.manager_id
+       WHERE e.deleted_at IS NULL
+     )
+     SELECT id FROM rantai WHERE id = $2::uuid`,
+    [candidateManagerId, employeeId],
+  );
+
+  return result.rows.length > 0;
 }

@@ -27,8 +27,8 @@ export function Unauthorized(message = "Autentikasi diperlukan") {
   return new AppError(401, message, "UNAUTHORIZED");
 }
 
-export function Forbidden(message = "Akses ditolak") {
-  return new AppError(403, message, "FORBIDDEN");
+export function Forbidden(message = "Akses ditolak", details?: unknown) {
+  return new AppError(403, message, "FORBIDDEN", details);
 }
 
 export function NotFound(message = "Data tidak ditemukan") {

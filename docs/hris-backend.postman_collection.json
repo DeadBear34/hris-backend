@@ -1,0 +1,1214 @@
+{
+  "info": {
+    "name": "HRIS Backend - Awanio",
+    "description": "Koleksi endpoint HRIS backend.\n\nAtur variabel base_url dan token pada tab Variables. Endpoint login menyimpan token secara otomatis.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "position_id",
+      "value": ""
+    },
+    {
+      "key": "employee_id",
+      "value": ""
+    },
+    {
+      "key": "leave_request_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Autentikasi",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Membuat akun lalu menerbitkan kode verifikasi enam digit.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon@awan.io\",\n  \"password\": \"password123\",\n  \"full_name\": \"Calon Karyawan\",\n  \"phone\": \"+628123456789\",\n  \"gender\": \"male\",\n  \"terms_accepted\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/verify-email",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ]
+            },
+            "description": "Kode berlaku 10 menit, maksimal 5 percobaan.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon@awan.io\",\n  \"code\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Resend Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/resend-verification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "resend-verification"
+              ]
+            },
+            "description": "Ada jeda 60 detik antar permintaan.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon@awan.io\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Menyimpan token ke variabel koleksi secara otomatis.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@awan.io\",\n  \"password\": \"Password123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "if (b.success && b.data && b.data.token) {",
+                  "  pm.collectionVariables.set('token', b.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/forgot-password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ]
+            },
+            "description": "Responsnya selalu sama, terdaftar maupun tidak.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@awan.io\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/reset-password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            },
+            "description": "Tidak menerbitkan JWT, pengguna harus login ulang.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@awan.io\",\n  \"token\": \"<64 karakter hex dari email>\",\n  \"password\": \"passwordbaru\",\n  \"password_confirmation\": \"passwordbaru\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Profil Sendiri",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Menyertakan field features berisi kode fitur milik pengguna."
+          }
+        },
+        {
+          "name": "Ubah Profil Sendiri",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Hanya empat field ini yang diterima, sisanya dibuang.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Nama Baru\",\n  \"phone\": \"+628990000001\",\n  \"birth_date\": \"1998-05-20\",\n  \"address\": \"Jalan Merdeka 10\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ganti Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "password"
+              ]
+            },
+            "description": "Seluruh sesi lama langsung berhenti berlaku.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Password123\",\n  \"new_password\": \"passwordbaru456\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Kontrol Fitur",
+      "item": [
+        {
+          "name": "Fitur Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/me/features",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "me",
+                "features"
+              ]
+            },
+            "description": "Dipakai frontend untuk menampilkan atau menyembunyikan menu."
+          }
+        },
+        {
+          "name": "Katalog Fitur",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/features",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "features"
+              ]
+            },
+            "description": "Admin saja. Dikelompokkan per kategori."
+          }
+        },
+        {
+          "name": "Matriks Fitur",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/features/matrix",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "features",
+                "matrix"
+              ]
+            },
+            "description": "Admin saja. Mengisi tabel centang jabatan terhadap fitur."
+          }
+        },
+        {
+          "name": "Fitur Sebuah Jabatan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/positions/{{position_id}}/features",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "positions",
+                "{{position_id}}",
+                "features"
+              ]
+            },
+            "description": "Admin saja."
+          }
+        },
+        {
+          "name": "Ganti Fitur Jabatan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/positions/{{position_id}}/features",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "positions",
+                "{{position_id}}",
+                "features"
+              ]
+            },
+            "description": "Admin saja. Mengganti seluruhnya, daftar kosong mencabut semua fitur.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codes\": [\n    \"employee.view_all\",\n    \"leave.view_all\"\n  ]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pengelolaan Akun",
+      "item": [
+        {
+          "name": "Akun Menunggu Persetujuan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "pending"
+              ]
+            },
+            "description": "Butuh fitur employee.approve_user."
+          }
+        },
+        {
+          "name": "Setujui Akun",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/{{employee_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{employee_id}}",
+                "approve"
+              ]
+            },
+            "description": "Butuh fitur employee.approve_user."
+          }
+        },
+        {
+          "name": "Ubah Status Akun",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/{{employee_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{employee_id}}",
+                "status"
+              ]
+            },
+            "description": "Butuh fitur employee.approve_user.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Karyawan",
+      "item": [
+        {
+          "name": "Daftar Karyawan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/employees?page=1&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employees?page=1&limit=10"
+              ]
+            },
+            "description": "Butuh fitur employee.view_all."
+          }
+        },
+        {
+          "name": "Detail Karyawan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/employees/{{employee_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employees",
+                "{{employee_id}}"
+              ]
+            },
+            "description": "Butuh fitur employee.view_all."
+          }
+        },
+        {
+          "name": "Tambah Karyawan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/employees",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employees"
+              ]
+            },
+            "description": "Butuh fitur employee.create.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"baru@awan.io\",\n  \"password\": \"password123\",\n  \"role\": \"employee\",\n  \"full_name\": \"Karyawan Baru\",\n  \"phone\": \"+628123456789\",\n  \"gender\": \"male\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ubah Karyawan",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/employees/{{employee_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employees",
+                "{{employee_id}}"
+              ]
+            },
+            "description": "Butuh fitur employee.update.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Nama Diperbarui\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Hapus Karyawan",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/employees/{{employee_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employees",
+                "{{employee_id}}"
+              ]
+            },
+            "description": "Butuh fitur employee.delete."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Organisasi",
+      "item": [
+        {
+          "name": "Daftar Departemen",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/departments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "departments"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Tambah Departemen",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/departments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "departments"
+              ]
+            },
+            "description": "Butuh organization.manage.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"IT\",\n  \"name\": \"Teknologi Informasi\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Daftar Jabatan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/positions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "positions"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Tambah Jabatan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/positions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "positions"
+              ]
+            },
+            "description": "Butuh organization.manage.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SWE\",\n  \"name\": \"Software Engineer\",\n  \"level\": 2\n}"
+            }
+          }
+        },
+        {
+          "name": "Daftar Hari Libur",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/holidays?year=2026",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "holidays?year=2026"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Tambah Hari Libur",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/holidays",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "holidays"
+              ]
+            },
+            "description": "Butuh organization.holiday.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holiday_date\": \"2026-08-17\",\n  \"name\": \"Hari Kemerdekaan\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cuti",
+      "item": [
+        {
+          "name": "Jenis Cuti",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-types"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Tambah Jenis Cuti",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-types"
+              ]
+            },
+            "description": "Butuh leave.manage_type.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"ANNUAL\",\n  \"name\": \"Cuti Tahunan\",\n  \"default_quota\": 12\n}"
+            }
+          }
+        },
+        {
+          "name": "Pengajuan Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "me"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Perlu Persetujuan Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/approvals",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "approvals"
+              ]
+            },
+            "description": "Berisi pengajuan bawahan langsung, ditambah yang tanpa penyetuju bagi pemegang leave.approve_all."
+          }
+        },
+        {
+          "name": "Seluruh Pengajuan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests?status=pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests?status=pending"
+              ]
+            },
+            "description": "Butuh leave.view_all."
+          }
+        },
+        {
+          "name": "Ajukan Cuti",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests"
+              ]
+            },
+            "description": "Durasi dihitung server dalam hari kerja.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leave_type_id\": \"{{position_id}}\",\n  \"start_date\": \"2026-09-07\",\n  \"end_date\": \"2026-09-09\",\n  \"reason\": \"Keperluan keluarga\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Detail Pengajuan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/{{leave_request_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "{{leave_request_id}}"
+              ]
+            },
+            "description": "Pemohon, penyetuju, atau pemegang leave.view_all."
+          }
+        },
+        {
+          "name": "Setujui Cuti",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/{{leave_request_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "{{leave_request_id}}",
+                "approve"
+              ]
+            },
+            "description": "Penyetuju atau pemegang leave.approve_all.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision_note\": \"Disetujui\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Tolak Cuti",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/{{leave_request_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "{{leave_request_id}}",
+                "reject"
+              ]
+            },
+            "description": "Penyetuju atau pemegang leave.approve_all.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision_note\": \"Kebutuhan tim sedang tinggi\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Batalkan Cuti",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/{{leave_request_id}}/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "{{leave_request_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Hanya pemohon sendiri."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Saldo Cuti",
+      "item": [
+        {
+          "name": "Saldo Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-balances/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-balances",
+                "me"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Ledger Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-balances/me/ledger",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-balances",
+                "me",
+                "ledger"
+              ]
+            },
+            "description": "Cukup login."
+          }
+        },
+        {
+          "name": "Saldo Karyawan Lain",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-balances/{{employee_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-balances",
+                "{{employee_id}}"
+              ]
+            },
+            "description": "Butuh leave.view_all."
+          }
+        },
+        {
+          "name": "Penyesuaian Saldo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-balances/adjustments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-balances",
+                "adjustments"
+              ]
+            },
+            "description": "Butuh leave.adjust_balance.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employee_id}}\",\n  \"leave_type_id\": \"{{position_id}}\",\n  \"period_year\": 2026,\n  \"amount\": 3,\n  \"note\": \"Kompensasi lembur\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lampiran Cuti",
+      "item": [
+        {
+          "name": "Daftar Lampiran",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-requests/{{leave_request_id}}/attachments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "{{leave_request_id}}",
+                "attachments"
+              ]
+            },
+            "description": "Pemohon, penyetuju, atau pemegang leave.view_all."
+          }
+        },
+        {
+          "name": "Unggah Lampiran",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JPEG, PNG, atau WebP. Maksimal 5 MB."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/leave-requests/{{leave_request_id}}/attachments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-requests",
+                "{{leave_request_id}}",
+                "attachments"
+              ]
+            },
+            "description": "Tipe berkas diperiksa dari magic bytes, bukan ekstensi."
+          }
+        },
+        {
+          "name": "Signed URL Lampiran",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/leave-attachments/{{leave_request_id}}/url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "leave-attachments",
+                "{{leave_request_id}}",
+                "url"
+              ]
+            },
+            "description": "Tautan berlaku 15 menit, minta ulang setiap kali menampilkan."
+          }
+        }
+      ]
+    }
+  ]
+}

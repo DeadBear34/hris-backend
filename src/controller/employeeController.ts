@@ -104,7 +104,8 @@ export async function CreateEmployeeController(
   const client = await pool.connect();
 
   try {
-    if (!req.user) throw Unauthorized("Belum login");
+    if (!req.user)
+      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
     const { email, password, role, ...employeeData } =
       req.body as CreateEmployeeInput & {

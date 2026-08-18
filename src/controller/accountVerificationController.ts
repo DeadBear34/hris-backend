@@ -10,37 +10,37 @@ import type {
   VerificationToken,
 } from "../models/verificationToken.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
-import { createToken } from "../helpers/jwt.js";
-import { sendMail, isSecretLoggingAllowed } from "../helpers/mailer.js";
+import { sendMail } from "../helpers/mailer.js";
+import {
+  kirimEmailTanpaMenggagalkan,
+  cetakCadanganKeLog,
+} from "../helpers/notification.js";
 import {
   verificationCodeEmail,
   passwordResetEmail,
   passwordResetSuccessEmail,
-  accountApprovedEmail,
 } from "../helpers/emailTemplate.js";
 import {
   generateVerificationCode,
   generateResetToken,
   expiresInMinutes,
 } from "../helpers/token.js";
-import {
-  Conflict,
-  Unauthorized,
-  NotFound,
-  BadRequest,
-  TooManyRequests,
-} from "../helpers/appError.js";
+import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
 
 const KODE_BERLAKU_MENIT = 10;
 const TAUTAN_BERLAKU_MENIT = 15;
 const MAKS_PERCOBAAN = 5;
 const JEDA_KIRIM_ULANG_DETIK = 60;
 
+// Pesan kegagalan verifikasi sengaja seragam untuk seluruh penyebab, supaya
+// penyerang tidak dapat membedakan token yang salah, kedaluwarsa, atau
+// sudah terpakai. Penyebab sebenarnya hanya masuk ke log.
 const PESAN_KODE_TIDAK_VALID =
   "Kode verifikasi tidak valid atau sudah kedaluwarsa";
 const PESAN_TAUTAN_TIDAK_VALID =
   "Tautan reset password tidak valid atau sudah kedaluwarsa";
 
+// Pesan berikut tidak boleh membocorkan apakah sebuah email terdaftar.
 const PESAN_KIRIM_ULANG =
   "Kalau email tersebut terdaftar dan belum diverifikasi, kode verifikasi baru sudah kami kirim.";
 const PESAN_LUPA_PASSWORD =
@@ -56,29 +56,6 @@ function konteksPermintaan(req: Request): KonteksPermintaan {
     ip_address: req.ip ?? null,
     user_agent: req.headers["user-agent"] ?? null,
   };
-}
-
-async function kirimEmailTanpaMenggagalkan(
-  kirim: () => Promise<void>,
-  pesanGagal: string,
-  konteks: Record<string, unknown>,
-): Promise<boolean> {
-  try {
-    await kirim();
-    return true;
-  } catch (err) {
-    logger.error({ err, ...konteks }, pesanGagal);
-    return false;
-  }
-}
-
-function cetakCadanganKeLog(
-  pesan: string,
-  data: Record<string, unknown>,
-): void {
-  if (!isSecretLoggingAllowed()) return;
-
-  logger.warn(data, pesan);
 }
 
 async function terbitkanKodeVerifikasi(
@@ -122,47 +99,6 @@ async function kirimKodeVerifikasi(
   }
 }
 
-/**
- * Bentuk profil yang sama dipakai GET dan PATCH /auth/me supaya frontend dapat
- * memakai satu tipe. Id relasi ikut dikirim, bukan hanya namanya, karena
- * dibutuhkan untuk mengisi nilai awal formulir dan menentukan fitur yang
- * tersedia bagi jabatan tersebut.
- */
-function susunProfil(
-  user: userModel.User,
-  employee: employeeModel.Employee | null,
-  detail: employeeModel.EmployeeListItem | null,
-) {
-  return {
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    is_active: user.is_active,
-    must_change_password: user.must_change_password,
-    email_verified_at: user.email_verified_at,
-    last_login_at: user.last_login_at,
-    employee: employee
-      ? {
-          id: employee.id,
-          employee_number: employee.employee_number,
-          full_name: employee.full_name,
-          phone: employee.phone,
-          gender: employee.gender,
-          birth_date: employee.birth_date,
-          address: employee.address,
-          employment_status: employee.employment_status,
-          join_date: employee.join_date,
-          department_id: employee.department_id,
-          position_id: employee.position_id,
-          manager_id: employee.manager_id,
-          department_name: detail?.department_name ?? null,
-          position_name: detail?.position_name ?? null,
-          manager_name: detail?.manager_name ?? null,
-        }
-      : null,
-  };
-}
-
 async function naikkanPercobaan(token: VerificationToken): Promise<void> {
   if (!token.consumed_at) {
     await tokenModel.incrementAttempts(token.id);
@@ -178,7 +114,10 @@ async function verifikasiToken(
   const token = await tokenModel.findLatest(email, purpose);
 
   if (!token) {
-    logger.warn({ email, purpose }, "Verifikasi token gagal: tidak ditemukan");
+    logger.warn(
+      { email, purpose, alasan: "token belum pernah diterbitkan" },
+      "Verifikasi token ditolak",
+    );
     throw BadRequest(pesanGagal);
   }
 
@@ -196,7 +135,7 @@ async function verifikasiToken(
 
   if (alasan) {
     await naikkanPercobaan(token);
-    logger.warn({ email, purpose, alasan }, "Verifikasi token gagal");
+    logger.warn({ email, purpose, alasan }, "Verifikasi token ditolak");
     throw BadRequest(pesanGagal);
   }
 
@@ -360,70 +299,6 @@ export async function ResendVerificationController(
   }
 }
 
-export async function LoginController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    const { email, password } = req.body;
-
-    const user = await userModel.findByEmail(email);
-
-    if (!user) {
-      throw Unauthorized("Email atau password salah");
-    }
-
-    const valid = await verifyPassword(user.password, password);
-
-    if (!valid) {
-      throw Unauthorized("Email atau password salah");
-    }
-
-    if (!user.email_verified_at) {
-      throw Unauthorized(
-        "Email belum diverifikasi. Silakan masukkan kode verifikasi yang kami kirim ke email kamu.",
-      );
-    }
-
-    if (!user.approved_at) {
-      throw Unauthorized("Akun kamu masih menunggu persetujuan dari HR");
-    }
-
-    if (!user.is_active) {
-      throw Unauthorized("Akun tidak aktif, silakan hubungi HR");
-    }
-
-    const employee = await employeeModel.findByUserId(user.id);
-
-    const token = createToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    await userModel.updateLastLogin(user.id);
-
-    res.json({
-      success: true,
-      data: {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          must_change_password: user.must_change_password,
-          employee_id: employee?.id ?? null,
-          full_name: employee?.full_name ?? null,
-          employee_number: employee?.employee_number ?? null,
-        },
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
 export async function ForgotPasswordController(
   req: Request,
   res: Response,
@@ -518,213 +393,6 @@ export async function ResetPasswordController(
     res.json({
       success: true,
       message: "Password berhasil diubah. Silakan login memakai password baru.",
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function MeController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    if (!req.user) {
-      throw Unauthorized("Belum login");
-    }
-
-    const user = await userModel.findById(req.user.id);
-
-    if (!user) {
-      throw NotFound("User tidak ditemukan");
-    }
-
-    const employee = await employeeModel.findByUserId(user.id);
-
-    const detail = employee
-      ? await employeeModel.findDetailById(employee.id)
-      : null;
-
-    res.json({
-      success: true,
-      data: susunProfil(user, employee, detail),
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function UpdateMeController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    if (!req.user) throw Unauthorized("Belum login");
-
-    const user = await userModel.findById(req.user.id);
-    if (!user) throw NotFound("User tidak ditemukan");
-
-    const employee = await employeeModel.findByUserId(user.id);
-
-    if (!employee) {
-      throw BadRequest(
-        "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
-      );
-    }
-
-    // skema Zod sudah membuang field di luar daftar putih, dan model
-    // menyaringnya sekali lagi lewat OWN_PROFILE_COLUMNS
-    const diperbarui = await employeeModel.updateOwnProfile(
-      employee.id,
-      req.body as employeeModel.UpdateOwnProfileInput,
-    );
-
-    const detail = diperbarui
-      ? await employeeModel.findDetailById(diperbarui.id)
-      : null;
-
-    res.json({
-      success: true,
-      message: "Profil berhasil diperbarui",
-      data: susunProfil(user, diperbarui ?? employee, detail),
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function ChangePasswordController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    if (!req.user) throw Unauthorized("Belum login");
-
-    const { current_password, new_password } = req.body;
-
-    const user = await userModel.findByEmail(req.user.email);
-    if (!user) throw NotFound("User tidak ditemukan");
-
-    const valid = await verifyPassword(user.password, current_password);
-    if (!valid) throw Unauthorized("Password saat ini salah");
-
-    const hashed = await hashPassword(new_password);
-    await userModel.updatePassword(user.id, hashed);
-
-    res.json({
-      success: true,
-      message: "Password berhasil diubah. Silakan login kembali.",
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function ListPendingUserController(
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    const users = await userModel.findPending();
-
-    res.json({ success: true, data: users });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function ApproveUserController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    if (!req.user) throw Unauthorized("Belum login");
-
-    const { id } = res.locals.params as { id: string };
-
-    const existing = await userModel.findById(id);
-    if (!existing) throw NotFound("User tidak ditemukan");
-
-    if (existing.approved_at) {
-      throw BadRequest("Akun ini sudah pernah disetujui");
-    }
-
-    const user = await userModel.approveUser(id, req.user.id);
-
-    const employee = await employeeModel.findByUserId(id);
-    const isi = accountApprovedEmail(
-      `${env.APP_URL}/login`,
-      employee?.full_name ?? null,
-    );
-
-    await kirimEmailTanpaMenggagalkan(
-      () =>
-        sendMail({
-          to: existing.email,
-          subject: isi.subject,
-          html: isi.html,
-        }),
-      "Gagal mengirim email persetujuan akun",
-      { email: existing.email },
-    );
-
-    res.json({
-      success: true,
-      message: "Akun berhasil disetujui dan sekarang dapat digunakan",
-      data: {
-        id: user?.id,
-        email: user?.email,
-        role: user?.role,
-        is_active: user?.is_active,
-        approved_at: user?.approved_at,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function SetUserActiveController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    if (!req.user) throw Unauthorized("Belum login");
-
-    const { id } = res.locals.params as { id: string };
-    const { is_active } = req.body as { is_active: boolean };
-
-    if (id === req.user.id) {
-      throw BadRequest("Kamu tidak dapat mengubah status akun sendiri");
-    }
-
-    const existing = await userModel.findById(id);
-    if (!existing) throw NotFound("User tidak ditemukan");
-
-    if (!existing.approved_at && is_active) {
-      throw BadRequest(
-        "Akun ini belum pernah disetujui, gunakan endpoint persetujuan terlebih dahulu",
-      );
-    }
-
-    const user = await userModel.setUserActive(id, is_active);
-
-    res.json({
-      success: true,
-      message: is_active
-        ? "Akun berhasil diaktifkan"
-        : "Akun berhasil dinonaktifkan",
-      data: {
-        id: user?.id,
-        email: user?.email,
-        is_active: user?.is_active,
-      },
     });
   } catch (err) {
     next(err);

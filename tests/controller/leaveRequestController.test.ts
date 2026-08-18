@@ -83,7 +83,11 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const hrToken = createToken({ id: USER_ID, email: "hr@awan.io", role: "hr" });
+const adminToken = createToken({
+  id: USER_ID,
+  email: "admin@awan.io",
+  role: "admin",
+});
 
 /** Senin jauh di depan supaya tidak pernah dianggap tanggal lampau. */
 function seninDiMasaDepan(): string {
@@ -162,7 +166,6 @@ const bodyPengajuan = {
   reason: "Keperluan keluarga",
 };
 
-
 function transaksiBertipe(tipe: string) {
   return (balanceModel.createTransaction as jest.Mock).mock.calls
     .map(([, data]) => data as Record<string, unknown>)
@@ -187,9 +190,7 @@ beforeEach(() => {
     fakeRequest() as never,
   );
   (balanceModel.balanceFor as jest.Mock).mockResolvedValue(12 as never);
-  (balanceModel.createTransaction as jest.Mock).mockResolvedValue(
-    {} as never,
-  );
+  (balanceModel.createTransaction as jest.Mock).mockResolvedValue({} as never);
   (balanceModel.convertHoldToDeduction as jest.Mock).mockResolvedValue(
     [] as never,
   );
@@ -280,7 +281,7 @@ describe("penentuan penyetuju", () => {
     expect(data.approver_id).toBeNull();
   });
 
-  it("aturan yang sama berlaku untuk pemohon berperan HR", async () => {
+  it("aturan yang sama berlaku untuk pemohon berperan admin", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       manager_id: MANAGER_ID,
@@ -288,7 +289,7 @@ describe("penentuan penyetuju", () => {
 
     await request(app)
       .post("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(bodyPengajuan);
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
@@ -297,7 +298,7 @@ describe("penentuan penyetuju", () => {
     expect(data.approver_id).toBe(MANAGER_ID);
   });
 
-  it("HR tanpa atasan juga memakai jalur tanpa penyetuju", async () => {
+  it("admin tanpa atasan juga memakai jalur tanpa penyetuju", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       manager_id: null,
@@ -305,7 +306,7 @@ describe("penentuan penyetuju", () => {
 
     await request(app)
       .post("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(bodyPengajuan);
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
@@ -568,14 +569,14 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     expect(res.status).toBe(200);
   });
 
-  it("mengizinkan HR sebagai jalur darurat", async () => {
-    const res = await setujui(hrToken);
+  it("mengizinkan admin sebagai jalur darurat", async () => {
+    const res = await setujui(adminToken);
 
     expect(res.status).toBe(200);
   });
 
   it("mengubah penahanan saldo menjadi pemotongan", async () => {
-    await setujui(hrToken);
+    await setujui(adminToken);
 
     expect(balanceModel.convertHoldToDeduction).toHaveBeenCalledWith(
       mockClient,
@@ -584,7 +585,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
   });
 
   it("membungkus keputusan dan ledger dalam satu transaksi", async () => {
-    await setujui(hrToken);
+    await setujui(adminToken);
 
     expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
@@ -595,7 +596,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       new Error("ledger gagal") as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await setujui(adminToken);
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
@@ -607,7 +608,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       fakeRequest({ status: "approved" }) as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await setujui(adminToken);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("disetujui tidak dapat disetujui");
@@ -618,7 +619,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       fakeRequest({ status: "rejected" }) as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await setujui(adminToken);
 
     expect(res.status).toBe(400);
   });
@@ -628,7 +629,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       fakeRequest({ status: "cancelled" }) as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await setujui(adminToken);
 
     expect(res.status).toBe(400);
   });
@@ -636,7 +637,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
   it("mengembalikan 404 jika pengajuan tidak ada", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await setujui(hrToken);
+    const res = await setujui(adminToken);
 
     expect(res.status).toBe(404);
   });
@@ -654,7 +655,7 @@ describe("kewajiban lampiran saat persetujuan", () => {
   function setujui() {
     return request(app)
       .patch(`/api/v1/leave-requests/${REQUEST_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({});
   }
 
@@ -717,7 +718,7 @@ describe("kewajiban lampiran saat persetujuan", () => {
 });
 
 describe("PATCH /api/v1/leave-requests/:id/reject", () => {
-  function tolak(token = hrToken) {
+  function tolak(token = adminToken) {
     return request(app)
       .patch(`/api/v1/leave-requests/${REQUEST_ID}/reject`)
       .set("Authorization", `Bearer ${token}`)
@@ -816,13 +817,13 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     expect(leaveRequestModel.cancelRequest).not.toHaveBeenCalled();
   });
 
-  it("menolak pembatalan oleh HR sekalipun", async () => {
+  it("menolak pembatalan oleh admin sekalipun", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       id: MANAGER_ID,
     } as never);
 
-    const res = await batalkan(hrToken);
+    const res = await batalkan(adminToken);
 
     expect(res.status).toBe(403);
   });
@@ -912,10 +913,10 @@ describe("daftar dan detail pengajuan", () => {
     expect(params.include_unassigned).toBe(false);
   });
 
-  it("HR ikut melihat pengajuan yang belum punya penyetuju", async () => {
+  it("admin ikut melihat pengajuan yang belum punya penyetuju", async () => {
     await request(app)
       .get("/api/v1/leave-requests/approvals")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
       .calls[0] as [{ include_unassigned: boolean }];
@@ -923,7 +924,7 @@ describe("daftar dan detail pengajuan", () => {
     expect(params.include_unassigned).toBe(true);
   });
 
-  it("daftar seluruh pengajuan hanya untuk HR dan admin", async () => {
+  it("daftar seluruh pengajuan hanya untuk pemegang leave.view_all", async () => {
     const res = await request(app)
       .get("/api/v1/leave-requests")
       .set("Authorization", `Bearer ${employeeToken}`);
@@ -934,7 +935,7 @@ describe("daftar dan detail pengajuan", () => {
   it("memakai bentuk meta paginasi yang sama dengan daftar karyawan", async () => {
     const res = await request(app)
       .get("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.meta).toEqual({
       page: 1,
@@ -948,7 +949,7 @@ describe("daftar dan detail pengajuan", () => {
     await request(app)
       .get("/api/v1/leave-requests")
       .query({ status: "pending", limit: "5" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
       .calls[0] as [{ status: string; limit: number }];
@@ -961,7 +962,7 @@ describe("daftar dan detail pengajuan", () => {
     const res = await request(app)
       .get("/api/v1/leave-requests")
       .query({ status: "entahlah" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -990,14 +991,14 @@ describe("daftar dan detail pengajuan", () => {
     expect(res.status).toBe(403);
   });
 
-  it("detail dapat dilihat HR", async () => {
+  it("detail dapat dilihat admin", async () => {
     (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
       fakeRequest({ employee_id: LAIN_ID, approver_id: LAIN_ID }) as never,
     );
 
     const res = await request(app)
       .get(`/api/v1/leave-requests/${REQUEST_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
   });

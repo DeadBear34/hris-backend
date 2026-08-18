@@ -48,7 +48,11 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const adminToken = createToken({ id: USER_ID, email: "admin2@awan.io", role: "admin" });
+const adminToken = createToken({
+  id: USER_ID,
+  email: "admin2@awan.io",
+  role: "admin",
+});
 
 const TAHUN_INI = new Date().getUTCFullYear();
 

@@ -409,7 +409,7 @@ describe("POST /api/v1/auth/login", () => {
       .send({ email: "ismail@awan.io", password: "password123" });
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("tidak aktif");
+    expect(res.body.message).toContain("dinonaktifkan");
   });
 
   it("tidak menerbitkan token untuk akun yang belum disetujui", async () => {

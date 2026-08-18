@@ -73,7 +73,11 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const adminToken = createToken({ id: USER_ID, email: "admin2@awan.io", role: "admin" });
+const adminToken = createToken({
+  id: USER_ID,
+  email: "admin2@awan.io",
+  role: "admin",
+});
 
 const JPEG = Buffer.concat([
   Buffer.from([0xff, 0xd8, 0xff, 0xe0]),

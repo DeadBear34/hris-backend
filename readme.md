@@ -2,7 +2,7 @@
 
 REST API untuk sistem HRIS (Human Resource Information System) yang dikembangkan sebagai bagian dari program Praktik Kerja Lapangan di PT Awan Komputasi Teknologi (Awanio).
 
-Cakupan yang tersedia saat ini adalah modul autentikasi (termasuk verifikasi email dan reset password), pengelolaan akun oleh HR, serta manajemen karyawan, departemen, dan jabatan.
+Cakupan yang tersedia saat ini adalah modul autentikasi (termasuk verifikasi email dan reset password), pengelolaan akun, manajemen karyawan, modul cuti, serta kontrol fitur berbasis jabatan.
 
 ## Tech Stack
 
@@ -88,7 +88,7 @@ Tanpa `MAIL_DRIVER=resend`, pengembangan dan pengujian tidak memerlukan `RESEND_
 
 Perlu diingat, alamat bawaan `onboarding@resend.dev` adalah alamat khusus pengujian dari Resend. Untuk mengirim ke alamat mana pun secara bebas, verifikasi domain sendiri di `resend.com/domains` lalu ganti `MAIL_FROM`.
 
-Isi email disusun di `src/helpers/emailTemplate.ts` untuk empat keperluan: kode verifikasi email, tautan reset password, pemberitahuan password telah diubah, dan pemberitahuan akun telah disetujui HR. Tidak ada template yang memuat password pengguna.
+Isi email disusun di `src/helpers/emailTemplate.ts` untuk empat keperluan: kode verifikasi email, tautan reset password, pemberitahuan password telah diubah, dan pemberitahuan akun telah disetujui. Tidak ada template yang memuat password pengguna.
 
 Kegagalan pengiriman email tidak pernah membatalkan alur utama. Errornya dicatat ke log, sedangkan pendaftaran, persetujuan akun, atau reset password tetap dianggap berhasil.
 
@@ -126,72 +126,72 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`.
 
 ### Pengelolaan Akun
 
-| Metode  | Endpoint             | Akses     | Keterangan                                       |
-| ------- | -------------------- | --------- | ------------------------------------------------ |
-| `GET`   | `/users/pending`     | HR, Admin | Akun terverifikasi yang menunggu persetujuan     |
-| `PATCH` | `/users/:id/approve` | HR, Admin | Menyetujui akun dan mengirim email pemberitahuan |
-| `PATCH` | `/users/:id/status`  | HR, Admin | Mengaktifkan atau menonaktifkan akun             |
+| Metode  | Endpoint             | Akses                   | Keterangan                                       |
+| ------- | -------------------- | ----------------------- | ------------------------------------------------ |
+| `GET`   | `/users/pending`     | `employee.approve_user` | Akun terverifikasi yang menunggu persetujuan     |
+| `PATCH` | `/users/:id/approve` | `employee.approve_user` | Menyetujui akun dan mengirim email pemberitahuan |
+| `PATCH` | `/users/:id/status`  | `employee.approve_user` | Mengaktifkan atau menonaktifkan akun             |
 
 ### Karyawan, Departemen, dan Jabatan
 
-| Metode   | Endpoint           | Akses     | Keterangan                                 |
-| -------- | ------------------ | --------- | ------------------------------------------ |
-| `GET`    | `/employees`       | HR, Admin | Daftar karyawan dengan filter dan paginasi |
-| `POST`   | `/employees`       | HR, Admin | Menambah karyawan beserta akunnya          |
-| `GET`    | `/employees/:id`   | HR, Admin | Detail satu karyawan                       |
-| `PATCH`  | `/employees/:id`   | HR, Admin | Mengubah data karyawan                     |
-| `DELETE` | `/employees/:id`   | HR, Admin | Menghapus karyawan (soft delete)           |
-| `GET`    | `/departments`     | Login     | Daftar departemen                          |
-| `GET`    | `/departments/:id` | Login     | Detail departemen                          |
-| `POST`   | `/departments`     | HR, Admin | Menambah departemen                        |
-| `PATCH`  | `/departments/:id` | HR, Admin | Mengubah departemen                        |
-| `DELETE` | `/departments/:id` | HR, Admin | Menghapus departemen                       |
-| `GET`    | `/positions`       | Login     | Daftar jabatan                             |
-| `GET`    | `/positions/:id`   | Login     | Detail jabatan                             |
-| `POST`   | `/positions`       | HR, Admin | Menambah jabatan                           |
-| `PATCH`  | `/positions/:id`   | HR, Admin | Mengubah jabatan                           |
-| `DELETE` | `/positions/:id`   | HR, Admin | Menghapus jabatan                          |
+| Metode   | Endpoint           | Akses                 | Keterangan                                 |
+| -------- | ------------------ | --------------------- | ------------------------------------------ |
+| `GET`    | `/employees`       | `employee.view_all`   | Daftar karyawan dengan filter dan paginasi |
+| `POST`   | `/employees`       | `employee.create`     | Menambah karyawan beserta akunnya          |
+| `GET`    | `/employees/:id`   | `employee.view_all`   | Detail satu karyawan                       |
+| `PATCH`  | `/employees/:id`   | `employee.update`     | Mengubah data karyawan                     |
+| `DELETE` | `/employees/:id`   | `employee.delete`     | Menghapus karyawan (soft delete)           |
+| `GET`    | `/departments`     | Login                 | Daftar departemen                          |
+| `GET`    | `/departments/:id` | Login                 | Detail departemen                          |
+| `POST`   | `/departments`     | `organization.manage` | Menambah departemen                        |
+| `PATCH`  | `/departments/:id` | `organization.manage` | Mengubah departemen                        |
+| `DELETE` | `/departments/:id` | `organization.manage` | Menghapus departemen                       |
+| `GET`    | `/positions`       | Login                 | Daftar jabatan                             |
+| `GET`    | `/positions/:id`   | Login                 | Detail jabatan                             |
+| `POST`   | `/positions`       | `organization.manage` | Menambah jabatan                           |
+| `PATCH`  | `/positions/:id`   | `organization.manage` | Mengubah jabatan                           |
+| `DELETE` | `/positions/:id`   | `organization.manage` | Menghapus jabatan                          |
 
 ### Hari Libur dan Jenis Cuti
 
-| Metode   | Endpoint           | Akses     | Keterangan                                     |
-| -------- | ------------------ | --------- | ---------------------------------------------- |
-| `GET`    | `/holidays`        | Login     | Daftar hari libur, dapat disaring per tahun    |
-| `GET`    | `/holidays/:id`    | Login     | Detail satu hari libur                         |
-| `POST`   | `/holidays`        | HR, Admin | Menambah hari libur atau cuti bersama          |
-| `PATCH`  | `/holidays/:id`    | HR, Admin | Mengubah hari libur                            |
-| `DELETE` | `/holidays/:id`    | HR, Admin | Menghapus hari libur                           |
-| `GET`    | `/leave-types`     | Login     | Daftar jenis cuti untuk pilihan formulir       |
-| `GET`    | `/leave-types/:id` | Login     | Detail satu jenis cuti                         |
-| `POST`   | `/leave-types`     | HR, Admin | Menambah jenis cuti                            |
-| `PATCH`  | `/leave-types/:id` | HR, Admin | Mengubah jenis cuti                            |
-| `DELETE` | `/leave-types/:id` | HR, Admin | Menghapus jenis cuti yang belum pernah dipakai |
+| Metode   | Endpoint           | Akses                  | Keterangan                                     |
+| -------- | ------------------ | ---------------------- | ---------------------------------------------- |
+| `GET`    | `/holidays`        | Login                  | Daftar hari libur, dapat disaring per tahun    |
+| `GET`    | `/holidays/:id`    | Login                  | Detail satu hari libur                         |
+| `POST`   | `/holidays`        | `organization.holiday` | Menambah hari libur atau cuti bersama          |
+| `PATCH`  | `/holidays/:id`    | `organization.holiday` | Mengubah hari libur                            |
+| `DELETE` | `/holidays/:id`    | `organization.holiday` | Menghapus hari libur                           |
+| `GET`    | `/leave-types`     | Login                  | Daftar jenis cuti untuk pilihan formulir       |
+| `GET`    | `/leave-types/:id` | Login                  | Detail satu jenis cuti                         |
+| `POST`   | `/leave-types`     | `leave.manage_type`    | Menambah jenis cuti                            |
+| `PATCH`  | `/leave-types/:id` | `leave.manage_type`    | Mengubah jenis cuti                            |
+| `DELETE` | `/leave-types/:id` | `leave.manage_type`    | Menghapus jenis cuti yang belum pernah dipakai |
 
 Hari libur dapat dibaca semua pengguna karena dipakai frontend untuk menghitung perkiraan durasi cuti sebelum pengajuan dikirim.
 
 ### Pengajuan Cuti
 
-| Metode  | Endpoint                      | Akses         | Keterangan                                  |
-| ------- | ----------------------------- | ------------- | ------------------------------------------- |
-| `GET`   | `/leave-requests/me`          | Login         | Pengajuan milik sendiri                     |
-| `GET`   | `/leave-requests/approvals`   | Login         | Pengajuan yang perlu disetujui pengguna ini |
-| `GET`   | `/leave-requests`             | HR, Admin     | Seluruh pengajuan dengan filter lengkap     |
-| `GET`   | `/leave-requests/:id`         | Pihak terkait | Detail pengajuan beserta lampirannya        |
-| `POST`  | `/leave-requests`             | Login         | Membuat pengajuan baru                      |
-| `PATCH` | `/leave-requests/:id/approve` | Penyetuju, HR | Menyetujui pengajuan                        |
-| `PATCH` | `/leave-requests/:id/reject`  | Penyetuju, HR | Menolak pengajuan                           |
-| `PATCH` | `/leave-requests/:id/cancel`  | Pemohon       | Membatalkan pengajuan sendiri               |
+| Metode  | Endpoint                      | Akses                              | Keterangan                                  |
+| ------- | ----------------------------- | ---------------------------------- | ------------------------------------------- |
+| `GET`   | `/leave-requests/me`          | Login                              | Pengajuan milik sendiri                     |
+| `GET`   | `/leave-requests/approvals`   | Login                              | Pengajuan yang perlu disetujui pengguna ini |
+| `GET`   | `/leave-requests`             | `leave.view_all`                   | Seluruh pengajuan dengan filter lengkap     |
+| `GET`   | `/leave-requests/:id`         | Pihak terkait                      | Detail pengajuan beserta lampirannya        |
+| `POST`  | `/leave-requests`             | Login                              | Membuat pengajuan baru                      |
+| `PATCH` | `/leave-requests/:id/approve` | Penyetuju atau `leave.approve_all` | Menyetujui pengajuan                        |
+| `PATCH` | `/leave-requests/:id/reject`  | Penyetuju atau `leave.approve_all` | Menolak pengajuan                           |
+| `PATCH` | `/leave-requests/:id/cancel`  | Pemohon                            | Membatalkan pengajuan sendiri               |
 
 Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `start_date`, `end_date`, `page`, dan `limit`. Rentang tanggal dicocokkan sebagai irisan, sehingga pengajuan yang sebagian saja masuk rentang tetap muncul.
 
 ### Saldo Cuti
 
-| Metode | Endpoint                      | Akses     | Keterangan                      |
-| ------ | ----------------------------- | --------- | ------------------------------- |
-| `GET`  | `/leave-balances/me`          | Login     | Saldo sendiri per jenis cuti    |
-| `GET`  | `/leave-balances/me/ledger`   | Login     | Riwayat transaksi saldo sendiri |
-| `GET`  | `/leave-balances/:id`         | HR, Admin | Saldo karyawan lain             |
-| `POST` | `/leave-balances/adjustments` | HR, Admin | Penyesuaian manual saldo        |
+| Metode | Endpoint                      | Akses                  | Keterangan                      |
+| ------ | ----------------------------- | ---------------------- | ------------------------------- |
+| `GET`  | `/leave-balances/me`          | Login                  | Saldo sendiri per jenis cuti    |
+| `GET`  | `/leave-balances/me/ledger`   | Login                  | Riwayat transaksi saldo sendiri |
+| `GET`  | `/leave-balances/:id`         | `leave.view_all`       | Saldo karyawan lain             |
+| `POST` | `/leave-balances/adjustments` | `leave.adjust_balance` | Penyesuaian manual saldo        |
 
 ### Lampiran Cuti
 
@@ -200,6 +200,105 @@ Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `sta
 | `GET`  | `/leave-requests/:id/attachments` | Pihak terkait | Daftar lampiran sebuah pengajuan |
 | `POST` | `/leave-requests/:id/attachments` | Pihak terkait | Mengunggah bukti, field `file`   |
 | `GET`  | `/leave-attachments/:id/url`      | Pihak terkait | Signed URL berlaku 15 menit      |
+
+## Otorisasi Berbasis Jabatan
+
+Role `hr` sudah dihapus. HR adalah **jabatan**, bukan peran sistem, sehingga
+kemampuannya kini ditentukan oleh fitur yang diberikan ke jabatan tersebut dan
+dapat diatur admin lewat dashboard tanpa mengubah kode.
+
+Enum `user_role` tinggal `employee` dan `admin`.
+
+### Tiga lapis, urutannya menentukan
+
+1. **Role `admin` melewati seluruh pemeriksaan fitur tanpa kecuali.** Lapis ini
+   yang mencegah sistem terkunci sendiri kalau pemberian fitur salah atur.
+2. **Selain admin, kemampuan berasal dari jabatan** lewat tabel
+   `position_features`. Karyawan tanpa jabatan tidak mewarisi fitur apa pun.
+3. **Kemampuan atas diri sendiri selalu ada dan tidak dapat dicabut**: melihat
+   dan mengubah profil sendiri, mengajukan cuti sendiri, melihat saldo sendiri.
+   Jalur ini tidak melewati pemeriksaan fitur sama sekali.
+
+Penolakan memakai `403` beserta kode fitur yang dibutuhkan pada `details`:
+
+```json
+{
+  "success": false,
+  "message": "Jabatan kamu tidak memiliki akses ke fitur yang diminta",
+  "code": "FORBIDDEN",
+  "details": { "required_feature": "employee.delete" }
+}
+```
+
+### Daftar kode fitur
+
+| Kode                    | Arti                                             |
+| ----------------------- | ------------------------------------------------ |
+| `employee.view_all`     | Melihat daftar dan detail seluruh karyawan       |
+| `employee.create`       | Menambah karyawan beserta akunnya                |
+| `employee.update`       | Mengubah data karyawan                           |
+| `employee.delete`       | Menghapus data karyawan                          |
+| `employee.approve_user` | Menyetujui pendaftaran dan mengubah status akun  |
+| `organization.manage`   | Mengelola departemen dan jabatan                 |
+| `organization.schedule` | Mengatur jam kerja dan hari kerja                |
+| `organization.holiday`  | Mengelola hari libur nasional dan cuti bersama   |
+| `leave.approve_team`    | Menyetujui pengajuan cuti bawahan langsung       |
+| `leave.approve_all`     | Menyetujui pengajuan cuti siapa pun              |
+| `leave.view_all`        | Melihat seluruh pengajuan cuti dan lampirannya   |
+| `leave.manage_type`     | Mengelola jenis cuti dan aturannya               |
+| `leave.adjust_balance`  | Koreksi manual saldo cuti                        |
+| `attendance.view_team`  | Melihat absensi bawahan langsung                 |
+| `attendance.view_all`   | Melihat absensi seluruh karyawan                 |
+| `attendance.correct`    | Mengoreksi data absensi                          |
+| `attendance.report`     | Mengakses dan mengekspor laporan absensi         |
+| `system.manage_feature` | Mengatur fitur yang tersedia bagi setiap jabatan |
+
+Kode berkategori `attendance` dan `organization.schedule` sudah ada di katalog
+tetapi modulnya belum dibangun.
+
+Katalog fitur hanya dapat dibaca lewat API. Penambahan fitur baru dilakukan
+lewat migrasi SQL, karena setiap kode harus punya pasangan pemeriksaan di kode
+program agar tidak ada kode yang tercatat tetapi tidak berpengaruh.
+
+### Endpoint pengelolaan fitur
+
+| Metode | Endpoint                  | Akses | Keterangan                                         |
+| ------ | ------------------------- | ----- | -------------------------------------------------- |
+| `GET`  | `/features`               | Admin | Katalog fitur dikelompokkan per kategori           |
+| `GET`  | `/features/matrix`        | Admin | Matriks jabatan terhadap fitur untuk tabel centang |
+| `GET`  | `/positions/:id/features` | Admin | Fitur yang dimiliki sebuah jabatan                 |
+| `PUT`  | `/positions/:id/features` | Admin | Mengganti seluruh fitur jabatan sekaligus          |
+| `GET`  | `/me/features`            | Login | Kode fitur milik pengguna yang sedang login        |
+
+Keempat endpoint pengelolaan dijaga **role admin**, bukan oleh fitur. Ini
+disengaja: kalau dijaga fitur, pemegangnya dapat memberikan fitur pengelolaan
+kepada jabatannya sendiri lalu memperluas kewenangannya tanpa batas.
+
+`PUT /positions/:id/features` menerima daftar kode sebagai keadaan akhir:
+
+```json
+{ "codes": ["employee.view_all", "leave.view_all"] }
+```
+
+Seluruh pemberian lama dihapus lalu yang baru dimasukkan dalam satu transaksi.
+Daftar kosong berarti mencabut seluruh fitur, dan itu sah. Kode yang tidak ada
+di katalog ditolak beserta daftar kode yang tidak dikenal pada `details`.
+
+`GET /me/features` dipakai frontend untuk menampilkan atau menyembunyikan menu.
+Untuk admin, seluruh kode dikembalikan. Daftar yang sama juga disertakan pada
+`GET /auth/me` sebagai field `features`, sehingga pemuatan halaman cukup satu
+panggilan.
+
+### Cache
+
+Pemeriksaan fitur terjadi pada hampir setiap request. Hasilnya di-cache di
+memori proses berkunci `position_id` dengan masa berlaku satu menit, dan
+dibatalkan seketika setiap kali pemberian fitur sebuah jabatan berubah. Tidak
+memakai Redis atau dependensi tambahan. Pada penyebaran multi-instance, entri
+di instance lain paling lama tertinggal selama masa berlaku tersebut.
+
+Karyawan pemilik request disimpan di `res.locals` supaya beberapa pemeriksaan
+fitur dalam satu request cukup sekali query ke tabel `employees`.
 
 ## Profil Sendiri
 
@@ -244,10 +343,10 @@ Penyetuju ditentukan satu aturan saja: **atasan langsung pemohon** berdasarkan `
 ```
 Pemohon punya manager_id?
 ├── ya    → approver_id diisi id atasan
-└── tidak → approver_id dibiarkan NULL, menjadi tanggung jawab HR
+└── tidak → approver_id dibiarkan NULL, ditangani pemegang leave.approve_all
 ```
 
-Direktur yang tidak punya atasan, HR yang mengajukan cuti, maupun manajer yang mengajukan ke atasannya sendiri semuanya mengikuti aturan yang sama. Pengajuan tanpa penyetuju ikut muncul pada `/leave-requests/approvals` milik HR dan admin.
+Direktur yang tidak punya atasan, staf HR yang mengajukan cuti, maupun manajer yang mengajukan ke atasannya sendiri semuanya mengikuti aturan yang sama. Pengajuan tanpa penyetuju ikut muncul pada `/leave-requests/approvals` milik pemegang `leave.approve_all`.
 
 Di luar itu, role `hr` dan `admin` boleh melihat seluruh pengajuan dan menyetujui pengajuan mana pun sebagai jalur darurat, misalnya ketika atasan sedang berhalangan.
 
@@ -264,7 +363,7 @@ Di luar itu, role `hr` dan `admin` boleh melihat seluruh pengajuan dan menyetuju
 
 Transisi selain empat panah di atas ditolak, termasuk mengubah status ke dirinya sendiri dan mengembalikan status apa pun ke `pending`. Pembatalan pengajuan yang sudah disetujui hanya boleh dilakukan selama tanggal mulainya belum lewat.
 
-Pembatalan hanya boleh dilakukan pemohon sendiri, bahkan HR pun tidak dapat membatalkan cuti orang lain.
+Pembatalan hanya boleh dilakukan pemohon sendiri, bahkan admin pun tidak dapat membatalkan cuti orang lain.
 
 ### Perhitungan durasi
 
@@ -290,13 +389,13 @@ Kewajiban lampiran diperiksa saat **persetujuan**, bukan saat pengajuan dibuat, 
 
 Saldo tidak pernah disimpan sebagai kolom tunggal. Yang tersimpan adalah baris-baris transaksi di `leave_balance_transactions`, dan saldo dihitung dengan menjumlahkan seluruhnya. Pendekatan ini membuat setiap perubahan dapat ditelusuri dan mustahil menyimpang dari riwayatnya.
 
-| Tipe         | Nilai   | Kapan dicatat                            |
-| ------------ | ------- | ---------------------------------------- |
-| `accrual`    | positif | Pemberian jatah tahunan                  |
-| `hold`       | negatif | Saat pengajuan dibuat, saldo ditahan     |
-| `deduction`  | negatif | Hasil perubahan `hold` setelah disetujui |
-| `refund`     | positif | Saat pengajuan ditolak atau dibatalkan   |
-| `adjustment` | bebas   | Penyesuaian manual oleh HR               |
+| Tipe         | Nilai   | Kapan dicatat                                           |
+| ------------ | ------- | ------------------------------------------------------- |
+| `accrual`    | positif | Pemberian jatah tahunan                                 |
+| `hold`       | negatif | Saat pengajuan dibuat, saldo ditahan                    |
+| `deduction`  | negatif | Hasil perubahan `hold` setelah disetujui                |
+| `refund`     | positif | Saat pengajuan ditolak atau dibatalkan                  |
+| `adjustment` | bebas   | Penyesuaian manual oleh pemegang `leave.adjust_balance` |
 
 Alur satu pengajuan tiga hari dengan jatah awal 12 hari:
 
@@ -330,15 +429,15 @@ Berkas disimpan permanen dan tidak dihapus saat pengajuan ditolak atau dibatalka
 5. Kalau kode cocok, token ditandai terpakai dan `email_verified_at` pada akun diisi.
 6. `POST /auth/resend-verification` menerapkan jeda enam puluh detik sejak token terakhir dibuat, membatalkan kode aktif sebelumnya, lalu menerbitkan yang baru. Responsnya sama baik email terdaftar maupun tidak.
 
-Akun baru bisa login setelah dua syarat terpenuhi: email terverifikasi dan akun disetujui HR. `GET /users/pending` hanya menampilkan akun yang emailnya sudah terverifikasi, sehingga HR tidak perlu meninjau pendaftar yang belum menyelesaikan verifikasi.
+Akun baru bisa login setelah dua syarat terpenuhi: email terverifikasi dan akun disetujui pemegang `employee.approve_user`. `GET /users/pending` hanya menampilkan akun yang emailnya sudah terverifikasi, sehingga peninjau tidak perlu meninjau pendaftar yang belum menyelesaikan verifikasi.
 
 `POST /auth/login` membedakan tiga kondisi dengan pesan yang berbeda, dan pemeriksaannya baru dilakukan setelah password terbukti benar:
 
-| Kondisi                           | Pesan                                                 |
-| --------------------------------- | ----------------------------------------------------- |
-| Email belum diverifikasi          | Diminta memasukkan kode verifikasi yang sudah dikirim |
-| Terverifikasi, belum disetujui HR | Akun masih menunggu persetujuan dari HR               |
-| Akun dinonaktifkan                | Akun tidak aktif, diminta menghubungi HR              |
+| Kondisi                        | Pesan                                                 |
+| ------------------------------ | ----------------------------------------------------- |
+| Email belum diverifikasi       | Diminta memasukkan kode verifikasi yang sudah dikirim |
+| Terverifikasi, belum disetujui | Akun masih menunggu persetujuan admin                 |
+| Akun dinonaktifkan             | Akun dinonaktifkan, diminta menghubungi admin         |
 
 ## Alur Reset Password
 
@@ -361,11 +460,20 @@ Konsekuensinya, setiap request yang memakai token melakukan satu query ringan ke
 npm run seed
 ```
 
-Seed membuat lima akun: satu admin, dua HR, dan dua karyawan, dengan admin sebagai manajer keempat lainnya.
+Seed membuat lima akun: tiga admin dan dua karyawan, dengan satu admin sebagai manajer keempat lainnya.
 
 Seluruh akun hasil seed dibuat dengan `email_verified_at`, `approved_at`, dan `is_active` sudah terisi, sehingga langsung bisa login tanpa melewati alur verifikasi. Password bawaannya tercetak di log saat seed selesai, dan semua akun ditandai `must_change_password`.
 
 Seed aman dijalankan berulang kali: email yang sudah ada akan dilewati, bukan diduplikasi.
+
+## Koleksi Postman
+
+Koleksi lengkap tersedia di `docs/hris-backend.postman_collection.json`,
+berisi 45 request dalam 8 grup. Impor berkasnya ke Postman lalu atur variabel
+`base_url`. Request **Login** menyimpan token ke variabel koleksi secara
+otomatis, sehingga request lain langsung terautentikasi.
+
+Setiap request mencantumkan fitur yang dibutuhkan pada deskripsinya.
 
 ## Script yang Tersedia
 

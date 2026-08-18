@@ -61,11 +61,13 @@ export async function authenticate(
 export function authorize(...roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(Unauthorized("Belum login"));
+      return next(
+        Unauthorized("Kamu belum login, silakan masuk terlebih dahulu"),
+      );
     }
 
     if (!roles.includes(req.user.role)) {
-      return next(Forbidden("Kamu tidak punya akses ke resource ini"));
+      return next(Forbidden("Kamu tidak punya akses ke fitur ini"));
     }
     next();
   };

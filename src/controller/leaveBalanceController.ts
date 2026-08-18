@@ -11,13 +11,14 @@ function tahunBerjalan(): number {
 }
 
 async function ambilKaryawanPengguna(req: Request) {
-  if (!req.user) throw Unauthorized("Belum login");
+  if (!req.user)
+    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi HR terlebih dahulu",
+      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
     );
   }
 
@@ -109,7 +110,8 @@ export async function AdjustLeaveBalanceController(
   next: NextFunction,
 ) {
   try {
-    if (!req.user) throw Unauthorized("Belum login");
+    if (!req.user)
+      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
     const { employee_id, leave_type_id, period_year, amount, note } =
       req.body as {

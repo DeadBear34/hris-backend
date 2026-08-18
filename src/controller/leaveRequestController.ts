@@ -18,6 +18,7 @@ import {
   isPastDate,
 } from "../helpers/workdays.js";
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
+import { punyaFitur } from "../middlewares/feature.js";
 import {
   BadRequest,
   Conflict,
@@ -30,23 +31,32 @@ const KODE_CUTI_SAKIT = "SICK";
 
 interface Pemohon {
   employee: Employee;
-  isAdmin: boolean;
+  /** Pemegang leave.approve_all boleh memutuskan pengajuan siapa pun. */
+  bolehSetujuiSemua: boolean;
+  /** Pemegang leave.view_all boleh membaca pengajuan siapa pun. */
+  bolehLihatSemua: boolean;
 }
 
-async function ambilPemohon(req: Request): Promise<Pemohon> {
-  if (!req.user) throw Unauthorized("Belum login");
+async function ambilPemohon(req: Request, res: Response): Promise<Pemohon> {
+  if (!req.user)
+    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi HR terlebih dahulu",
+      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
     );
   }
 
+  // res.locals menyimpan karyawannya, jadi dua pemeriksaan di bawah ini tidak
+  // memicu query tambahan ke tabel employees
+  res.locals.employee ??= employee;
+
   return {
     employee,
-    isAdmin: req.user.role === "admin",
+    bolehSetujuiSemua: await punyaFitur(req, res, "leave.approve_all"),
+    bolehLihatSemua: await punyaFitur(req, res, "leave.view_all"),
   };
 }
 
@@ -56,14 +66,16 @@ function tentukanPenyetuju(employee: Employee): string | null {
 
 function bolehMelihat(request: LeaveRequest, pemohon: Pemohon): boolean {
   return (
-    pemohon.isAdmin ||
+    pemohon.bolehLihatSemua ||
     request.employee_id === pemohon.employee.id ||
     request.approver_id === pemohon.employee.id
   );
 }
 
 function bolehMemutuskan(request: LeaveRequest, pemohon: Pemohon): boolean {
-  return pemohon.isAdmin || request.approver_id === pemohon.employee.id;
+  return (
+    pemohon.bolehSetujuiSemua || request.approver_id === pemohon.employee.id
+  );
 }
 
 function periodeDari(tanggal: string): number {
@@ -172,7 +184,7 @@ export async function ListMyLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const query = res.locals.query as ListLeaveRequestParams;
 
     const { rows, total } = await leaveRequestModel.listRequests({
@@ -196,13 +208,13 @@ export async function ListApprovalLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const query = res.locals.query as ListLeaveRequestParams;
 
     const { rows, total } = await leaveRequestModel.listRequests({
       ...query,
       approver_id: pemohon.employee.id,
-      include_unassigned: pemohon.isAdmin,
+      include_unassigned: pemohon.bolehSetujuiSemua,
     });
 
     res.json({
@@ -241,7 +253,7 @@ export async function DetailLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const { id } = res.locals.params as { id: string };
 
     const request = await leaveRequestModel.findDetailById(id);
@@ -265,7 +277,7 @@ export async function CreateLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const { leave_type_id, start_date, end_date, reason } = req.body as {
       leave_type_id: string;
       start_date: string;
@@ -357,7 +369,7 @@ export async function ApproveLeaveRequestController(
   const client = await pool.connect();
 
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const { id } = res.locals.params as { id: string };
     const { decision_note } = req.body as { decision_note?: string };
 
@@ -427,7 +439,7 @@ export async function RejectLeaveRequestController(
   const client = await pool.connect();
 
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const { id } = res.locals.params as { id: string };
     const { decision_note } = req.body as { decision_note?: string };
 
@@ -495,7 +507,7 @@ export async function CancelLeaveRequestController(
   const client = await pool.connect();
 
   try {
-    const pemohon = await ambilPemohon(req);
+    const pemohon = await ambilPemohon(req, res);
     const { id } = res.locals.params as { id: string };
 
     const existing = await leaveRequestModel.findById(id);

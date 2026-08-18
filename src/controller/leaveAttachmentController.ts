@@ -4,6 +4,7 @@ import * as leaveRequestModel from "../models/leaveRequest.js";
 import * as attachmentModel from "../models/leaveAttachment.js";
 import type { LeaveRequest } from "../models/leaveRequest.js";
 import { detectImageMimeType, MAX_FILE_SIZE } from "../helpers/fileType.js";
+import { punyaFitur } from "../middlewares/feature.js";
 import {
   buildStoragePath,
   checksumOf,
@@ -20,22 +21,25 @@ import {
 
 async function pastikanBolehMengakses(
   req: Request,
+  res: Response,
   request: LeaveRequest,
 ): Promise<string> {
-  if (!req.user) throw Unauthorized("Belum login");
+  if (!req.user)
+    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi HR terlebih dahulu",
+      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
     );
   }
 
-  const isAdmin = req.user.role === "admin";
+  // pemegang leave.view_all boleh membaca lampiran pengajuan siapa pun
+  const bolehLihatSemua = await punyaFitur(req, res, "leave.view_all");
 
   const boleh =
-    isAdmin ||
+    bolehLihatSemua ||
     request.employee_id === employee.id ||
     request.approver_id === employee.id;
 
@@ -72,7 +76,7 @@ export async function UploadLeaveAttachmentController(
     const request = await leaveRequestModel.findById(id);
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    const employeeId = await pastikanBolehMengakses(req, request);
+    const employeeId = await pastikanBolehMengakses(req, res, request);
 
     const mime = detectImageMimeType(berkas.buffer);
 
@@ -117,7 +121,7 @@ export async function ListLeaveAttachmentController(
     const request = await leaveRequestModel.findById(id);
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    await pastikanBolehMengakses(req, request);
+    await pastikanBolehMengakses(req, res, request);
 
     const attachments = await attachmentModel.findByRequest(id);
 
@@ -149,7 +153,7 @@ export async function SignedUrlLeaveAttachmentController(
     );
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    await pastikanBolehMengakses(req, request);
+    await pastikanBolehMengakses(req, res, request);
 
     const { url, expires_in } = await createSignedUrl(attachment.storage_path);
 

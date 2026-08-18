@@ -24,7 +24,11 @@ export function uploadSingleImage(field: string) {
           return next(BadRequest(`Berkas harus dikirim pada field '${field}'`));
         }
 
-        return next(BadRequest("Berkas yang diunggah tidak dapat diproses"));
+        return next(
+          BadRequest(
+            "Berkas yang diunggah tidak dapat dibaca, coba unggah ulang",
+          ),
+        );
       }
 
       next(err);

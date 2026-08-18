@@ -183,7 +183,11 @@ describe("authenticate terhadap perubahan password", () => {
   });
 
   it("menerima token yang diterbitkan pada detik yang sama", async () => {
-    sesi(new Date());
+    const { iat } = JSON.parse(
+      Buffer.from(token.split(".")[1]!, "base64").toString(),
+    ) as { iat: number };
+
+    sesi(new Date(iat * 1000));
 
     await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
 

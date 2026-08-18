@@ -3,6 +3,7 @@ import {
   listEmployeeQuerySchema,
   createEmployeeSchema,
   updateEmployeeSchema,
+  updateOwnProfileSchema,
 } from "../../src/schema/employeeSchema.js";
 
 const DEPARTMENT_ID = "33333333-3333-4333-8333-333333333333";
@@ -370,6 +371,111 @@ describe("createEmployeeSchema", () => {
       expect(fields).toContain("phone");
       expect(fields).toContain("gender");
     }
+  });
+});
+
+describe("updateOwnProfileSchema", () => {
+  it("menerima keempat field yang diizinkan", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      full_name: "Ismail Muhammad",
+      phone: "+628123456789",
+      birth_date: "1998-05-20",
+      address: "Jalan Merdeka 10",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("menerima objek kosong karena seluruh field opsional", () => {
+    expect(updateOwnProfileSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("membuang manager_id sehingga penyetuju cuti tidak dapat diubah sendiri", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      full_name: "Ismail Muhammad",
+      manager_id: MANAGER_ID,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("manager_id");
+    }
+  });
+
+  it("membuang departemen dan jabatan", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      department_id: DEPARTMENT_ID,
+      position_id: POSITION_ID,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("department_id");
+      expect(result.data).not.toHaveProperty("position_id");
+    }
+  });
+
+  it("membuang gender, status kepegawaian, dan tanggal bergabung", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      gender: "female",
+      employment_status: "permanent",
+      join_date: "2020-01-01",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("gender");
+      expect(result.data).not.toHaveProperty("employment_status");
+      expect(result.data).not.toHaveProperty("join_date");
+    }
+  });
+
+  it("membuang email, password, dan role", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      email: "penyerang@awan.io",
+      password: "password123",
+      role: "admin",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("email");
+      expect(result.data).not.toHaveProperty("password");
+      expect(result.data).not.toHaveProperty("role");
+    }
+  });
+
+  it("membuang is_active sehingga karyawan tidak dapat menonaktifkan dirinya", () => {
+    const result = updateOwnProfileSchema.safeParse({ is_active: false });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("is_active");
+    }
+  });
+
+  it("tetap menerapkan aturan nomor telepon", () => {
+    expect(
+      updateOwnProfileSchema.safeParse({ phone: "08123456789" }).success,
+    ).toBe(false);
+  });
+
+  it("tetap menerapkan aturan panjang nama", () => {
+    expect(updateOwnProfileSchema.safeParse({ full_name: "Is" }).success).toBe(
+      false,
+    );
+  });
+
+  it("tetap menerapkan format tanggal lahir", () => {
+    expect(
+      updateOwnProfileSchema.safeParse({ birth_date: "20-05-1998" }).success,
+    ).toBe(false);
+  });
+
+  it("tetap menerapkan batas panjang alamat", () => {
+    expect(
+      updateOwnProfileSchema.safeParse({ address: "a".repeat(501) }).success,
+    ).toBe(false);
   });
 });
 

@@ -3,6 +3,7 @@ import {
   RegisterController,
   LoginController,
   MeController,
+  UpdateMeController,
   ChangePasswordController,
   ListPendingUserController,
   ApproveUserController,
@@ -89,6 +90,7 @@ import {
   listEmployeeQuerySchema,
   createEmployeeSchema,
   updateEmployeeSchema,
+  updateOwnProfileSchema,
 } from "../schema/employeeSchema.js";
 import {
   createDepartmentSchema,
@@ -152,6 +154,13 @@ router.post(
 );
 
 router.get("/auth/me", ...loggedIn, MeController);
+
+router.patch(
+  "/auth/me",
+  ...loggedIn,
+  validate(updateOwnProfileSchema),
+  UpdateMeController,
+);
 
 router.patch(
   "/auth/password",

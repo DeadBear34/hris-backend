@@ -89,8 +89,6 @@ export async function DeleteLeaveTypeController(
     const existing = await leaveTypeModel.findById(id);
     if (!existing) throw NotFound("Jenis cuti tidak ditemukan");
 
-    // riwayat pengajuan harus tetap dapat dibaca, jadi jenis cuti yang sudah
-    // terpakai tidak boleh hilang dari referensinya
     const jumlah = await leaveTypeModel.countLeaveRequests(id);
     if (jumlah > 0) {
       throw BadRequest(

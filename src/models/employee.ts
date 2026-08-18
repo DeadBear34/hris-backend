@@ -64,6 +64,24 @@ export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
   resign_date?: string;
 };
 
+export interface UpdateOwnProfileInput {
+  full_name?: string;
+  phone?: string;
+  birth_date?: string;
+  address?: string;
+}
+
+/**
+ * Kolom yang boleh diubah karyawan pada profilnya sendiri. gender ikut
+ * dikecualikan karena memengaruhi kelayakan jenis cuti tertentu.
+ */
+const OWN_PROFILE_COLUMNS = [
+  "full_name",
+  "phone",
+  "birth_date",
+  "address",
+] as const;
+
 const UPDATABLE_COLUMNS = [
   "full_name",
   "phone",
@@ -149,16 +167,17 @@ export async function createEmployee(
   return employee;
 }
 
-export async function updateEmployee(
+async function updateKolom(
   id: string,
-  data: UpdateEmployeeInput,
+  data: Record<string, unknown>,
+  allowed: readonly string[],
 ): Promise<Employee | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
 
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
+    if (!allowed.includes(key)) continue;
 
     values.push(value);
     const cast = COLUMN_CAST[key] ?? "";
@@ -181,6 +200,26 @@ export async function updateEmployee(
   );
 
   return result.rows[0] ?? null;
+}
+
+export async function updateEmployee(
+  id: string,
+  data: UpdateEmployeeInput,
+): Promise<Employee | null> {
+  return updateKolom(id, data, UPDATABLE_COLUMNS);
+}
+
+/**
+ * Pembaruan profil oleh karyawan sendiri. Daftar kolomnya sengaja jauh lebih
+ * sempit daripada UPDATABLE_COLUMNS: struktur organisasi dan status
+ * kepegawaian tetap hanya boleh diubah admin. manager_id khususnya tidak
+ * boleh ikut, karena penyetuju cuti ditentukan dari kolom itu.
+ */
+export async function updateOwnProfile(
+  id: string,
+  data: UpdateOwnProfileInput,
+): Promise<Employee | null> {
+  return updateKolom(id, { ...data }, OWN_PROFILE_COLUMNS);
 }
 
 export async function softDeleteEmployee(

@@ -218,6 +218,100 @@ describe("createEmployee", () => {
   });
 });
 
+describe("updateOwnProfile", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [fakeEmployee] } as never);
+  });
+
+  it("memperbarui keempat kolom yang diizinkan", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+      phone: "+628990000001",
+      birth_date: "1999-01-15",
+      address: "Jalan Baru 5",
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("full_name =");
+    expect(sql).toContain("phone =");
+    expect(sql).toContain("birth_date =");
+    expect(sql).toContain("address =");
+  });
+
+  it("mengabaikan manager_id walau diselipkan ke dalam data", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+      manager_id: MANAGER_ID,
+    } as never);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toContain("manager_id");
+  });
+
+  it("mengabaikan kolom struktur organisasi dan status kepegawaian", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+      department_id: DEPARTMENT_ID,
+      position_id: DEPARTMENT_ID,
+      employment_status: "permanent",
+      is_active: false,
+      resign_date: "2030-01-01",
+      gender: "female",
+    } as never);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toContain("department_id");
+    expect(sql).not.toContain("position_id");
+    expect(sql).not.toContain("employment_status");
+    expect(sql).not.toContain("is_active");
+    expect(sql).not.toContain("resign_date");
+    expect(sql).not.toContain("gender");
+  });
+
+  it("tetap menambahkan cast tanggal untuk birth_date", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      birth_date: "1999-01-15",
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("::date");
+  });
+
+  it("tidak menyentuh karyawan yang sudah dihapus", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("deleted_at IS NULL");
+  });
+
+  it("tidak menjalankan UPDATE jika tidak ada perubahan", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {});
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toContain("UPDATE");
+    expect(sql).toContain("SELECT");
+  });
+
+  it("mengembalikan null jika karyawan tidak ditemukan", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    const employee = await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+    });
+
+    expect(employee).toBeNull();
+  });
+});
+
 describe("updateEmployee", () => {
   beforeEach(() => {
     jest.clearAllMocks();

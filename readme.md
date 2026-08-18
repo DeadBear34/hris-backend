@@ -121,6 +121,7 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`.
 | `POST`  | `/auth/forgot-password`     | Publik | Meminta tautan atur ulang password             |
 | `POST`  | `/auth/reset-password`      | Publik | Mengatur ulang password memakai token          |
 | `GET`   | `/auth/me`                  | Login  | Profil pengguna yang sedang login              |
+| `PATCH` | `/auth/me`                  | Login  | Mengubah profil sendiri                        |
 | `PATCH` | `/auth/password`            | Login  | Mengubah password sendiri                      |
 
 ### Pengelolaan Akun
@@ -199,6 +200,42 @@ Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `sta
 | `GET`  | `/leave-requests/:id/attachments` | Pihak terkait | Daftar lampiran sebuah pengajuan |
 | `POST` | `/leave-requests/:id/attachments` | Pihak terkait | Mengunggah bukti, field `file`   |
 | `GET`  | `/leave-attachments/:id/url`      | Pihak terkait | Signed URL berlaku 15 menit      |
+
+## Profil Sendiri
+
+`GET /auth/me` mengembalikan profil pengguna beserta data karyawannya, termasuk `birth_date`, `address`, dan id relasi (`department_id`, `position_id`, `manager_id`) di samping namanya. Id relasi disertakan supaya frontend dapat mengisi nilai awal formulir dan menentukan fitur yang tersedia bagi jabatan tersebut.
+
+`PATCH /auth/me` hanya menerima empat field:
+
+```json
+{
+  "full_name": "...",
+  "phone": "+628...",
+  "birth_date": "1998-05-20",
+  "address": "..."
+}
+```
+
+Field di luar keempat itu dibuang, bukan ditolak, sehingga permintaan tetap berhasil tetapi perubahannya diabaikan. Responsnya berbentuk sama persis dengan `GET /auth/me` agar frontend dapat memakai satu tipe untuk keduanya.
+
+Pembatasannya berlapis dua dan saling bebas:
+
+| Lapisan | Berkas                         | Mekanisme                                                                |
+| ------- | ------------------------------ | ------------------------------------------------------------------------ |
+| Skema   | `src/schema/employeeSchema.ts` | `updateOwnProfileSchema` dibangun dengan `pick`, Zod membuang field lain |
+| Model   | `src/models/employee.ts`       | `updateOwnProfile` menyaring ulang lewat `OWN_PROFILE_COLUMNS`           |
+
+Yang sengaja tidak boleh diubah sendiri:
+
+| Field                                                        | Alasan                                                                                                                           |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `manager_id`                                                 | Penyetuju cuti ditentukan dari kolom ini, kalau bisa diubah sendiri karyawan dapat menunjuk dirinya sebagai penyetujunya sendiri |
+| `department_id`, `position_id`                               | Struktur organisasi, wewenang admin                                                                                              |
+| `gender`                                                     | Memengaruhi kelayakan jenis cuti lewat `gender_restriction`                                                                      |
+| `employment_status`, `join_date`, `resign_date`, `is_active` | Menentukan hak kepegawaian                                                                                                       |
+| `email`, `role`                                              | Memerlukan verifikasi ulang dan merupakan kewenangan admin                                                                       |
+
+Perubahan data di luar daftar yang diizinkan tetap harus lewat `PATCH /employees/:id` yang hanya dapat diakses admin.
 
 ## Alur Persetujuan Cuti
 

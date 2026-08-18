@@ -57,7 +57,6 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   invalidateActive: jest.fn(),
 }));
 
-// mailer dimock supaya pengujian tidak pernah mengirim email sungguhan
 const mockSendMail = jest.fn(() => Promise.resolve());
 
 jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
@@ -814,11 +813,11 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
 });
 
 describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
-  const ADMIN_ID = "77777777-7777-4777-8777-777777777777";
+  const HR_ID = "77777777-7777-4777-8777-777777777777";
 
   it("mengirim email bahwa akun sudah disetujui", async () => {
     const { createToken: buatJwt } = await import("../../src/helpers/jwt.js");
-    const adminToken = buatJwt({ id: ADMIN_ID, email: "admin2@awan.io", role: "admin" });
+    const hrToken = buatJwt({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
     (userModel.findById as jest.Mock).mockResolvedValue({
@@ -833,7 +832,7 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${USER_ID}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${hrToken}`);
 
     expect(res.status).toBe(200);
 
@@ -847,7 +846,7 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
 
   it("tetap menyetujui akun meski pengiriman email gagal", async () => {
     const { createToken: buatJwt } = await import("../../src/helpers/jwt.js");
-    const adminToken = buatJwt({ id: ADMIN_ID, email: "admin2@awan.io", role: "admin" });
+    const hrToken = buatJwt({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 
     mockSendMail.mockRejectedValue(new Error("smtp mati") as never);
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
@@ -863,7 +862,7 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
 
     const res = await request(app)
       .patch(`/api/v1/users/${USER_ID}/approve`)
-      .set("Authorization", `Bearer ${adminToken}`);
+      .set("Authorization", `Bearer ${hrToken}`);
 
     expect(res.status).toBe(200);
     expect(userModel.approveUser).toHaveBeenCalled();

@@ -122,6 +122,47 @@ async function kirimKodeVerifikasi(
   }
 }
 
+/**
+ * Bentuk profil yang sama dipakai GET dan PATCH /auth/me supaya frontend dapat
+ * memakai satu tipe. Id relasi ikut dikirim, bukan hanya namanya, karena
+ * dibutuhkan untuk mengisi nilai awal formulir dan menentukan fitur yang
+ * tersedia bagi jabatan tersebut.
+ */
+function susunProfil(
+  user: userModel.User,
+  employee: employeeModel.Employee | null,
+  detail: employeeModel.EmployeeListItem | null,
+) {
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    is_active: user.is_active,
+    must_change_password: user.must_change_password,
+    email_verified_at: user.email_verified_at,
+    last_login_at: user.last_login_at,
+    employee: employee
+      ? {
+          id: employee.id,
+          employee_number: employee.employee_number,
+          full_name: employee.full_name,
+          phone: employee.phone,
+          gender: employee.gender,
+          birth_date: employee.birth_date,
+          address: employee.address,
+          employment_status: employee.employment_status,
+          join_date: employee.join_date,
+          department_id: employee.department_id,
+          position_id: employee.position_id,
+          manager_id: employee.manager_id,
+          department_name: detail?.department_name ?? null,
+          position_name: detail?.position_name ?? null,
+          manager_name: detail?.manager_name ?? null,
+        }
+      : null,
+  };
+}
+
 async function naikkanPercobaan(token: VerificationToken): Promise<void> {
   if (!token.consumed_at) {
     await tokenModel.incrementAttempts(token.id);
@@ -507,29 +548,47 @@ export async function MeController(
 
     res.json({
       success: true,
-      data: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        is_active: user.is_active,
-        must_change_password: user.must_change_password,
-        email_verified_at: user.email_verified_at,
-        last_login_at: user.last_login_at,
-        employee: employee
-          ? {
-              id: employee.id,
-              employee_number: employee.employee_number,
-              full_name: employee.full_name,
-              phone: employee.phone,
-              gender: employee.gender,
-              employment_status: employee.employment_status,
-              join_date: employee.join_date,
-              department_name: detail?.department_name ?? null,
-              position_name: detail?.position_name ?? null,
-              manager_name: detail?.manager_name ?? null,
-            }
-          : null,
-      },
+      data: susunProfil(user, employee, detail),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function UpdateMeController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw Unauthorized("Belum login");
+
+    const user = await userModel.findById(req.user.id);
+    if (!user) throw NotFound("User tidak ditemukan");
+
+    const employee = await employeeModel.findByUserId(user.id);
+
+    if (!employee) {
+      throw BadRequest(
+        "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+      );
+    }
+
+    // skema Zod sudah membuang field di luar daftar putih, dan model
+    // menyaringnya sekali lagi lewat OWN_PROFILE_COLUMNS
+    const diperbarui = await employeeModel.updateOwnProfile(
+      employee.id,
+      req.body as employeeModel.UpdateOwnProfileInput,
+    );
+
+    const detail = diperbarui
+      ? await employeeModel.findDetailById(diperbarui.id)
+      : null;
+
+    res.json({
+      success: true,
+      message: "Profil berhasil diperbarui",
+      data: susunProfil(user, diperbarui ?? employee, detail),
     });
   } catch (err) {
     next(err);

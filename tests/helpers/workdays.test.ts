@@ -9,7 +9,6 @@ import {
   toIsoDate,
 } from "../../src/helpers/workdays.js";
 
-// 2026-01-05 adalah hari Senin, dipakai sebagai patokan seluruh pengujian
 const SENIN = "2026-01-05";
 const JUMAT = "2026-01-09";
 const SABTU = "2026-01-10";

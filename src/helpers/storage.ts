@@ -67,3 +67,44 @@ export async function createSignedUrl(storagePath: string): Promise<{
 
   return { url: data.signedUrl, expires_in: SIGNED_URL_BERLAKU_DETIK };
 }
+
+export function buildPhotoPath(
+  employeeId: string,
+  mime: AllowedMimeType,
+): string {
+  return `${employeeId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
+}
+
+export async function uploadPhoto(
+  storagePath: string,
+  buffer: Buffer,
+  contentType: AllowedMimeType,
+): Promise<void> {
+  const { error } = await ambilClient()
+    .storage.from(env.SUPABASE_PHOTO_BUCKET)
+    .upload(storagePath, buffer, { contentType, upsert: false });
+
+  if (error) {
+    throw new Error(`Gagal mengunggah foto profil: ${error.message}`);
+  }
+}
+
+export async function deletePhoto(storagePath: string): Promise<void> {
+  const { error } = await ambilClient()
+    .storage.from(env.SUPABASE_PHOTO_BUCKET)
+    .remove([storagePath]);
+
+  if (error) {
+    throw new Error(`Gagal menghapus foto profil: ${error.message}`);
+  }
+}
+
+export function photoUrlFor(storagePath: string | null): string | null {
+  if (!storagePath || !isStorageConfigured()) return null;
+
+  const { data } = ambilClient()
+    .storage.from(env.SUPABASE_PHOTO_BUCKET)
+    .getPublicUrl(storagePath);
+
+  return data.publicUrl;
+}

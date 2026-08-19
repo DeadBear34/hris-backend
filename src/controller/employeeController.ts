@@ -11,6 +11,7 @@ import type {
 } from "../models/employee.js";
 import type { UserRole } from "../models/user.js";
 import { hashPassword } from "../helpers/password.js";
+import { photoUrlFor } from "../helpers/storage.js";
 import {
   BadRequest,
   NotFound,
@@ -55,6 +56,10 @@ async function validasiRelasi(
   }
 }
 
+function denganFotoUrl<T extends { photo_path: string | null }>(baris: T) {
+  return { ...baris, photo_url: photoUrlFor(baris.photo_path) };
+}
+
 export async function ListEmployeeController(
   _req: Request,
   res: Response,
@@ -66,7 +71,7 @@ export async function ListEmployeeController(
 
     res.json({
       success: true,
-      data: rows,
+      data: rows.map(denganFotoUrl),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -90,7 +95,7 @@ export async function DetailEmployeeController(
     const employee = await employeeModel.findDetailById(id);
     if (!employee) throw NotFound("Karyawan tidak ditemukan");
 
-    res.json({ success: true, data: employee });
+    res.json({ success: true, data: denganFotoUrl(employee) });
   } catch (err) {
     next(err);
   }

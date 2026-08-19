@@ -48,6 +48,12 @@ jest.unstable_mockModule("../../src/helpers/storage.js", () => ({
   buildStoragePath: (id: string, mime: string) =>
     `${id}/berkas.${mime.split("/")[1]}`,
   checksumOf: () => "checksum-palsu",
+  buildPhotoPath: (id: string, mime: string) =>
+    `${id}/foto.${mime.split("/")[1]}`,
+  uploadPhoto: jest.fn(),
+  deletePhoto: jest.fn(),
+  photoUrlFor: (path: string | null) =>
+    path ? `https://contoh.supabase.co/storage/v1/object/public/${path}` : null,
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({

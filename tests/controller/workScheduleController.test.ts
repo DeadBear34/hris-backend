@@ -90,7 +90,7 @@ const jadwalBawaan = {
   start_time: "08:00:00",
   end_time: "17:00:00",
   late_tolerance_minutes: 5,
-  absent_cutoff_time: "18:00:00",
+  absent_cutoff_time: "17:00:00",
   works_monday: true,
   works_saturday: false,
   works_sunday: false,
@@ -437,5 +437,86 @@ describe("menghapus jadwal kerja", () => {
     const res = await hapus();
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("keselarasan batas absen dengan jam kerja", () => {
+  function buat(body: Record<string, unknown>) {
+    return sebagaiKaryawan("post", "/api/v1/work-schedules").send(body);
+  }
+
+  function ubah(body: Record<string, unknown>) {
+    return sebagaiKaryawan(
+      "patch",
+      `/api/v1/work-schedules/${SCHEDULE_ID}`,
+    ).send(body);
+  }
+
+  it("menerima batas absen yang melewati akhir toleransi", async () => {
+    const res = await buat({
+      name: "Jadwal Ketat",
+      department_id: DEPARTMENT_ID,
+      start_time: "08:00",
+      end_time: "17:00",
+      late_tolerance_minutes: 5,
+      absent_cutoff_time: "08:10",
+    });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("menolak batas absen yang jatuh sebelum akhir toleransi", async () => {
+    const res = await buat({
+      name: "Jadwal Rancu",
+      department_id: DEPARTMENT_ID,
+      start_time: "08:00",
+      end_time: "17:00",
+      late_tolerance_minutes: 15,
+      absent_cutoff_time: "08:10",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("toleransi keterlambatan");
+    expect(workScheduleModel.createSchedule).not.toHaveBeenCalled();
+  });
+
+  it("menolak batas absen yang tepat di akhir toleransi", async () => {
+    const res = await buat({
+      name: "Jadwal Rancu",
+      department_id: DEPARTMENT_ID,
+      start_time: "08:00",
+      end_time: "17:00",
+      late_tolerance_minutes: 10,
+      absent_cutoff_time: "08:10",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("menolak batas absen yang melewati jam pulang", async () => {
+    const res = await buat({
+      name: "Jadwal Rancu",
+      department_id: DEPARTMENT_ID,
+      start_time: "08:00",
+      end_time: "17:00",
+      absent_cutoff_time: "18:00",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("jam pulang");
+  });
+
+  it("memakai toleransi lama saat hanya batas absen yang diubah", async () => {
+    const res = await ubah({ absent_cutoff_time: "08:02" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("toleransi keterlambatan");
+    expect(workScheduleModel.updateSchedule).not.toHaveBeenCalled();
+  });
+
+  it("mengizinkan pengetatan batas absen", async () => {
+    const res = await ubah({ absent_cutoff_time: "08:10" });
+
+    expect(res.status).toBe(200);
   });
 });

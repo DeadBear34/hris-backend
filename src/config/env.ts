@@ -51,6 +51,11 @@ export const envSchema = z.object({
     kosongJadiUndefined,
     z.string().default("leave-attachments"),
   ),
+
+  SUPABASE_PHOTO_BUCKET: z.preprocess(
+    kosongJadiUndefined,
+    z.string().default("employee-photos"),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

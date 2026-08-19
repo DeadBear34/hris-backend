@@ -6,7 +6,12 @@ import {
   UpdateEmployeeController,
   DeleteEmployeeController,
 } from "../controller/employeeController.js";
+import {
+  UploadEmployeePhotoController,
+  DeleteEmployeePhotoController,
+} from "../controller/employeePhotoController.js";
 import { authenticate } from "../middlewares/auth.js";
+import { uploadSingleImage } from "../middlewares/upload.js";
 import { requireFeature } from "../middlewares/feature.js";
 import {
   validate,
@@ -61,6 +66,21 @@ router.delete(
   ...bolehHapusKaryawan,
   validateParams(idParamSchema),
   DeleteEmployeeController,
+);
+
+router.post(
+  "/employees/:id/photo",
+  ...bolehUbahKaryawan,
+  validateParams(idParamSchema),
+  uploadSingleImage("photo"),
+  UploadEmployeePhotoController,
+);
+
+router.delete(
+  "/employees/:id/photo",
+  ...bolehUbahKaryawan,
+  validateParams(idParamSchema),
+  DeleteEmployeePhotoController,
 );
 
 export default router;

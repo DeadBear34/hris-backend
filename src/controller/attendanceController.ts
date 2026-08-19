@@ -148,6 +148,23 @@ async function alasanTidakBolehAbsen(
   return null;
 }
 
+function jamSingkat(waktu: string): string {
+  return waktu.slice(0, 5);
+}
+
+function alasanDiLuarJamAbsen(
+  schedule: WorkSchedule,
+  menitSekarang: number,
+): string | null {
+  const menitTutup = menitDariJam(schedule.absent_cutoff_time);
+
+  if (menitSekarang > menitTutup) {
+    return `Absensi masuk sudah ditutup pukul ${jamSingkat(schedule.absent_cutoff_time)}, kamu tercatat tidak hadir hari ini`;
+  }
+
+  return null;
+}
+
 export async function CheckInController(
   req: Request,
   res: Response,
@@ -190,6 +207,12 @@ export async function CheckInController(
         { attendance: existing },
       );
     }
+
+    const ditutup = alasanDiLuarJamAbsen(
+      schedule,
+      lokal.menitSejakTengahMalam,
+    );
+    if (ditutup) throw BadRequest(ditutup);
 
     const menitMasuk = menitDariJam(schedule.start_time);
     const selisih = menitKeterlambatan(lokal.menitSejakTengahMalam, menitMasuk);
@@ -306,7 +329,13 @@ export async function TodayAttendanceController(
     );
 
     const terhalang = schedule
-      ? await alasanTidakBolehAbsen(employee.id, schedule, tanggal)
+      ? ((await alasanTidakBolehAbsen(employee.id, schedule, tanggal)) ??
+        (attendance
+          ? null
+          : alasanDiLuarJamAbsen(
+              schedule,
+              keWaktuLokal(sekarang).menitSejakTengahMalam,
+            )))
       : "Belum ada jadwal kerja yang berlaku untukmu, hubungi admin";
 
     res.json({

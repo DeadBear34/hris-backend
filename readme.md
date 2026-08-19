@@ -59,6 +59,7 @@ cp .env.example .env
 | `SUPABASE_URL`              | tidak | —                                     | Alamat proyek Supabase, wajib untuk fitur lampiran cuti              |
 | `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                                     | Service role key Supabase, wajib untuk fitur lampiran cuti           |
 | `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`                   | Nama bucket privat penyimpan lampiran cuti                           |
+| `SUPABASE_PHOTO_BUCKET`     | tidak | `employee-photos`                     | Nama bucket publik penyimpan foto profil karyawan                    |
 | `TIMEZONE`                  | tidak | `Asia/Jakarta`                        | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja            |
 | `CRON_SECRET`               | tidak | —                                     | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi   |
 
@@ -203,6 +204,18 @@ Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `sta
 | `POST` | `/leave-requests/:id/attachments` | Pihak terkait | Mengunggah bukti, field `file`   |
 | `GET`  | `/leave-attachments/:id/url`      | Pihak terkait | Signed URL berlaku 15 menit      |
 
+### Foto Profil
+
+| Metode   | Endpoint                | Akses             | Keterangan                          |
+| -------- | ----------------------- | ----------------- | ----------------------------------- |
+| `POST`   | `/auth/me/photo`        | Login             | Mengunggah foto profil sendiri      |
+| `DELETE` | `/auth/me/photo`        | Login             | Menghapus foto profil sendiri       |
+| `POST`   | `/employees/:id/photo`  | `employee.update` | Mengunggah foto profil karyawan     |
+| `DELETE` | `/employees/:id/photo`  | `employee.update` | Menghapus foto profil karyawan      |
+
+Berkas dikirim sebagai `multipart/form-data` pada field `photo`, maksimal 5 MB,
+dan harus berupa JPEG, PNG, atau WebP.
+
 ### Jadwal Kerja
 
 | Metode   | Endpoint              | Akses                   | Keterangan                                |
@@ -233,6 +246,56 @@ masuk dan batas toleransinya sendiri sebelum melakukan absensi.
 
 Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan
 kemampuan dasar setiap karyawan dan tidak boleh dapat dicabut lewat jabatan.
+
+## Foto Profil Karyawan
+
+Foto profil disimpan pada bucket terpisah dari lampiran cuti, bukan pada bucket
+yang sama. Alasannya berbeda kebutuhan: lampiran cuti berisi surat dokter
+sehingga wajib privat dan hanya dapat diakses lewat signed URL berumur 15 menit,
+sedangkan foto profil dibaca sangat sering di daftar karyawan dan avatar. Kalau
+ikut privat, setiap penampilan avatar menuntut satu permintaan signed URL dan
+daftar karyawan menjadi lambat.
+
+### Menyiapkan bucket di Supabase
+
+Buat satu bucket **publik** bernama `employee-photos` lewat Storage di dashboard
+Supabase. Bucket lampiran cuti tetap privat, jangan diubah.
+
+Kalau memakai nama lain, sesuaikan `SUPABASE_PHOTO_BUCKET` di `.env`.
+
+### Cara kerjanya
+
+Jenis berkas ditentukan dari magic bytes isinya, bukan dari ekstensi nama
+berkas, sehingga berkas berbahaya yang dinamai `.jpg` tetap ditolak. Berkas
+disimpan dengan nama acak di bawah folder id karyawan:
+
+```
+employee-photos/{employee_id}/{uuid}.jpg
+```
+
+Nama acak dipakai supaya URL foto lama tidak menampilkan foto baru dari cache
+CDN. Setelah foto baru tersimpan dan basis data diperbarui, foto lama dihapus
+dari penyimpanan. Kegagalan menghapus foto lama hanya dicatat sebagai peringatan
+dan tidak menggagalkan permintaan, karena berkas menggantung lebih ringan
+akibatnya daripada karyawan tidak bisa mengganti fotonya.
+
+### Bentuk respons
+
+Kolom `photo_path` menyimpan jalur di bucket, sedangkan `photo_url` berisi
+tautan publik siap pakai yang disusun backend. Frontend cukup memakai
+`photo_url` dan tidak perlu menyusun URL sendiri.
+
+Keduanya ikut dikirim pada `GET /auth/me`, `GET /employees`, dan
+`GET /employees/:id`. Nilainya `null` bila karyawan belum memiliki foto atau
+penyimpanan belum dikonfigurasi.
+
+```json
+{
+  "employee_id": "uuid",
+  "photo_path": "uuid-karyawan/uuid-berkas.jpg",
+  "photo_url": "https://xxx.supabase.co/storage/v1/object/public/employee-photos/..."
+}
+```
 
 ## Aturan Absensi
 
@@ -273,13 +336,38 @@ terakhir bagi karyawan yang tidak tercakup jadwal lain.
 | `leave`   | Sedang menjalani cuti yang disetujui    | wajib kosong |
 | `holiday` | Hari libur nasional atau cuti bersama   | wajib kosong |
 
-Toleransi hanya menentukan status, bukan besar keterlambatan. Dengan jam masuk
-`08:00` dan toleransi 5 menit, datang pukul `08:05` tetap `present` dengan
-`late_minutes` nol, sedangkan `08:06` menjadi `late` dengan `late_minutes` 6,
-dihitung penuh dari jam masuk dan bukan dari ujung toleransi.
+Jam masuk dibagi tiga rentang oleh dua batas pada jadwal:
+`late_tolerance_minutes` menutup rentang hadir, dan `absent_cutoff_time`
+menutup rentang terlambat.
+
+Dengan jam masuk `08:00`, toleransi 5 menit, dan batas absen `08:10`:
+
+| Waktu datang      | Status                | `late_minutes` |
+| ----------------- | --------------------- | -------------- |
+| `08:00` – `08:05` | `present`             | 0              |
+| `08:06` – `08:10` | `late`                | 6 sampai 10    |
+| setelah `08:10`   | absen masuk ditolak   | —              |
+
+Toleransi hanya menentukan status, bukan besar keterlambatan. Datang `08:06`
+menghasilkan `late_minutes` 6, dihitung penuh dari jam masuk dan bukan dari
+ujung toleransi, sehingga keterlambatan tidak terlaporkan lebih kecil daripada
+kenyataannya.
+
+Melewati `absent_cutoff_time`, absen masuk ditolak dengan 400 dan karyawan
+tidak meninggalkan baris apa pun. Statusnya menjadi `absent` ketika job penutup
+hari berjalan. Ini bukan pilihan gaya: batasan `chk_attendance_checkin` pada
+tabel mewajibkan status `absent` memiliki `check_in_at` kosong, jadi jam
+kedatangan yang terlambat sekali memang tidak dapat disimpan bersama status
+`absent`.
+
+Kedua batas dijaga agar tidak saling bertentangan. `absent_cutoff_time` wajib
+melewati akhir toleransi dan tidak boleh melewati jam pulang, sehingga jadwal
+dengan rentang terlambat yang kosong atau batas absen setelah jam pulang
+ditolak saat disimpan.
 
 ### Yang ditolak saat absen masuk
 
+- datang melewati `absent_cutoff_time`
 - hari yang bukan hari kerja menurut jadwalnya
 - hari libur nasional maupun cuti bersama
 - hari yang sudah menjadi cuti disetujui
@@ -620,15 +708,6 @@ frontend dapat diperiksa berulang kali dengan data yang persis sama.
 
 Seed aman dijalankan berulang kali: email yang sudah ada akan dilewati, bukan
 diduplikasi, dan absensi yang sudah tercatat tidak ditimpa.
-
-## Koleksi Postman
-
-Koleksi lengkap tersedia di `docs/hris-backend.postman_collection.json`,
-berisi 60 request dalam 10 grup. Impor berkasnya ke Postman lalu atur variabel
-`base_url`. Request **Login** menyimpan token ke variabel koleksi secara
-otomatis, sehingga request lain langsung terautentikasi.
-
-Setiap request mencantumkan fitur yang dibutuhkan pada deskripsinya.
 
 ## Script yang Tersedia
 

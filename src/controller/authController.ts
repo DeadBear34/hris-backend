@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
 import { ambilKodeFiturPengguna } from "../middlewares/feature.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
+import { photoUrlFor } from "../helpers/storage.js";
 
 function susunProfil(
   user: userModel.User,
@@ -30,6 +31,8 @@ function susunProfil(
           gender: employee.gender,
           birth_date: employee.birth_date,
           address: employee.address,
+          photo_path: employee.photo_path,
+          photo_url: photoUrlFor(employee.photo_path),
           employment_status: employee.employment_status,
           join_date: employee.join_date,
           department_id: employee.department_id,

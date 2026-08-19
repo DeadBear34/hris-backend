@@ -12,7 +12,12 @@ import {
   ForgotPasswordController,
   ResetPasswordController,
 } from "../controller/accountVerificationController.js";
+import {
+  UploadOwnPhotoController,
+  DeleteOwnPhotoController,
+} from "../controller/employeePhotoController.js";
 import { authenticate } from "../middlewares/auth.js";
+import { uploadSingleImage } from "../middlewares/upload.js";
 import {
   validate,
   validateQuery,
@@ -61,6 +66,15 @@ router.post(
 );
 
 router.get("/auth/me", ...loggedIn, MeController);
+
+router.post(
+  "/auth/me/photo",
+  ...loggedIn,
+  uploadSingleImage("photo"),
+  UploadOwnPhotoController,
+);
+
+router.delete("/auth/me/photo", ...loggedIn, DeleteOwnPhotoController);
 
 router.patch(
   "/auth/me",

@@ -15,6 +15,7 @@ export interface Employee {
   gender: EmployeeGender;
   birth_date: Date | null;
   address: string | null;
+  photo_path: string | null;
   department_id: string | null;
   position_id: string | null;
   manager_id: string | null;
@@ -35,6 +36,7 @@ export interface EmployeeListItem {
   position_name: string | null;
   department_name: string | null;
   manager_name: string | null;
+  photo_path: string | null;
   is_active: boolean;
 }
 
@@ -250,7 +252,7 @@ export async function findDetailById(
     `SELECT
        e.id, e.employee_number, e.full_name, u.email,
        p.name AS position_name, d.name AS department_name,
-       m.full_name AS manager_name, e.is_active
+       m.full_name AS manager_name, e.photo_path, e.is_active
      FROM employees e
      LEFT JOIN users u       ON u.id = e.user_id
      LEFT JOIN departments d ON d.id = e.department_id
@@ -310,7 +312,7 @@ export async function listEmployees(
     `SELECT
        e.id, e.employee_number, e.full_name, u.email,
        p.name AS position_name, d.name AS department_name,
-       m.full_name AS manager_name, e.is_active
+       m.full_name AS manager_name, e.photo_path, e.is_active
      ${baseFrom}
      ORDER BY e.employee_number ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -359,4 +361,18 @@ export async function isDescendantOf(
   );
 
   return result.rows.length > 0;
+}
+
+export async function updatePhotoPath(
+  id: string,
+  photo_path: string | null,
+): Promise<Employee | null> {
+  const result = await pool.query<Employee>(
+    `UPDATE employees SET photo_path = $2, updated_at = now()
+     WHERE id = $1::uuid AND deleted_at IS NULL
+     RETURNING *`,
+    [id, photo_path],
+  );
+
+  return result.rows[0] ?? null;
 }

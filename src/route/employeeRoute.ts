@@ -20,7 +20,6 @@ import {
 } from "../schema/employeeSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Data karyawan
 const router = Router();
 const loggedIn = [authenticate];
 const bolehLihatKaryawan = [authenticate, requireFeature("employee.view_all")];

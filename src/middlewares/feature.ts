@@ -5,27 +5,6 @@ import type { Employee } from "../models/employee.js";
 import { ambilDariCache, simpanKeCache } from "../helpers/featureCache.js";
 import { Forbidden } from "../helpers/appError.js";
 
-/**
- * Otorisasi berjalan tiga lapis dan urutannya menentukan:
- *
- * 1. Role admin melewati seluruh pemeriksaan fitur tanpa kecuali. Lapis ini
- *    yang mencegah sistem terkunci sendiri ketika pemberian fitur salah atur.
- * 2. Selain admin, kemampuan berasal dari fitur yang diberikan ke jabatannya
- *    lewat tabel position_features.
- * 3. Kemampuan atas diri sendiri, misalnya melihat profil dan mengajukan cuti,
- *    tidak melewati berkas ini sama sekali sehingga tidak dapat dicabut.
- *
- * Karyawan tanpa jabatan, dan akun yang belum terhubung ke data karyawan,
- * hanya memiliki kemampuan lapis ketiga.
- */
-
-/**
- * Karyawan pemilik request. Hasilnya disimpan di res.locals agar beberapa
- * pemeriksaan fitur dalam satu request cukup sekali query ke tabel employees.
- *
- * Mengembalikan null alih-alih melempar error, karena ketiadaan data karyawan
- * adalah keadaan yang sah dan pemanggilnya yang menentukan artinya.
- */
 async function ambilKaryawanRequest(
   req: Request,
   res: Response,
@@ -53,13 +32,6 @@ async function ambilKodeFiturJabatan(position_id: string): Promise<string[]> {
   return codes;
 }
 
-/**
- * Daftar kode fitur milik pengguna yang sedang login. Admin memperoleh seluruh
- * kode yang ada, karena ia memang melewati setiap pemeriksaan.
- *
- * Pengguna tanpa jabatan memperoleh daftar kosong, bukan error, karena
- * pertanyaan "apa saja yang boleh saya lakukan" selalu punya jawaban sah.
- */
 export async function ambilKodeFiturPengguna(
   req: Request,
   res: Response,
@@ -75,12 +47,6 @@ export async function ambilKodeFiturPengguna(
   return ambilKodeFiturJabatan(employee.position_id);
 }
 
-/**
- * Pemeriksaan fitur dari dalam controller, dipakai saat keputusan bergantung
- * pada kepemilikan fitur dan bukan sekadar boleh atau tidak masuk. Contohnya
- * membedakan leave.approve_team yang terbatas pada bawahan langsung dari
- * leave.approve_all yang berlaku untuk pengajuan siapa pun.
- */
 export async function punyaFitur(
   req: Request,
   res: Response,
@@ -97,14 +63,6 @@ export async function punyaFitur(
   return codes.includes(code);
 }
 
-/**
- * Middleware penjaga rute. Dipasang setelah authenticate karena bergantung
- * pada req.user.
- *
- * Penolakan memakai 403 dan bukan 400, karena penggunanya sudah terautentikasi
- * dan yang kurang adalah kewenangannya. Kode fitur yang dibutuhkan disertakan
- * pada details supaya frontend dapat menyusun pesan yang tepat.
- */
 export function requireFeature(code: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {

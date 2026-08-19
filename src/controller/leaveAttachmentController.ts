@@ -35,7 +35,6 @@ async function pastikanBolehMengakses(
     );
   }
 
-  // pemegang leave.view_all boleh membaca lampiran pengajuan siapa pun
   const bolehLihatSemua = await punyaFitur(req, res, "leave.view_all");
 
   const boleh =

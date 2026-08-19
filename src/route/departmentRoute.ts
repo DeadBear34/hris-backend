@@ -19,7 +19,6 @@ import {
 } from "../schema/departmentSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Departemen
 const router = Router();
 const loggedIn = [authenticate];
 const bolehKelolaOrganisasi = [

@@ -29,7 +29,6 @@ import {
 } from "../schema/leaveRequestSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Pengajuan cuti beserta lampirannya
 const router = Router();
 const loggedIn = [authenticate];
 const bolehLihatSemuaCuti = [authenticate, requireFeature("leave.view_all")];

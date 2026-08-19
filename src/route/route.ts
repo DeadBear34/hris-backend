@@ -9,15 +9,9 @@ import holidayRoute from "./holidayRoute.js";
 import leaveTypeRoute from "./leaveTypeRoute.js";
 import leaveRequestRoute from "./leaveRequestRoute.js";
 import leaveBalanceRoute from "./leaveBalanceRoute.js";
+import workScheduleRoute from "./workScheduleRoute.js";
+import attendanceRoute from "./attendanceRoute.js";
 
-/**
- * Perakit seluruh rute aplikasi. Setiap modul memegang satu domain dan
- * mendaftarkan jalurnya sendiri secara lengkap, sehingga menambah domain baru
- * cukup dengan membuat satu berkas rute lalu mendaftarkannya di sini.
- *
- * Urutan pemasangan mengikuti alur pemakaian: autentikasi lebih dulu, lalu
- * data organisasi, kemudian modul cuti.
- */
 const router = Router();
 
 router.use(authRoute);
@@ -32,5 +26,8 @@ router.use(holidayRoute);
 router.use(leaveTypeRoute);
 router.use(leaveRequestRoute);
 router.use(leaveBalanceRoute);
+
+router.use(workScheduleRoute);
+router.use(attendanceRoute);
 
 export default router;

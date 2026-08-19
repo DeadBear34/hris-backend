@@ -59,6 +59,8 @@ cp .env.example .env
 | `SUPABASE_URL`              | tidak | —                                     | Alamat proyek Supabase, wajib untuk fitur lampiran cuti              |
 | `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                                     | Service role key Supabase, wajib untuk fitur lampiran cuti           |
 | `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`                   | Nama bucket privat penyimpan lampiran cuti                           |
+| `TIMEZONE`                  | tidak | `Asia/Jakarta`                        | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja            |
+| `CRON_SECRET`               | tidak | —                                     | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi   |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai.
 
@@ -201,6 +203,154 @@ Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `sta
 | `POST` | `/leave-requests/:id/attachments` | Pihak terkait | Mengunggah bukti, field `file`   |
 | `GET`  | `/leave-attachments/:id/url`      | Pihak terkait | Signed URL berlaku 15 menit      |
 
+### Jadwal Kerja
+
+| Metode   | Endpoint              | Akses                   | Keterangan                                |
+| -------- | --------------------- | ----------------------- | ----------------------------------------- |
+| `GET`    | `/work-schedules`     | Login                   | Seluruh jadwal kerja                      |
+| `GET`    | `/work-schedules/me`  | Login                   | Jadwal yang berlaku bagi diri sendiri     |
+| `GET`    | `/work-schedules/:id` | Login                   | Detail satu jadwal                        |
+| `POST`   | `/work-schedules`     | `organization.schedule` | Membuat jadwal, satu jadwal per departemen |
+| `PATCH`  | `/work-schedules/:id` | `organization.schedule` | Mengubah jam kerja dan hari kerja          |
+| `DELETE` | `/work-schedules/:id` | `organization.schedule` | Menghapus jadwal yang tidak dipakai        |
+
+Membaca jadwal cukup dengan login, karena setiap karyawan perlu mengetahui jam
+masuk dan batas toleransinya sendiri sebelum melakukan absensi.
+
+### Absensi
+
+| Metode  | Endpoint                        | Akses                   | Keterangan                                     |
+| ------- | ------------------------------- | ----------------------- | ---------------------------------------------- |
+| `POST`  | `/attendances/check-in`         | Login                   | Absen masuk untuk hari ini                     |
+| `POST`  | `/attendances/check-out`        | Login                   | Absen pulang untuk hari ini                    |
+| `GET`   | `/attendances/today`            | Login                   | Keadaan hari ini beserta tombol yang tersedia  |
+| `GET`   | `/attendances/me`               | Login                   | Riwayat sendiri per bulan beserta rekapnya     |
+| `GET`   | `/attendances/team`             | `attendance.view_team`  | Absensi bawahan langsung                       |
+| `GET`   | `/attendances`                  | `attendance.view_all`   | Absensi seluruh karyawan dengan penyaringan    |
+| `GET`   | `/attendances/report`           | `attendance.report`     | Rekap bulanan satu baris per karyawan          |
+| `PATCH` | `/attendances/:id/correct`      | `attendance.correct`    | Koreksi absensi, alasan wajib diisi            |
+| `POST`  | `/attendances/close-day`        | `CRON_SECRET`           | Job penutup hari, dipanggil penjadwal eksternal |
+
+Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan
+kemampuan dasar setiap karyawan dan tidak boleh dapat dicabut lewat jabatan.
+
+## Aturan Absensi
+
+### Zona waktu
+
+Database dan server berjalan di UTC, sedangkan seluruh aturan jam kerja
+mengacu zona waktu kantor pada `TIMEZONE`. Perbedaan ini ditangani
+`src/helpers/timezone.ts`, dan modul absensi tidak pernah memanggil
+`new Date()` langsung maupun `now()::date` di SQL untuk menentukan tanggal.
+
+Alasannya konkret. Karyawan yang absen pukul 06:00 WIB masih berada pada
+tanggal UTC sehari sebelumnya. Kalau `attendance_date` diambil dari UTC, ia
+dapat absen lagi pukul 08:00 dan tercatat sebagai hari yang berbeda, sehingga
+aturan satu kali absen per hari bocor. Konversinya memakai
+`Intl.DateTimeFormat`, bukan penambahan offset secara manual, supaya perubahan
+aturan zona waktu ditangani pustaka bawaan Node.
+
+### Penentuan jadwal
+
+Jadwal yang berlaku bagi seorang karyawan ditentukan berurutan:
+
+1. `work_schedule_id` miliknya sendiri bila terisi
+2. jadwal departemennya
+3. jadwal bawaan global, yaitu baris dengan `department_id` kosong
+
+Urutan ini diselesaikan satu fungsi, `resolveForEmployee`, dan prioritasnya
+ditegakkan di SQL sehingga tidak mungkin berbeda antar pemanggil. Jadwal
+bawaan tidak dapat dihapus maupun dinonaktifkan karena menjadi cadangan
+terakhir bagi karyawan yang tidak tercakup jadwal lain.
+
+### Status kehadiran
+
+| Status    | Arti                                    | Jam masuk    |
+| --------- | --------------------------------------- | ------------ |
+| `present` | Hadir dalam batas toleransi             | wajib terisi |
+| `late`    | Hadir melewati batas toleransi          | wajib terisi |
+| `absent`  | Tidak hadir tanpa keterangan            | wajib kosong |
+| `leave`   | Sedang menjalani cuti yang disetujui    | wajib kosong |
+| `holiday` | Hari libur nasional atau cuti bersama   | wajib kosong |
+
+Toleransi hanya menentukan status, bukan besar keterlambatan. Dengan jam masuk
+`08:00` dan toleransi 5 menit, datang pukul `08:05` tetap `present` dengan
+`late_minutes` nol, sedangkan `08:06` menjadi `late` dengan `late_minutes` 6,
+dihitung penuh dari jam masuk dan bukan dari ujung toleransi.
+
+### Yang ditolak saat absen masuk
+
+- hari yang bukan hari kerja menurut jadwalnya
+- hari libur nasional maupun cuti bersama
+- hari yang sudah menjadi cuti disetujui
+- absen kedua pada hari yang sama, disertai jam absen sebelumnya
+- karyawan nonaktif atau yang sudah mengundurkan diri
+- akun yang belum terhubung ke data karyawan
+
+Absen pulang menuntut absen masuk pada hari yang sama, menolak absen pulang
+kedua, dan menolak absen pulang sebelum jam kerja dimulai.
+
+### Kaitan dengan cuti
+
+Menyetujui pengajuan cuti sekaligus membuat baris absensi berstatus `leave`
+untuk setiap hari kerja dalam rentangnya, dengan hari libur dikeluarkan.
+Membatalkan pengajuan yang sudah disetujui menghapus baris tersebut. Keduanya
+berjalan di dalam transaksi yang sama dengan keputusan cutinya, sehingga tidak
+mungkin ada cuti disetujui tanpa penanda absensi maupun sebaliknya.
+
+### Koreksi absensi
+
+Tabel `attendances` tidak menyediakan kolom pencatat koreksi, sedangkan
+perubahan catatan kehadiran harus dapat ditelusuri. Karena skema database tidak
+diubah, jejaknya dituliskan ke kolom `note` dengan bentuk tetap:
+
+```
+[Dikoreksi oleh Bagus Pratama (001) pada 2026-03-10 14:25] Mesin absensi bermasalah
+```
+
+Keterlambatan dihitung ulang dari jadwal yang berlaku, bukan diambil dari
+kiriman klien, supaya angkanya selalu berasal dari satu sumber.
+
+## Job Penutup Hari
+
+Karyawan yang tidak absen sama sekali tidak meninggalkan baris apa pun, jadi
+ketidakhadiran harus ditandai setelah hari berakhir. Job ini yang melakukannya.
+
+```
+POST /api/v1/attendances/close-day
+POST /api/v1/attendances/close-day?date=2026-03-10
+```
+
+Wewenangnya diperiksa lewat header `x-cron-secret` yang harus sama dengan
+`CRON_SECRET`, bukan lewat JWT, karena pemanggilnya mesin penjadwal yang tidak
+memiliki sesi pengguna. Tanpa `date`, job memakai tanggal hari ini menurut zona
+waktu kantor.
+
+Urutan penentuan statusnya hari libur lebih dulu, lalu cuti yang disetujui,
+baru tidak hadir. Hari yang bukan hari kerja menurut jadwal tidak menghasilkan
+baris sama sekali, supaya akhir pekan tidak tercampur dengan hari libur
+nasional pada laporan.
+
+Job aman dijalankan berkali-kali pada tanggal yang sama. Baris yang sudah ada
+tidak pernah ditimpa, sehingga kehadiran nyata tidak mungkin berubah menjadi
+tidak hadir karena job terlanjur berjalan dua kali. Penulisannya dipotong per
+500 baris, masing-masing dalam satu transaksi.
+
+Contoh pemanggilan:
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/attendances/close-day" \
+  -H "x-cron-secret: $CRON_SECRET"
+```
+
+Contoh penjadwalan lewat crontab, setiap hari pukul 21:00 WIB:
+
+```cron
+0 21 * * * curl -fsS -X POST "http://localhost:8080/api/v1/attendances/close-day" -H "x-cron-secret: RAHASIA_ANDA" >> /var/log/hris-close-day.log 2>&1
+```
+
+Bila memakai penjadwal yang berjalan di UTC, sesuaikan jamnya menjadi `0 14 * * *`.
+
 ## Otorisasi Berbasis Jabatan
 
 Role `hr` sudah dihapus. HR adalah **jabatan**, bukan peran sistem, sehingga
@@ -252,9 +402,6 @@ Penolakan memakai `403` beserta kode fitur yang dibutuhkan pada `details`:
 | `attendance.correct`    | Mengoreksi data absensi                          |
 | `attendance.report`     | Mengakses dan mengekspor laporan absensi         |
 | `system.manage_feature` | Mengatur fitur yang tersedia bagi setiap jabatan |
-
-Kode berkategori `attendance` dan `organization.schedule` sudah ada di katalog
-tetapi modulnya belum dibangun.
 
 Katalog fitur hanya dapat dibaca lewat API. Penambahan fitur baru dilakukan
 lewat migrasi SQL, karena setiap kode harus punya pasangan pemeriksaan di kode
@@ -464,12 +611,20 @@ Seed membuat lima akun: tiga admin dan dua karyawan, dengan satu admin sebagai m
 
 Seluruh akun hasil seed dibuat dengan `email_verified_at`, `approved_at`, dan `is_active` sudah terisi, sehingga langsung bisa login tanpa melewati alur verifikasi. Password bawaannya tercetak di log saat seed selesai, dan semua akun ditandai `must_change_password`.
 
-Seed aman dijalankan berulang kali: email yang sudah ada akan dilewati, bukan diduplikasi.
+Selain akun, seed juga mengisi jadwal kerja bawaan, hari libur nasional tahun
+berjalan, jatah dan contoh pengajuan cuti, serta absensi sepanjang bulan
+berjalan sampai hari ini dengan status beragam: hadir tepat waktu, terlambat,
+tidak hadir, dan hari yang lupa absen pulang. Polanya dipilih dari sisa bagi,
+bukan acak, sehingga hasilnya sama setiap kali seed dijalankan dan tampilan
+frontend dapat diperiksa berulang kali dengan data yang persis sama.
+
+Seed aman dijalankan berulang kali: email yang sudah ada akan dilewati, bukan
+diduplikasi, dan absensi yang sudah tercatat tidak ditimpa.
 
 ## Koleksi Postman
 
 Koleksi lengkap tersedia di `docs/hris-backend.postman_collection.json`,
-berisi 45 request dalam 8 grup. Impor berkasnya ke Postman lalu atur variabel
+berisi 60 request dalam 10 grup. Impor berkasnya ke Postman lalu atur variabel
 `base_url`. Request **Login** menyimpan token ke variabel koleksi secara
 otomatis, sehingga request lain langsung terautentikasi.
 

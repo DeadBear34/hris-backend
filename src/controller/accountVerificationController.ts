@@ -32,15 +32,11 @@ const TAUTAN_BERLAKU_MENIT = 15;
 const MAKS_PERCOBAAN = 5;
 const JEDA_KIRIM_ULANG_DETIK = 60;
 
-// Pesan kegagalan verifikasi sengaja seragam untuk seluruh penyebab, supaya
-// penyerang tidak dapat membedakan token yang salah, kedaluwarsa, atau
-// sudah terpakai. Penyebab sebenarnya hanya masuk ke log.
 const PESAN_KODE_TIDAK_VALID =
   "Kode verifikasi tidak valid atau sudah kedaluwarsa";
 const PESAN_TAUTAN_TIDAK_VALID =
   "Tautan reset password tidak valid atau sudah kedaluwarsa";
 
-// Pesan berikut tidak boleh membocorkan apakah sebuah email terdaftar.
 const PESAN_KIRIM_ULANG =
   "Kalau email tersebut terdaftar dan belum diverifikasi, kode verifikasi baru sudah kami kirim.";
 const PESAN_LUPA_PASSWORD =

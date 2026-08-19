@@ -14,7 +14,6 @@ import {
 import { setUserActiveSchema } from "../schema/authSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Pengelolaan akun oleh admin
 const router = Router();
 const loggedIn = [authenticate];
 const bolehKelolaPendaftaran = [

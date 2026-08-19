@@ -16,7 +16,6 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ) {
-  // error dari validasi zod
   if (err instanceof ZodError) {
     return res.status(400).json({
       success: false,
@@ -29,7 +28,6 @@ export function errorHandler(
     });
   }
 
-  // penanganan kalau format JSON tidak valid
   if (err instanceof SyntaxError && "body" in err) {
     return res.status(400).json({
       success: false,
@@ -38,7 +36,6 @@ export function errorHandler(
     });
   }
 
-  // error yang sengaja dilempar sendiri
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       success: false,
@@ -48,7 +45,6 @@ export function errorHandler(
     });
   }
 
-  // error yang tidak terduga
   logger.error(err);
   return res.status(500).json({
     success: false,

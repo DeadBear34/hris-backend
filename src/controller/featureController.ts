@@ -7,7 +7,6 @@ import { batalkanCacheFitur } from "../helpers/featureCache.js";
 import { ambilKodeFiturPengguna } from "../middlewares/feature.js";
 import { BadRequest, NotFound } from "../helpers/appError.js";
 
-/** Urutan kategori mengikuti alur pemakaian, bukan abjad. */
 const URUTAN_KATEGORI: FeatureCategory[] = [
   "employee",
   "organization",
@@ -78,11 +77,6 @@ export async function PositionFeatureController(
   }
 }
 
-/**
- * Mengganti seluruh fitur sebuah jabatan dalam satu transaksi. Kode yang tidak
- * ada di katalog ditolak lebih dulu beserta daftar kode yang tidak dikenal,
- * supaya kesalahan ketik di frontend langsung terlihat.
- */
 export async function ReplacePositionFeatureController(
   req: Request,
   res: Response,
@@ -121,8 +115,6 @@ export async function ReplacePositionFeatureController(
 
     await client.query("COMMIT");
 
-    // cache dibatalkan setelah commit supaya tidak ada jendela di mana cache
-    // sudah kosong tetapi transaksinya justru gagal
     batalkanCacheFitur(id);
 
     res.json({
@@ -142,10 +134,6 @@ export async function ReplacePositionFeatureController(
   }
 }
 
-/**
- * Matriks jabatan terhadap fitur dalam satu panggilan, untuk mengisi tabel
- * centang di dashboard admin tanpa memanggil endpoint per jabatan.
- */
 export async function FeatureMatrixController(
   _req: Request,
   res: Response,
@@ -176,10 +164,6 @@ export async function FeatureMatrixController(
   }
 }
 
-/**
- * Dipakai frontend untuk menentukan menu mana yang ditampilkan. Tidak dibatasi
- * fitur apa pun karena setiap pengguna berhak tahu kemampuannya sendiri.
- */
 export async function MyFeatureController(
   req: Request,
   res: Response,

@@ -71,10 +71,6 @@ export interface UpdateOwnProfileInput {
   address?: string;
 }
 
-/**
- * Kolom yang boleh diubah karyawan pada profilnya sendiri. gender ikut
- * dikecualikan karena memengaruhi kelayakan jenis cuti tertentu.
- */
 const OWN_PROFILE_COLUMNS = [
   "full_name",
   "phone",
@@ -209,12 +205,6 @@ export async function updateEmployee(
   return updateKolom(id, data, UPDATABLE_COLUMNS);
 }
 
-/**
- * Pembaruan profil oleh karyawan sendiri. Daftar kolomnya sengaja jauh lebih
- * sempit daripada UPDATABLE_COLUMNS: struktur organisasi dan status
- * kepegawaian tetap hanya boleh diubah admin. manager_id khususnya tidak
- * boleh ikut, karena penyetuju cuti ditentukan dari kolom itu.
- */
 export async function updateOwnProfile(
   id: string,
   data: UpdateOwnProfileInput,

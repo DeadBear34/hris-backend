@@ -20,7 +20,6 @@ import {
 } from "../schema/holidaySchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Hari libur nasional dan cuti bersama
 const router = Router();
 const loggedIn = [authenticate];
 const bolehKelolaHariLibur = [

@@ -1,10 +1,5 @@
 import { z } from "zod";
 
-/**
- * Halaman admin mengirim seluruh centang sekaligus, jadi yang diterima adalah
- * daftar kode fitur yang menjadi keadaan akhir sebuah jabatan. Daftar kosong
- * berarti mencabut seluruh fitur, dan itu sah.
- */
 export const replacePositionFeaturesSchema = z.object({
   codes: z
     .array(

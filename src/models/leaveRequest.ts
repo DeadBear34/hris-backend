@@ -267,3 +267,20 @@ export async function cancelRequest(
 
   return result.rows[0] ?? null;
 }
+
+export async function findApprovedCovering(
+  employee_id: string,
+  tanggal: string,
+  db: Executor = pool,
+): Promise<LeaveRequest | null> {
+  const result = await db.query<LeaveRequest>(
+    `SELECT ${KOLOM.replaceAll("lr.", "")} FROM leave_requests
+     WHERE employee_id = $1::uuid
+       AND status = 'approved'::leave_status
+       AND $2::date BETWEEN start_date AND end_date
+     LIMIT 1`,
+    [employee_id, tanggal],
+  );
+
+  return result.rows[0] ?? null;
+}

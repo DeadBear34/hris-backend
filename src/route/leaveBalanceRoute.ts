@@ -19,7 +19,6 @@ import {
 } from "../schema/leaveBalanceSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Saldo cuti dan ledgernya
 const router = Router();
 const loggedIn = [authenticate];
 const bolehLihatSemuaCuti = [authenticate, requireFeature("leave.view_all")];

@@ -29,7 +29,6 @@ import {
 } from "../schema/authSchema.js";
 import { updateOwnProfileSchema } from "../schema/employeeSchema.js";
 
-// Autentikasi dan profil sendiri
 const router = Router();
 const loggedIn = [authenticate];
 

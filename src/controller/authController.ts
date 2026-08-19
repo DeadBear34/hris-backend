@@ -6,12 +6,6 @@ import { createToken } from "../helpers/jwt.js";
 import { ambilKodeFiturPengguna } from "../middlewares/feature.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 
-/**
- * Bentuk profil yang sama dipakai GET dan PATCH /auth/me supaya frontend dapat
- * memakai satu tipe. Id relasi ikut dikirim, bukan hanya namanya, karena
- * dibutuhkan untuk mengisi nilai awal formulir dan menentukan fitur yang
- * tersedia bagi jabatan tersebut.
- */
 function susunProfil(
   user: userModel.User,
   employee: employeeModel.Employee | null,
@@ -26,7 +20,6 @@ function susunProfil(
     must_change_password: user.must_change_password,
     email_verified_at: user.email_verified_at,
     last_login_at: user.last_login_at,
-    // disertakan agar frontend tidak perlu memanggil /me/features terpisah
     features,
     employee: employee
       ? {
@@ -170,8 +163,6 @@ export async function UpdateMeController(
       );
     }
 
-    // skema Zod sudah membuang field di luar daftar putih, dan model
-    // menyaringnya sekali lagi lewat OWN_PROFILE_COLUMNS
     const diperbarui = await employeeModel.updateOwnProfile(
       employee.id,
       req.body as employeeModel.UpdateOwnProfileInput,

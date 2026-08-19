@@ -19,7 +19,6 @@ import {
 } from "../schema/leaveTypeSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Jenis cuti
 const router = Router();
 const loggedIn = [authenticate];
 const bolehKelolaJenisCuti = [

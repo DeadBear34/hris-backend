@@ -56,6 +56,18 @@ jest.unstable_mockModule("../../src/models/leaveAttachment.js", () => ({
   createAttachment: jest.fn(),
 }));
 
+jest.unstable_mockModule("../../src/models/attendance.js", () => ({
+  upsertLeaveDays: jest.fn(),
+  deleteLeaveDays: jest.fn(),
+}));
+
+jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
+  resolveForEmployee: jest.fn(),
+  resolveForAllActive: jest.fn(),
+  tanggalKerjaDalamRentang: jest.fn(),
+  adalahHariKerja: jest.fn(() => true),
+}));
+
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
@@ -67,6 +79,8 @@ const leaveTypeModel = await import("../../src/models/leaveType.js");
 const leaveRequestModel = await import("../../src/models/leaveRequest.js");
 const balanceModel = await import("../../src/models/leaveBalance.js");
 const attachmentModel = await import("../../src/models/leaveAttachment.js");
+const attendanceModel = await import("../../src/models/attendance.js");
+const workScheduleModel = await import("../../src/models/workSchedule.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { toIsoDate } = await import("../../src/helpers/workdays.js");
 const { app } = await import("../../src/app.js");
@@ -139,6 +153,15 @@ const fakeLeaveType = {
   deleted_at: null,
 };
 
+const fakeJadwal = {
+  id: "77777777-7777-4777-8777-777777777777",
+  name: "Jadwal Kerja Umum",
+  department_id: null,
+  start_time: "08:00:00",
+  works_saturday: false,
+  works_sunday: false,
+};
+
 function fakeRequest(override: Record<string, unknown> = {}) {
   return {
     id: REQUEST_ID,
@@ -196,6 +219,15 @@ beforeEach(() => {
   );
   (attachmentModel.countByRequest as jest.Mock).mockResolvedValue(0 as never);
   (attachmentModel.findByRequest as jest.Mock).mockResolvedValue([] as never);
+  (attendanceModel.upsertLeaveDays as jest.Mock).mockResolvedValue(0 as never);
+  (attendanceModel.deleteLeaveDays as jest.Mock).mockResolvedValue(0 as never);
+  (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
+    fakeJadwal as never,
+  );
+  (workScheduleModel.tanggalKerjaDalamRentang as jest.Mock).mockReturnValue([
+    MULAI,
+    SELESAI,
+  ] as never);
 });
 
 function ajukan(body: Record<string, unknown> = bodyPengajuan) {
@@ -1001,5 +1033,141 @@ describe("daftar dan detail pengajuan", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("penandaan absensi saat cuti disetujui", () => {
+  function setujui() {
+    return request(app)
+      .patch(`/api/v1/leave-requests/${REQUEST_ID}/approve`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({});
+  }
+
+  beforeEach(() => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest() as never,
+    );
+    (leaveRequestModel.approveRequest as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "approved" }) as never,
+    );
+  });
+
+  it("membuat baris absensi cuti untuk setiap hari kerja dalam rentangnya", async () => {
+    const res = await setujui();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.upsertLeaveDays).toHaveBeenCalledWith(
+      mockClient,
+      EMPLOYEE_ID,
+      [MULAI, SELESAI],
+      REQUEST_ID,
+    );
+  });
+
+  it("mengeluarkan hari libur dari tanggal yang ditandai", async () => {
+    (holidayModel.findDatesBetween as jest.Mock).mockResolvedValue([
+      SELESAI,
+    ] as never);
+
+    await setujui();
+
+    expect(workScheduleModel.tanggalKerjaDalamRentang).toHaveBeenCalledWith(
+      fakeJadwal,
+      MULAI,
+      SELESAI,
+      [SELESAI],
+    );
+  });
+
+  it("menandai absensi di dalam transaksi yang sama dengan persetujuannya", async () => {
+    await setujui();
+
+    const urutan = mockClient.query.mock.calls.map(([sql]) => sql);
+
+    expect(urutan).toContain("BEGIN");
+    expect(urutan).toContain("COMMIT");
+    expect(attendanceModel.upsertLeaveDays).toHaveBeenCalledWith(
+      mockClient,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("membatalkan persetujuan ketika penandaan absensi gagal", async () => {
+    (attendanceModel.upsertLeaveDays as jest.Mock).mockRejectedValue(
+      new Error("gagal menandai") as never,
+    );
+
+    const res = await setujui();
+
+    expect(res.status).toBe(500);
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+
+  it("tetap menyetujui cuti meski karyawan belum punya jadwal kerja", async () => {
+    (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
+      null as never,
+    );
+
+    const res = await setujui();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.upsertLeaveDays).not.toHaveBeenCalled();
+  });
+});
+
+describe("penghapusan absensi saat cuti dibatalkan", () => {
+  function batalkan() {
+    return request(app)
+      .patch(`/api/v1/leave-requests/${REQUEST_ID}/cancel`)
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send({});
+  }
+
+  beforeEach(() => {
+    (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "cancelled" }) as never,
+    );
+  });
+
+  it("menghapus baris absensi cuti dari pengajuan yang sudah disetujui", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "approved" }) as never,
+    );
+
+    const res = await batalkan();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.deleteLeaveDays).toHaveBeenCalledWith(
+      mockClient,
+      REQUEST_ID,
+    );
+  });
+
+  it("tidak menghapus apa pun untuk pengajuan yang masih menunggu", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "pending" }) as never,
+    );
+
+    const res = await batalkan();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.deleteLeaveDays).not.toHaveBeenCalled();
+  });
+
+  it("membatalkan transaksi ketika penghapusan absensi gagal", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "approved" }) as never,
+    );
+    (attendanceModel.deleteLeaveDays as jest.Mock).mockRejectedValue(
+      new Error("gagal menghapus") as never,
+    );
+
+    const res = await batalkan();
+
+    expect(res.status).toBe(500);
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
   });
 });

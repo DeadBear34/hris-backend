@@ -19,7 +19,6 @@ import {
 } from "../schema/positionSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
-// Jabatan
 const router = Router();
 const loggedIn = [authenticate];
 const bolehKelolaOrganisasi = [

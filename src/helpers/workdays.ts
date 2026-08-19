@@ -1,4 +1,3 @@
-/** Format tanggal yang dipakai lintas lapisan: YYYY-MM-DD. */
 export type IsoDate = string;
 
 const HARI_MINGGU = 0;

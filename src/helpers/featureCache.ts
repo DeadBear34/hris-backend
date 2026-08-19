@@ -1,15 +1,3 @@
-/**
- * Cache fitur per jabatan di memori proses.
- *
- * Pemeriksaan fitur terjadi pada hampir setiap request, sedangkan daftar fitur
- * sebuah jabatan jarang berubah. Tanpa cache, satu request bisa memicu
- * beberapa query yang isinya sama persis.
- *
- * Sengaja tidak memakai Redis: masa berlakunya pendek dan setiap perubahan
- * pemberian fitur langsung membatalkan entrinya, sehingga jendela data basi
- * hampir tidak ada. Pada penyebaran multi-instance, entri di instance lain
- * paling lama tertinggal selama TTL di bawah ini.
- */
 const MASA_BERLAKU_MS = 60_000;
 
 interface Entri {
@@ -39,10 +27,6 @@ export function simpanKeCache(position_id: string, codes: string[]): void {
   });
 }
 
-/**
- * Dipanggil setiap kali pemberian fitur sebuah jabatan berubah, supaya
- * perubahan langsung terasa tanpa menunggu masa berlaku habis.
- */
 export function batalkanCacheFitur(position_id?: string): void {
   if (position_id) {
     cache.delete(position_id);
@@ -52,7 +36,6 @@ export function batalkanCacheFitur(position_id?: string): void {
   cache.clear();
 }
 
-/** Hanya dipakai pengujian untuk memastikan keadaan awal yang bersih. */
 export function ukuranCacheFitur(): number {
   return cache.size;
 }

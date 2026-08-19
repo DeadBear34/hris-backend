@@ -62,11 +62,6 @@ export const createEmployeeSchema = employeeDataSchema.extend({
   role: z.enum(["employee", "admin"]).optional(),
 });
 
-/**
- * Profil yang boleh diubah karyawan sendiri. Dibangun dengan pick agar aturan
- * validasinya persis sama dengan skema karyawan, sekaligus menjadi daftar
- * putih: field di luar keempat ini dibuang Zod sebelum sampai ke controller.
- */
 export const updateOwnProfileSchema = employeeDataSchema
   .pick({
     full_name: true,

@@ -6,7 +6,10 @@ import * as leaveTypeModel from "../models/leaveType.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import * as balanceModel from "../models/leaveBalance.js";
 import * as attachmentModel from "../models/leaveAttachment.js";
+import * as attendanceModel from "../models/attendance.js";
+import * as workScheduleModel from "../models/workSchedule.js";
 import type { Employee } from "../models/employee.js";
+import type { Executor } from "../models/user.js";
 import type { LeaveType } from "../models/leaveType.js";
 import type {
   LeaveRequest,
@@ -31,9 +34,7 @@ const KODE_CUTI_SAKIT = "SICK";
 
 interface Pemohon {
   employee: Employee;
-  /** Pemegang leave.approve_all boleh memutuskan pengajuan siapa pun. */
   bolehSetujuiSemua: boolean;
-  /** Pemegang leave.view_all boleh membaca pengajuan siapa pun. */
   bolehLihatSemua: boolean;
 }
 
@@ -49,8 +50,6 @@ async function ambilPemohon(req: Request, res: Response): Promise<Pemohon> {
     );
   }
 
-  // res.locals menyimpan karyawannya, jadi dua pemeriksaan di bawah ini tidak
-  // memicu query tambahan ke tabel employees
   res.locals.employee ??= employee;
 
   return {
@@ -361,6 +360,36 @@ export async function CreateLeaveRequestController(
   }
 }
 
+async function tandaiHariCuti(
+  db: Executor,
+  request: LeaveRequest,
+): Promise<number> {
+  const schedule = await workScheduleModel.resolveForEmployee(
+    request.employee_id,
+  );
+
+  if (!schedule) return 0;
+
+  const holidays = await holidayModel.findDatesBetween(
+    request.start_date,
+    request.end_date,
+  );
+
+  const tanggalKerja = workScheduleModel.tanggalKerjaDalamRentang(
+    schedule,
+    request.start_date,
+    request.end_date,
+    holidays,
+  );
+
+  return attendanceModel.upsertLeaveDays(
+    db,
+    request.employee_id,
+    tanggalKerja,
+    request.id,
+  );
+}
+
 export async function ApproveLeaveRequestController(
   req: Request,
   res: Response,
@@ -415,6 +444,8 @@ export async function ApproveLeaveRequestController(
     if (leaveType.deducts_balance) {
       await balanceModel.convertHoldToDeduction(client, id);
     }
+
+    await tandaiHariCuti(client, request);
 
     await client.query("COMMIT");
 
@@ -554,6 +585,10 @@ export async function CancelLeaveRequestController(
         note: "Pengembalian saldo karena pengajuan dibatalkan",
         created_by: pemohon.employee.id,
       });
+    }
+
+    if (existing.status === "approved") {
+      await attendanceModel.deleteLeaveDays(client, id);
     }
 
     await client.query("COMMIT");

@@ -24,18 +24,31 @@ const HARI = [
 
 export type NamaHari = (typeof HARI)[number];
 
+const formatterPerZona = new Map<string, Intl.DateTimeFormat>();
+
+function ambilFormatter(zona: string): Intl.DateTimeFormat {
+  let formatter = formatterPerZona.get(zona);
+
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: zona,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      weekday: "short",
+      hour12: false,
+    });
+    formatterPerZona.set(zona, formatter);
+  }
+
+  return formatter;
+}
+
 export function keWaktuLokal(waktu: Date = new Date()): WaktuLokal {
-  const bagian = new Intl.DateTimeFormat("en-CA", {
-    timeZone: env.TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    weekday: "short",
-    hour12: false,
-  }).formatToParts(waktu);
+  const bagian = ambilFormatter(env.TIMEZONE).formatToParts(waktu);
 
   const ambil = (tipe: string) =>
     bagian.find((b) => b.type === tipe)?.value ?? "";

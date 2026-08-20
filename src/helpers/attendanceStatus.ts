@@ -25,3 +25,23 @@ export function jamMenit(menit: number): string {
 
   return `${jam} jam ${sisa} menit`;
 }
+
+export type HasilKedatangan = "present" | "late" | "ditolak";
+
+export function tentukanStatusKedatangan(
+  menitDatang: number,
+  menitMasuk: number,
+  toleransiMenit: number,
+  menitTutup: number,
+): HasilKedatangan {
+  switch (true) {
+    case menitDatang > menitTutup:
+      return "ditolak";
+
+    case menitDatang - menitMasuk > toleransiMenit:
+      return "late";
+
+    default:
+      return "present";
+  }
+}

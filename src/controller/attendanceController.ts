@@ -27,6 +27,8 @@ import {
   statusLabel,
   butuhJamMasuk,
   jamMenit,
+  tentukanStatusKedatangan,
+  type HasilKedatangan,
 } from "../helpers/attendanceStatus.js";
 import { punyaFitur } from "../middlewares/feature.js";
 import {
@@ -152,17 +154,25 @@ function jamSingkat(waktu: string): string {
   return waktu.slice(0, 5);
 }
 
+function keputusanKedatangan(
+  schedule: WorkSchedule,
+  menitSekarang: number,
+): HasilKedatangan {
+  return tentukanStatusKedatangan(
+    menitSekarang,
+    menitDariJam(schedule.start_time),
+    schedule.late_tolerance_minutes,
+    menitDariJam(schedule.absent_cutoff_time),
+  );
+}
+
 function alasanDiLuarJamAbsen(
   schedule: WorkSchedule,
   menitSekarang: number,
 ): string | null {
-  const menitTutup = menitDariJam(schedule.absent_cutoff_time);
+  if (keputusanKedatangan(schedule, menitSekarang) !== "ditolak") return null;
 
-  if (menitSekarang > menitTutup) {
-    return `Absensi masuk sudah ditutup pukul ${jamSingkat(schedule.absent_cutoff_time)}, kamu tercatat tidak hadir hari ini`;
-  }
-
-  return null;
+  return `Absensi masuk sudah ditutup pukul ${jamSingkat(schedule.absent_cutoff_time)}, kamu tercatat tidak hadir hari ini`;
 }
 
 export async function CheckInController(
@@ -217,7 +227,8 @@ export async function CheckInController(
     const menitMasuk = menitDariJam(schedule.start_time);
     const selisih = menitKeterlambatan(lokal.menitSejakTengahMalam, menitMasuk);
 
-    const terlambat = selisih > schedule.late_tolerance_minutes;
+    const terlambat =
+      keputusanKedatangan(schedule, lokal.menitSejakTengahMalam) === "late";
 
     const attendance = await attendanceModel.createCheckIn({
       employee_id: employee.id,

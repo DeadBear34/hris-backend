@@ -367,7 +367,9 @@ describe("penandaan hari cuti", () => {
 
     const [sql, values] = panggilan();
 
-    expect(sql).toContain("ON CONFLICT (employee_id, attendance_date) DO UPDATE");
+    expect(sql).toContain(
+      "ON CONFLICT (employee_id, attendance_date) DO UPDATE",
+    );
     // batasan tabel menuntut status cuti tidak memiliki jam masuk
     expect(sql).toContain("check_in_at = NULL");
     expect(sql).toContain("check_out_at = NULL");
@@ -411,14 +413,20 @@ describe("penanda job penutup hari", () => {
     const [sql] = panggilan();
 
     // inilah yang membuat job aman dijalankan berulang kali
-    expect(sql).toContain("ON CONFLICT (employee_id, attendance_date) DO NOTHING");
+    expect(sql).toContain(
+      "ON CONFLICT (employee_id, attendance_date) DO NOTHING",
+    );
   });
 
   it("mengirim setiap kolom sebagai larik sejajar", async () => {
     mockQuery.mockResolvedValue({ rowCount: 2 } as never);
 
     await attendanceModel.insertMarkers(mockDb as never, "2026-03-10", [
-      { employee_id: EMPLOYEE_ID, status: "leave", leave_request_id: LEAVE_REQUEST_ID },
+      {
+        employee_id: EMPLOYEE_ID,
+        status: "leave",
+        leave_request_id: LEAVE_REQUEST_ID,
+      },
       { employee_id: ATTENDANCE_ID, status: "absent" },
     ]);
 

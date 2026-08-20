@@ -37,7 +37,11 @@ const bolehLihatSemua = [authenticate, requireFeature("attendance.view_all")];
 const bolehKoreksi = [authenticate, requireFeature("attendance.correct")];
 const bolehLaporan = [authenticate, requireFeature("attendance.report")];
 
-router.post("/attendances/close-day", validateQuery(closeDayQuerySchema), CloseDayController);
+router.post(
+  "/attendances/close-day",
+  validateQuery(closeDayQuerySchema),
+  CloseDayController,
+);
 
 router.post(
   "/attendances/check-in",

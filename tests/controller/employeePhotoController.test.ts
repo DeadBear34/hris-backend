@@ -96,9 +96,11 @@ beforeEach(() => {
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
   );
-  (employeeModel.findById as jest.Mock).mockResolvedValue(
-    { ...fakeEmployee, id: LAIN_ID, full_name: "Sari Utami" } as never,
-  );
+  (employeeModel.findById as jest.Mock).mockResolvedValue({
+    ...fakeEmployee,
+    id: LAIN_ID,
+    full_name: "Sari Utami",
+  } as never);
   (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
     "employee.update",
   ] as never);

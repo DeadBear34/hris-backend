@@ -1,4 +1,11 @@
-import { jest, describe, it, expect, beforeEach, afterAll } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterAll,
+} from "@jest/globals";
 import request from "supertest";
 
 // Diatur sebelum modul env dimuat, karena env membaca process.env sekali saja
@@ -166,7 +173,9 @@ beforeEach(() => {
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
   );
-  (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([] as never);
+  (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue(
+    [] as never,
+  );
   (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
     jadwal as never,
   );
@@ -181,7 +190,8 @@ beforeEach(() => {
     null as never,
   );
   (attendanceModel.createCheckIn as jest.Mock).mockImplementation(
-    (data) => Promise.resolve({ id: ATTENDANCE_ID, ...(data as object) }) as never,
+    (data) =>
+      Promise.resolve({ id: ATTENDANCE_ID, ...(data as object) }) as never,
   );
 });
 
@@ -201,7 +211,9 @@ function checkOut() {
 
 describe("absensi masuk", () => {
   it("menolak tamu yang belum login", async () => {
-    const res = await request(app).post("/api/v1/attendances/check-in").send({});
+    const res = await request(app)
+      .post("/api/v1/attendances/check-in")
+      .send({});
 
     expect(res.status).toBe(401);
   });
@@ -614,9 +626,7 @@ describe("riwayat dan daftar", () => {
     ] as never);
 
     await request(app)
-      .get(
-        `/api/v1/attendances/team?employee_id=${LEAVE_REQUEST_ID}`,
-      )
+      .get(`/api/v1/attendances/team?employee_id=${LEAVE_REQUEST_ID}`)
       .set("Authorization", `Bearer ${employeeToken}`);
 
     const [params] = (attendanceModel.listAttendances as jest.Mock).mock
@@ -725,8 +735,9 @@ describe("koreksi absensi", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.errors.some((e: { field: string }) => e.field === "reason"))
-      .toBe(true);
+    expect(
+      res.body.errors.some((e: { field: string }) => e.field === "reason"),
+    ).toBe(true);
   });
 
   it("menolak alasan yang terlalu pendek", async () => {
@@ -863,7 +874,8 @@ describe("job penutup hari", () => {
       [] as never,
     );
     (attendanceModel.insertMarkers as jest.Mock).mockImplementation(
-      (_db, _tanggal, rows) => Promise.resolve((rows as unknown[]).length) as never,
+      (_db, _tanggal, rows) =>
+        Promise.resolve((rows as unknown[]).length) as never,
     );
     mockClient.query.mockResolvedValue({ rows: [] } as never);
   });

@@ -3,11 +3,7 @@ import type { Executor } from "./user.js";
 import type { IsoDate } from "../helpers/timezone.js";
 
 export type AttendanceStatus =
-  | "present"
-  | "late"
-  | "absent"
-  | "leave"
-  | "holiday";
+  "present" | "late" | "absent" | "leave" | "holiday";
 
 export interface Attendance {
   id: string;
@@ -174,10 +170,7 @@ export async function setCheckOut(
   return result.rows[0] ?? null;
 }
 
-function susunFilter(
-  params: ListAttendanceParams,
-  values: unknown[],
-): string {
+function susunFilter(params: ListAttendanceParams, values: unknown[]): string {
   const conditions: string[] = ["e.deleted_at IS NULL"];
 
   if (params.employee_id) {

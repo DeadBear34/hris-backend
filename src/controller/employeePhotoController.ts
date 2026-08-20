@@ -10,11 +10,7 @@ import {
   photoUrlFor,
   uploadPhoto,
 } from "../helpers/storage.js";
-import {
-  BadRequest,
-  NotFound,
-  Unauthorized,
-} from "../helpers/appError.js";
+import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
 
 async function karyawanSendiri(req: Request): Promise<Employee> {
   if (!req.user) {

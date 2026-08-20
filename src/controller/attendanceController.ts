@@ -8,10 +8,7 @@ import * as holidayModel from "../models/holiday.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import type { Employee } from "../models/employee.js";
 import type { WorkSchedule } from "../models/workSchedule.js";
-import type {
-  Attendance,
-  ListAttendanceParams,
-} from "../models/attendance.js";
+import type { Attendance, ListAttendanceParams } from "../models/attendance.js";
 import {
   keWaktuLokal,
   tanggalHariIni,
@@ -218,10 +215,7 @@ export async function CheckInController(
       );
     }
 
-    const ditutup = alasanDiLuarJamAbsen(
-      schedule,
-      lokal.menitSejakTengahMalam,
-    );
+    const ditutup = alasanDiLuarJamAbsen(schedule, lokal.menitSejakTengahMalam);
     if (ditutup) throw BadRequest(ditutup);
 
     const menitMasuk = menitDariJam(schedule.start_time);

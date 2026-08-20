@@ -85,7 +85,12 @@ export function jamLokal(waktu: Date): JamDinding {
 export function menitDariJam(jam: JamDinding): number {
   const [h, m] = jam.split(":").map(Number);
 
-  if (h === undefined || m === undefined || Number.isNaN(h) || Number.isNaN(m)) {
+  if (
+    h === undefined ||
+    m === undefined ||
+    Number.isNaN(h) ||
+    Number.isNaN(m)
+  ) {
     throw new Error(`Format jam tidak valid: ${jam}`);
   }
 

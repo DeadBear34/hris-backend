@@ -4,7 +4,12 @@ import * as departmentModel from "../models/department.js";
 import * as employeeModel from "../models/employee.js";
 import type { WorkScheduleInput } from "../models/workSchedule.js";
 import { menitDariJam } from "../helpers/timezone.js";
-import { BadRequest, Conflict, NotFound, Unauthorized } from "../helpers/appError.js";
+import {
+  BadRequest,
+  Conflict,
+  NotFound,
+  Unauthorized,
+} from "../helpers/appError.js";
 
 const BAWAAN = {
   start_time: "08:00",
@@ -176,10 +181,7 @@ export async function UpdateWorkScheduleController(
       }
     }
 
-    if (
-      data.department_id &&
-      data.department_id !== existing.department_id
-    ) {
+    if (data.department_id && data.department_id !== existing.department_id) {
       const department = await departmentModel.findById(data.department_id);
       if (!department) throw BadRequest("Departemen tidak ditemukan");
 

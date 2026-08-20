@@ -141,7 +141,10 @@ beforeEach(() => {
   );
 });
 
-function sebagaiKaryawan(metode: "get" | "post" | "patch" | "delete", jalur: string) {
+function sebagaiKaryawan(
+  metode: "get" | "post" | "patch" | "delete",
+  jalur: string,
+) {
   return request(app)
     [metode](jalur)
     .set("Authorization", `Bearer ${employeeToken}`);

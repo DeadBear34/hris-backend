@@ -483,3 +483,74 @@ describe("koreksi absensi", () => {
     ]);
   });
 });
+
+describe("audit absensi offline", () => {
+  beforeEach(() => {
+    mockQuery.mockResolvedValue({ rows: [{ count: "0" }] } as never);
+  });
+
+  it("mengenali absensi offline dari selisih created_at dan check_in_at", async () => {
+    await attendanceModel.listOfflineSync({
+      min_delay_minutes: 2,
+      page: 1,
+      limit: 20,
+    });
+
+    const [sql] = panggilan(0);
+
+    expect(sql).toContain(
+      "a.created_at - a.check_in_at > make_interval(mins => $1::int)",
+    );
+    expect(sql).toContain("a.check_in_at IS NOT NULL");
+  });
+
+  it("mengurutkan dari jeda sinkronisasi terlama", async () => {
+    await attendanceModel.listOfflineSync({
+      min_delay_minutes: 2,
+      page: 1,
+      limit: 20,
+    });
+
+    const [sql] = panggilan();
+
+    expect(sql).toContain("ORDER BY a.created_at - a.check_in_at DESC");
+  });
+
+  it("menghitung jeda sinkronisasi dalam menit", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ count: "1" }] } as never)
+      .mockResolvedValueOnce({
+        rows: [{ ...fakeAttendance, sync_delay_minutes: 77 }],
+      } as never);
+
+    const { rows } = await attendanceModel.listOfflineSync({
+      min_delay_minutes: 2,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(rows[0]?.sync_delay_minutes).toBe(77);
+  });
+
+  it("dapat dipersempit ke satu karyawan dan rentang tanggal", async () => {
+    await attendanceModel.listOfflineSync({
+      employee_id: EMPLOYEE_ID,
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+      min_delay_minutes: 5,
+      page: 1,
+      limit: 20,
+    });
+
+    const [sql, values] = panggilan(0);
+
+    expect(sql).toContain("a.employee_id = $2::uuid");
+    expect(values[0]).toBe(5);
+    expect(values.slice(0, -2)).toEqual([
+      5,
+      EMPLOYEE_ID,
+      "2026-03-01",
+      "2026-03-31",
+    ]);
+  });
+});

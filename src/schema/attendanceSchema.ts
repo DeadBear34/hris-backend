@@ -11,12 +11,18 @@ const catatan = z
   .max(500, "Catatan maksimal 500 karakter")
   .optional();
 
+const waktuOffline = z.iso
+  .datetime({ offset: true, message: "Waktu absen offline tidak valid" })
+  .optional();
+
 export const checkInSchema = z.object({
   note: catatan,
+  offline_time: waktuOffline,
 });
 
 export const checkOutSchema = z.object({
   note: catatan,
+  offline_time: waktuOffline,
 });
 
 export const historyQuerySchema = z.object({
@@ -117,3 +123,22 @@ export const correctAttendanceSchema = z
 export const closeDayQuerySchema = z.object({
   date: z.iso.date("Tanggal tidak valid").optional(),
 });
+
+export const offlineLogQuerySchema = z
+  .object({
+    start_date: z.iso.date("Tanggal awal tidak valid").optional(),
+    end_date: z.iso.date("Tanggal akhir tidak valid").optional(),
+    department_id: z.uuid("ID departemen tidak valid").optional(),
+    employee_id: z.uuid("ID karyawan tidak valid").optional(),
+    min_delay_minutes: z.coerce.number().int().min(1).max(1440).default(2),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .refine(
+    (data) =>
+      !data.start_date || !data.end_date || data.end_date >= data.start_date,
+    {
+      message: "Tanggal akhir tidak boleh mendahului tanggal awal",
+      path: ["end_date"],
+    },
+  );

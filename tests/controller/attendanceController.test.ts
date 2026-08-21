@@ -1172,3 +1172,248 @@ describe("batas absen masuk", () => {
     expect(res.body.data.can_check_out).toBe(true);
   });
 });
+
+describe("absen offline yang disinkronkan setelah online kembali", () => {
+  const jadwalKetat = { ...jadwal, absent_cutoff_time: "08:10:00" };
+
+  function checkInOffline(offline_time: string, note?: string) {
+    return request(app)
+      .post("/api/v1/attendances/check-in")
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send(note ? { offline_time, note } : { offline_time });
+  }
+
+  beforeEach(() => {
+    (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
+      jadwalKetat as never,
+    );
+  });
+
+  it("karyawan yang menekan tombol tepat waktu tidak dihitung terlambat meski sinkronisasi telat", () => {
+    return (async () => {
+      setWaktuWib("2026-03-10", "09:30");
+
+      const res = await checkInOffline("2026-03-10T07:58:00+07:00");
+
+      expect(res.status).toBe(201);
+
+      const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
+        .calls[0] as [{ status: string; late_minutes: number }];
+
+      expect(data.status).toBe("present");
+      expect(data.late_minutes).toBe(0);
+    })();
+  });
+
+  it("menyimpan jam absen yang diklaim, bukan jam server saat diterima", async () => {
+    setWaktuWib("2026-03-10", "09:30");
+
+    await checkInOffline("2026-03-10T07:58:00+07:00");
+
+    const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
+      .calls[0] as [{ check_in_at: Date }];
+
+    expect(new Date(data.check_in_at).toISOString()).toBe(
+      "2026-03-10T00:58:00.000Z",
+    );
+  });
+
+  it("menandai absensi offline pada catatannya beserta jam terima server", async () => {
+    setWaktuWib("2026-03-10", "09:30");
+
+    await checkInOffline("2026-03-10T07:58:00+07:00");
+
+    const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
+      .calls[0] as [{ note: string }];
+
+    expect(data.note).toContain("Absen offline pukul 07:58");
+    expect(data.note).toContain("diterima server 09:30");
+  });
+
+  it("mempertahankan catatan asli karyawan di belakang penanda", async () => {
+    setWaktuWib("2026-03-10", "09:30");
+
+    await checkInOffline("2026-03-10T07:58:00+07:00", "Jaringan kantor mati");
+
+    const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
+      .calls[0] as [{ note: string }];
+
+    expect(data.note).toContain("Jaringan kantor mati");
+  });
+
+  it("tetap terhitung terlambat bila jam offline memang melewati toleransi", async () => {
+    setWaktuWib("2026-03-10", "11:00");
+
+    await checkInOffline("2026-03-10T08:08:00+07:00");
+
+    const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
+      .calls[0] as [{ status: string; late_minutes: number }];
+
+    expect(data.status).toBe("late");
+    expect(data.late_minutes).toBe(8);
+  });
+
+  it("tetap ditolak bila jam offline sudah melewati batas absen", async () => {
+    setWaktuWib("2026-03-10", "11:00");
+
+    const res = await checkInOffline("2026-03-10T08:30:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("08:10");
+    expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
+  });
+
+  it("menolak waktu offline yang berada di masa depan", async () => {
+    setWaktuWib("2026-03-10", "08:00");
+
+    const res = await checkInOffline("2026-03-10T09:00:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("masa depan");
+    expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
+  });
+
+  it("menolak sinkronisasi yang melewati batas enam jam", async () => {
+    setWaktuWib("2026-03-10", "16:00");
+
+    const res = await checkInOffline("2026-03-10T08:00:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("paling lambat");
+  });
+
+  it("menolak absen offline milik hari sebelumnya", async () => {
+    setWaktuWib("2026-03-10", "01:00");
+
+    const res = await checkInOffline("2026-03-09T23:30:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("hari yang sama");
+  });
+
+  it("menolak format waktu yang tidak sah sebelum menyentuh basis data", async () => {
+    setWaktuWib("2026-03-10", "09:00");
+
+    const res = await checkInOffline("10 Maret 2026 jam 8 pagi");
+
+    expect(res.status).toBe(400);
+    expect(attendanceModel.findByEmployeeAndDate).not.toHaveBeenCalled();
+  });
+
+  it("tidak pernah menimpa absensi yang sudah tercatat", async () => {
+    setWaktuWib("2026-03-10", "09:30");
+    (attendanceModel.findByEmployeeAndDate as jest.Mock).mockResolvedValue({
+      id: ATTENDANCE_ID,
+      status: "absent",
+      check_in_at: null,
+      check_out_at: null,
+    } as never);
+
+    const res = await checkInOffline("2026-03-10T07:58:00+07:00");
+
+    expect(res.status).toBe(409);
+    expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
+  });
+
+  it("mengembalikan absensi yang sudah ada agar antrean di perangkat dapat dibersihkan", async () => {
+    setWaktuWib("2026-03-10", "09:30");
+    const tersimpan = {
+      id: ATTENDANCE_ID,
+      status: "present",
+      check_in_at: new Date("2026-03-10T00:58:00Z"),
+      check_out_at: null,
+    };
+    (attendanceModel.findByEmployeeAndDate as jest.Mock).mockResolvedValue(
+      tersimpan as never,
+    );
+
+    const res = await checkInOffline("2026-03-10T07:58:00+07:00");
+
+    expect(res.status).toBe(409);
+    expect(res.body.details.attendance.check_in_at).toBe(
+      "2026-03-10T00:58:00.000Z",
+    );
+  });
+
+  it("menghormati hari libur walaupun absennya offline", async () => {
+    setWaktuWib("2026-03-10", "09:30");
+    (holidayModel.findByDate as jest.Mock).mockResolvedValue({
+      name: "Hari Raya Nyepi",
+    } as never);
+
+    const res = await checkInOffline("2026-03-10T07:58:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("Hari Raya Nyepi");
+  });
+
+  it("absen masuk tanpa offline_time tetap memakai jam server", async () => {
+    setWaktuWib("2026-03-10", "08:00");
+
+    await checkIn();
+
+    const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
+      .calls[0] as [{ note: string | null }];
+
+    expect(data.note).toBeNull();
+  });
+});
+
+describe("absen pulang offline", () => {
+  const absensiMasuk = {
+    id: ATTENDANCE_ID,
+    employee_id: EMPLOYEE_ID,
+    attendance_date: "2026-03-10",
+    status: "present",
+    check_in_at: new Date("2026-03-10T01:00:00Z"),
+    check_out_at: null,
+  };
+
+  function checkOutOffline(offline_time: string) {
+    return request(app)
+      .post("/api/v1/attendances/check-out")
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send({ offline_time });
+  }
+
+  beforeEach(() => {
+    (attendanceModel.findByEmployeeAndDate as jest.Mock).mockResolvedValue(
+      absensiMasuk as never,
+    );
+    (attendanceModel.setCheckOut as jest.Mock).mockImplementation(
+      (id, check_out_at, work_minutes) =>
+        Promise.resolve({ ...absensiMasuk, id, check_out_at, work_minutes }) as never,
+    );
+  });
+
+  it("menghitung durasi kerja dari jam offline, bukan jam sinkronisasi", async () => {
+    setWaktuWib("2026-03-10", "19:00");
+
+    const res = await checkOutOffline("2026-03-10T17:00:00+07:00");
+
+    expect(res.status).toBe(200);
+
+    const [, , menitKerja] = (attendanceModel.setCheckOut as jest.Mock).mock
+      .calls[0] as [string, Date, number];
+
+    expect(menitKerja).toBe(540);
+  });
+
+  it("menolak jam pulang offline yang mendahului jam masuk", async () => {
+    setWaktuWib("2026-03-10", "12:00");
+
+    const res = await checkOutOffline("2026-03-10T07:30:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(attendanceModel.setCheckOut).not.toHaveBeenCalled();
+  });
+
+  it("menolak jam pulang offline yang berada di masa depan", async () => {
+    setWaktuWib("2026-03-10", "17:00");
+
+    const res = await checkOutOffline("2026-03-10T18:00:00+07:00");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("masa depan");
+  });
+});

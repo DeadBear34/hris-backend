@@ -36,6 +36,20 @@ export interface CheckInInput {
   note?: string | null;
 }
 
+export interface OfflineLogParams {
+  employee_id?: string;
+  department_id?: string;
+  start_date?: IsoDate;
+  end_date?: IsoDate;
+  min_delay_minutes: number;
+  page: number;
+  limit: number;
+}
+
+export interface OfflineLogRow extends AttendanceDetail {
+  sync_delay_minutes: number;
+}
+
 export interface ListAttendanceParams {
   employee_id?: string;
   manager_id?: string;
@@ -469,4 +483,64 @@ export async function insertMarkers(
   );
 
   return result.rowCount ?? 0;
+}
+
+export async function listOfflineSync(
+  params: OfflineLogParams,
+): Promise<{ rows: OfflineLogRow[]; total: number }> {
+  const values: unknown[] = [params.min_delay_minutes];
+  const conditions: string[] = [
+    "e.deleted_at IS NULL",
+    "a.check_in_at IS NOT NULL",
+    "a.created_at - a.check_in_at > make_interval(mins => $1::int)",
+  ];
+
+  if (params.employee_id) {
+    values.push(params.employee_id);
+    conditions.push(`a.employee_id = $${values.length}::uuid`);
+  }
+
+  if (params.department_id) {
+    values.push(params.department_id);
+    conditions.push(`e.department_id = $${values.length}::uuid`);
+  }
+
+  if (params.start_date) {
+    values.push(params.start_date);
+    conditions.push(`a.attendance_date >= $${values.length}::date`);
+  }
+
+  if (params.end_date) {
+    values.push(params.end_date);
+    conditions.push(`a.attendance_date <= $${values.length}::date`);
+  }
+
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const from = `FROM attendances a
+     JOIN employees e ON e.id = a.employee_id
+     LEFT JOIN departments d ON d.id = e.department_id
+     LEFT JOIN positions p ON p.id = e.position_id`;
+
+  const countResult = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) ${from} ${where}`,
+    values,
+  );
+  const total = Number(countResult.rows[0]?.count ?? 0);
+
+  const offset = (params.page - 1) * params.limit;
+  values.push(params.limit, offset);
+
+  const dataResult = await pool.query<OfflineLogRow>(
+    `SELECT ${KOLOM_ABSENSI},
+            e.full_name AS employee_name, e.employee_number,
+            d.name AS department_name, p.name AS position_name,
+            (EXTRACT(EPOCH FROM (a.created_at - a.check_in_at)) / 60)::int
+              AS sync_delay_minutes
+     ${from} ${where}
+     ORDER BY a.created_at - a.check_in_at DESC
+     LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values,
+  );
+
+  return { rows: dataResult.rows, total };
 }

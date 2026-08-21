@@ -21,6 +21,10 @@ import {
 } from "../helpers/timezone.js";
 import { adalahHariKerja } from "../models/workSchedule.js";
 import {
+  alasanWaktuOfflineDitolak,
+  susunCatatanOffline,
+} from "../helpers/offlineAttendance.js";
+import {
   statusLabel,
   butuhJamMasuk,
   jamMenit,
@@ -147,6 +151,31 @@ async function alasanTidakBolehAbsen(
   return null;
 }
 
+interface WaktuAbsen {
+  waktu: Date;
+  offline: boolean;
+}
+
+function tentukanWaktuAbsen(
+  offline_time: string | undefined,
+  waktuServer: Date,
+  schedule: WorkSchedule,
+): WaktuAbsen {
+  if (!offline_time) return { waktu: waktuServer, offline: false };
+
+  const waktu = new Date(offline_time);
+
+  const alasan = alasanWaktuOfflineDitolak(
+    waktu,
+    waktuServer,
+    menitDariJam(schedule.start_time),
+  );
+
+  if (alasan) throw BadRequest(alasan);
+
+  return { waktu, offline: true };
+}
+
 function jamSingkat(waktu: string): string {
   return waktu.slice(0, 5);
 }
@@ -181,13 +210,17 @@ export async function CheckInController(
     const employee = await ambilKaryawan(req, res);
     pastikanBolehAbsen(employee);
 
-    const { note } = req.body as { note?: string };
+    const { note, offline_time } = req.body as {
+      note?: string;
+      offline_time?: string;
+    };
 
     const sekarang = new Date();
-    const lokal = keWaktuLokal(sekarang);
-    const tanggal = lokal.tanggal;
-
     const schedule = await ambilJadwal(employee.id);
+
+    const absen = tentukanWaktuAbsen(offline_time, sekarang, schedule);
+    const lokal = keWaktuLokal(absen.waktu);
+    const tanggal = lokal.tanggal;
 
     const terhalang = await alasanTidakBolehAbsen(
       employee.id,
@@ -227,17 +260,21 @@ export async function CheckInController(
     const attendance = await attendanceModel.createCheckIn({
       employee_id: employee.id,
       attendance_date: tanggal,
-      check_in_at: sekarang,
+      check_in_at: absen.waktu,
       status: terlambat ? "late" : "present",
       late_minutes: terlambat ? selisih : 0,
-      note: note ?? null,
+      note: absen.offline
+        ? susunCatatanOffline(absen.waktu, sekarang, note ?? null)
+        : (note ?? null),
     });
+
+    const jamAbsen = jamLokal(absen.waktu);
 
     res.status(201).json({
       success: true,
       message: terlambat
-        ? `Absensi masuk tercatat pukul ${jamLokal(sekarang)}, terlambat ${selisih} menit dari jam masuk ${schedule.start_time.slice(0, 5)}`
-        : `Absensi masuk tercatat pukul ${jamLokal(sekarang)}`,
+        ? `Absensi masuk tercatat pukul ${jamAbsen}, terlambat ${selisih} menit dari jam masuk ${jamSingkat(schedule.start_time)}`
+        : `Absensi masuk tercatat pukul ${jamAbsen}`,
       data: attendance,
     });
   } catch (err) {
@@ -254,8 +291,13 @@ export async function CheckOutController(
     const employee = await ambilKaryawan(req, res);
     pastikanBolehAbsen(employee);
 
+    const { offline_time } = req.body as { offline_time?: string };
+
     const sekarang = new Date();
-    const lokal = keWaktuLokal(sekarang);
+    const schedule = await ambilJadwal(employee.id);
+
+    const absen = tentukanWaktuAbsen(offline_time, sekarang, schedule);
+    const lokal = keWaktuLokal(absen.waktu);
     const tanggal = lokal.tanggal;
 
     const existing = await attendanceModel.findByEmployeeAndDate(
@@ -276,27 +318,26 @@ export async function CheckOutController(
       );
     }
 
-    const schedule = await ambilJadwal(employee.id);
     const menitMasuk = menitDariJam(schedule.start_time);
 
     if (lokal.menitSejakTengahMalam < menitMasuk) {
       throw BadRequest(
-        `Absensi pulang belum dapat dilakukan sebelum jam kerja dimulai pukul ${schedule.start_time.slice(0, 5)}`,
+        `Absensi pulang belum dapat dilakukan sebelum jam kerja dimulai pukul ${jamSingkat(schedule.start_time)}`,
       );
     }
 
     const masuk = new Date(existing.check_in_at);
-    const menitKerja = selisihMenit(masuk, sekarang);
+    const menitKerja = selisihMenit(masuk, absen.waktu);
 
     if (menitKerja <= 0) {
       throw BadRequest(
-        "Jam pulang harus setelah jam masuk, coba beberapa saat lagi",
+        `Jam pulang harus setelah jam masuk pukul ${jamLokal(masuk)}`,
       );
     }
 
     const attendance = await attendanceModel.setCheckOut(
       existing.id,
-      sekarang,
+      absen.waktu,
       menitKerja,
     );
 
@@ -308,7 +349,7 @@ export async function CheckOutController(
 
     res.json({
       success: true,
-      message: `Absensi pulang tercatat pukul ${jamLokal(sekarang)}, total kerja ${jamMenit(menitKerja)}`,
+      message: `Absensi pulang tercatat pukul ${jamLokal(absen.waktu)}, total kerja ${jamMenit(menitKerja)}`,
       data: attendance,
     });
   } catch (err) {
@@ -662,6 +703,25 @@ export async function CloseDayController(
           absent: hitung("absent"),
         },
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function OfflineLogController(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const query = res.locals.query as attendanceModel.OfflineLogParams;
+    const { rows, total } = await attendanceModel.listOfflineSync(query);
+
+    res.json({
+      success: true,
+      data: rows,
+      meta: meta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);

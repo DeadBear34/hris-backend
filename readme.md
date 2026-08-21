@@ -241,6 +241,7 @@ masuk dan batas toleransinya sendiri sebelum melakukan absensi.
 | `GET`   | `/attendances/team`             | `attendance.view_team`  | Absensi bawahan langsung                       |
 | `GET`   | `/attendances`                  | `attendance.view_all`   | Absensi seluruh karyawan dengan penyaringan    |
 | `GET`   | `/attendances/report`           | `attendance.report`     | Rekap bulanan satu baris per karyawan          |
+| `GET`   | `/attendances/offline-log`      | `attendance.report`     | Audit absensi yang dikirim setelah offline     |
 | `PATCH` | `/attendances/:id/correct`      | `attendance.correct`    | Koreksi absensi, alasan wajib diisi            |
 | `POST`  | `/attendances/close-day`        | `CRON_SECRET`           | Job penutup hari, dipanggil penjadwal eksternal |
 
@@ -398,6 +399,79 @@ diubah, jejaknya dituliskan ke kolom `note` dengan bentuk tetap:
 
 Keterlambatan dihitung ulang dari jadwal yang berlaku, bukan diambil dari
 kiriman klien, supaya angkanya selalu berasal dari satu sumber.
+
+## Absensi Offline
+
+Karyawan yang menekan tombol absen saat jaringan mati tetap harus tercatat pada
+jam ia menekan tombolnya, bukan pada jam perangkatnya berhasil terhubung
+kembali. Frontend mengantre absen tersebut, lalu mengirimnya begitu online
+dengan menyertakan `offline_time`.
+
+```json
+{
+  "note": "Jaringan kantor mati",
+  "offline_time": "2026-08-20T07:55:00+07:00"
+}
+```
+
+Berlaku pada `POST /attendances/check-in` dan `POST /attendances/check-out`.
+Tanpa `offline_time`, keduanya memakai jam server seperti biasa.
+
+### Waktu dari klien adalah klaim, bukan fakta
+
+`offline_time` berasal dari perangkat yang jamnya dikendalikan penggunanya
+sendiri, dan penggunanya diuntungkan kalau berbohong. Tidak ada cara
+membuktikan kapan sebuah kejadian benar-benar terjadi di perangkat yang tidak
+dipercaya, sehingga nilainya diterima dengan pembatasan dan selalu ditandai,
+bukan dipercaya begitu saja.
+
+| Pemeriksaan | Batas | Yang dicegah |
+| ----------- | ----- | ------------ |
+| Tidak berada di masa depan | toleransi 2 menit untuk selisih jam perangkat | Absen untuk waktu yang belum tiba |
+| Jeda sinkronisasi | maksimal 6 jam | Mengantre seharian lalu dikirim malam hari |
+| Tanggal WIB sama dengan tanggal server | wajib sama | Menambal hari sebelumnya |
+| Tidak terlalu jauh sebelum jam masuk | maksimal 2 jam sebelumnya | Mengaku hadir dini hari |
+
+Seluruh aturan absensi tetap berlaku penuh terhadap `offline_time`: toleransi
+keterlambatan, batas absen, hari libur, akhir pekan, dan cuti. Absen offline
+yang jam klaimnya melewati `absent_cutoff_time` tetap ditolak.
+
+Absensi yang sudah tercatat tidak pernah ditimpa. Baris `absent` yang dibuat
+job penutup hari juga tidak, sehingga sinkronisasi yang datang terlambat
+dijawab 409 dan penyelesaiannya lewat koreksi absensi oleh atasan, yang
+mencatat siapa mengubah apa dan mengapa.
+
+### Jejak yang tidak dapat dipalsukan
+
+Kolom `created_at` diisi database saat baris dibuat dan tidak dapat disentuh
+klien, sedangkan `check_in_at` berisi waktu yang diklaim. Selisih keduanya
+adalah lama sinkronisasi, dan selisih itulah yang menjadi bukti.
+
+Absensi offline juga ditandai pada `note` dengan bentuk tetap:
+
+```
+[Absen offline pukul 07:55, diterima server 09:12] Jaringan kantor mati
+```
+
+`GET /attendances/offline-log` menampilkan seluruh absensi yang jeda
+sinkronisasinya melewati ambang tertentu, diurutkan dari yang terlama, beserta
+`sync_delay_minutes`. Daftarnya disusun dari selisih `created_at` dan
+`check_in_at`, bukan dari isi `note`, sehingga tetap benar walaupun catatannya
+diubah lewat koreksi.
+
+Query yang didukung: `start_date`, `end_date`, `department_id`, `employee_id`,
+`min_delay_minutes` (bawaan 2), `page`, `limit`.
+
+### Yang tidak dijamin fitur ini
+
+Pembatasan di atas mempersempit celah, tidak menutupnya. Karyawan yang datang
+pukul 09:00 masih dapat mengirim `offline_time` pukul 08:00 dan tercatat hadir.
+Yang dijamin adalah perbuatannya meninggalkan jejak permanen yang dapat
+diperiksa lewat `offline-log`.
+
+Kalau audit menunjukkan pemakaiannya berulang pada orang yang sama, langkah
+berikutnya adalah mengubah absen offline menjadi pengajuan yang perlu
+disetujui atasan, bukan langsung menjadi kehadiran.
 
 ## Job Penutup Hari
 

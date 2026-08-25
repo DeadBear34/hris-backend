@@ -86,10 +86,14 @@ describe("pencatatan absen masuk dan pulang", () => {
 
     const waktu = new Date("2026-03-10T01:30:00Z");
 
+    const diterima = new Date("2026-03-10T01:31:00Z");
+
     await attendanceModel.createCheckIn({
       employee_id: EMPLOYEE_ID,
       attendance_date: "2026-03-10",
       check_in_at: waktu,
+      check_in_recorded_at: diterima,
+      check_in_source: "offline_sync",
       status: "late",
       late_minutes: 30,
     });
@@ -100,6 +104,8 @@ describe("pencatatan absen masuk dan pulang", () => {
       EMPLOYEE_ID,
       "2026-03-10",
       waktu,
+      diterima,
+      "offline_sync",
       "late",
       30,
       null,
@@ -114,6 +120,8 @@ describe("pencatatan absen masuk dan pulang", () => {
         employee_id: EMPLOYEE_ID,
         attendance_date: "2026-03-10",
         check_in_at: new Date(),
+        check_in_recorded_at: new Date(),
+        check_in_source: "online",
         status: "present",
         late_minutes: 0,
       }),
@@ -126,6 +134,8 @@ describe("pencatatan absen masuk dan pulang", () => {
     await attendanceModel.setCheckOut(
       ATTENDANCE_ID,
       new Date("2026-03-10T10:00:00Z"),
+      new Date("2026-03-10T10:00:00Z"),
+      "online",
       540,
     );
 
@@ -142,6 +152,8 @@ describe("pencatatan absen masuk dan pulang", () => {
     const hasil = await attendanceModel.setCheckOut(
       ATTENDANCE_ID,
       new Date(),
+      new Date(),
+      "online",
       540,
     );
 
@@ -461,7 +473,11 @@ describe("koreksi absensi", () => {
     await attendanceModel.correctAttendance(ATTENDANCE_ID, {
       status: "absent",
       check_in_at: null,
+      check_in_recorded_at: null,
+      check_in_source: null,
       check_out_at: null,
+      check_out_recorded_at: null,
+      check_out_source: null,
       late_minutes: 0,
       work_minutes: null,
       note: "Dikoreksi karena salah input",
@@ -471,10 +487,14 @@ describe("koreksi absensi", () => {
 
     expect(sql).toContain("status = $2::attendance_status");
     expect(sql).toContain("check_in_at = $3::timestamptz");
-    expect(sql).toContain("work_minutes = $6::int");
+    expect(sql).toContain("check_in_source = $5::attendance_source");
     expect(values).toEqual([
       ATTENDANCE_ID,
       "absent",
+      null,
+      null,
+      null,
+      null,
       null,
       null,
       0,
@@ -489,7 +509,7 @@ describe("audit absensi offline", () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "0" }] } as never);
   });
 
-  it("mengenali absensi offline dari selisih created_at dan check_in_at", async () => {
+  it("mengenali absensi offline dari kolom source, bukan dari isi catatan", async () => {
     await attendanceModel.listOfflineSync({
       min_delay_minutes: 2,
       page: 1,
@@ -498,10 +518,8 @@ describe("audit absensi offline", () => {
 
     const [sql] = panggilan(0);
 
-    expect(sql).toContain(
-      "a.created_at - a.check_in_at > make_interval(mins => $1::int)",
-    );
-    expect(sql).toContain("a.check_in_at IS NOT NULL");
+    expect(sql).toContain("a.check_in_source = 'offline_sync'");
+    expect(sql).toContain("a.check_out_source = 'offline_sync'");
   });
 
   it("mengurutkan dari jeda sinkronisasi terlama", async () => {
@@ -513,14 +531,21 @@ describe("audit absensi offline", () => {
 
     const [sql] = panggilan();
 
-    expect(sql).toContain("ORDER BY a.created_at - a.check_in_at DESC");
+    expect(sql).toContain("ORDER BY GREATEST(");
   });
 
   it("menghitung jeda sinkronisasi dalam menit", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ count: "1" }] } as never)
       .mockResolvedValueOnce({
-        rows: [{ ...fakeAttendance, sync_delay_minutes: 77 }],
+        rows: [
+          {
+            ...fakeAttendance,
+            check_in_delay_minutes: 77,
+            check_out_delay_minutes: null,
+            max_delay_minutes: 77,
+          },
+        ],
       } as never);
 
     const { rows } = await attendanceModel.listOfflineSync({
@@ -529,7 +554,8 @@ describe("audit absensi offline", () => {
       limit: 20,
     });
 
-    expect(rows[0]?.sync_delay_minutes).toBe(77);
+    expect(rows[0]?.check_in_delay_minutes).toBe(77);
+    expect(rows[0]?.max_delay_minutes).toBe(77);
   });
 
   it("dapat dipersempit ke satu karyawan dan rentang tanggal", async () => {

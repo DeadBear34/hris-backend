@@ -5,12 +5,19 @@ import type { IsoDate } from "../helpers/timezone.js";
 export type AttendanceStatus =
   "present" | "late" | "absent" | "leave" | "holiday";
 
+export type AttendanceSource =
+  "online" | "offline_sync" | "system" | "correction";
+
 export interface Attendance {
   id: string;
   employee_id: string;
   attendance_date: IsoDate;
   check_in_at: Date | null;
+  check_in_recorded_at: Date | null;
+  check_in_source: AttendanceSource | null;
   check_out_at: Date | null;
+  check_out_recorded_at: Date | null;
+  check_out_source: AttendanceSource | null;
   status: AttendanceStatus;
   late_minutes: number;
   work_minutes: number | null;
@@ -31,6 +38,8 @@ export interface CheckInInput {
   employee_id: string;
   attendance_date: IsoDate;
   check_in_at: Date;
+  check_in_recorded_at: Date;
+  check_in_source: Extract<AttendanceSource, "online" | "offline_sync">;
   status: Extract<AttendanceStatus, "present" | "late">;
   late_minutes: number;
   note?: string | null;
@@ -47,7 +56,9 @@ export interface OfflineLogParams {
 }
 
 export interface OfflineLogRow extends AttendanceDetail {
-  sync_delay_minutes: number;
+  check_in_delay_minutes: number | null;
+  check_out_delay_minutes: number | null;
+  max_delay_minutes: number;
 }
 
 export interface ListAttendanceParams {
@@ -92,7 +103,11 @@ const KOLOM_NAMA = [
   "employee_id",
   "attendance_date",
   "check_in_at",
+  "check_in_recorded_at",
+  "check_in_source",
   "check_out_at",
+  "check_out_recorded_at",
+  "check_out_source",
   "status",
   "late_minutes",
   "work_minutes",
@@ -144,14 +159,17 @@ export async function createCheckIn(
 ): Promise<Attendance> {
   const result = await db.query<Attendance>(
     `INSERT INTO attendances
-       (employee_id, attendance_date, check_in_at, status, late_minutes, note)
-     VALUES ($1::uuid, $2::date, $3::timestamptz, $4::attendance_status,
-             $5::int, $6)
+       (employee_id, attendance_date, check_in_at, check_in_recorded_at,
+        check_in_source, status, late_minutes, note)
+     VALUES ($1::uuid, $2::date, $3::timestamptz, $4::timestamptz,
+             $5::attendance_source, $6::attendance_status, $7::int, $8)
      RETURNING ${KOLOM}`,
     [
       data.employee_id,
       data.attendance_date,
       data.check_in_at,
+      data.check_in_recorded_at,
+      data.check_in_source,
       data.status,
       data.late_minutes,
       data.note ?? null,
@@ -169,16 +187,21 @@ export async function createCheckIn(
 export async function setCheckOut(
   id: string,
   check_out_at: Date,
+  check_out_recorded_at: Date,
+  check_out_source: Extract<AttendanceSource, "online" | "offline_sync">,
   work_minutes: number,
   db: Executor = pool,
 ): Promise<Attendance | null> {
   const result = await db.query<Attendance>(
     `UPDATE attendances
-     SET check_out_at = $2::timestamptz, work_minutes = $3::int,
+     SET check_out_at = $2::timestamptz,
+         check_out_recorded_at = $3::timestamptz,
+         check_out_source = $4::attendance_source,
+         work_minutes = $5::int,
          updated_at = now()
      WHERE id = $1::uuid AND check_out_at IS NULL AND check_in_at IS NOT NULL
      RETURNING ${KOLOM}`,
-    [id, check_out_at, work_minutes],
+    [id, check_out_at, check_out_recorded_at, check_out_source, work_minutes],
   );
 
   return result.rows[0] ?? null;
@@ -343,7 +366,11 @@ export async function monthlyReport(
 export interface CorrectionInput {
   status: AttendanceStatus;
   check_in_at?: Date | null;
+  check_in_recorded_at?: Date | null;
+  check_in_source?: AttendanceSource | null;
   check_out_at?: Date | null;
+  check_out_recorded_at?: Date | null;
+  check_out_source?: AttendanceSource | null;
   late_minutes: number;
   work_minutes?: number | null;
   note: string;
@@ -358,10 +385,14 @@ export async function correctAttendance(
     `UPDATE attendances
      SET status = $2::attendance_status,
          check_in_at = $3::timestamptz,
-         check_out_at = $4::timestamptz,
-         late_minutes = $5::int,
-         work_minutes = $6::int,
-         note = $7,
+         check_in_recorded_at = $4::timestamptz,
+         check_in_source = $5::attendance_source,
+         check_out_at = $6::timestamptz,
+         check_out_recorded_at = $7::timestamptz,
+         check_out_source = $8::attendance_source,
+         late_minutes = $9::int,
+         work_minutes = $10::int,
+         note = $11,
          updated_at = now()
      WHERE id = $1::uuid
      RETURNING ${KOLOM}`,
@@ -369,7 +400,11 @@ export async function correctAttendance(
       id,
       data.status,
       data.check_in_at ?? null,
+      data.check_in_recorded_at ?? null,
+      data.check_in_source ?? null,
       data.check_out_at ?? null,
+      data.check_out_recorded_at ?? null,
+      data.check_out_source ?? null,
       data.late_minutes,
       data.work_minutes ?? null,
       data.note,
@@ -395,7 +430,11 @@ export async function upsertLeaveDays(
      ON CONFLICT (employee_id, attendance_date) DO UPDATE
      SET status = 'leave'::attendance_status,
          check_in_at = NULL,
+         check_in_recorded_at = NULL,
+         check_in_source = NULL,
          check_out_at = NULL,
+         check_out_recorded_at = NULL,
+         check_out_source = NULL,
          late_minutes = 0,
          work_minutes = NULL,
          leave_request_id = EXCLUDED.leave_request_id,
@@ -491,8 +530,12 @@ export async function listOfflineSync(
   const values: unknown[] = [params.min_delay_minutes];
   const conditions: string[] = [
     "e.deleted_at IS NULL",
-    "a.check_in_at IS NOT NULL",
-    "a.created_at - a.check_in_at > make_interval(mins => $1::int)",
+    `(a.check_in_source = 'offline_sync'::attendance_source
+      OR a.check_out_source = 'offline_sync'::attendance_source)`,
+    `GREATEST(
+       COALESCE(EXTRACT(EPOCH FROM (a.check_in_recorded_at - a.check_in_at)), 0),
+       COALESCE(EXTRACT(EPOCH FROM (a.check_out_recorded_at - a.check_out_at)), 0)
+     ) >= $1::int * 60`,
   ];
 
   if (params.employee_id) {
@@ -521,6 +564,12 @@ export async function listOfflineSync(
      LEFT JOIN departments d ON d.id = e.department_id
      LEFT JOIN positions p ON p.id = e.position_id`;
 
+  // Jeda dihitung dari selisih waktu tekan dan waktu terima, keduanya kolom
+  // tersendiri, sehingga koreksi manual pada catatan tidak menghapus buktinya.
+  const jedaMasuk = `(EXTRACT(EPOCH FROM (a.check_in_recorded_at - a.check_in_at)) / 60)::int`;
+  const jedaPulang = `(EXTRACT(EPOCH FROM (a.check_out_recorded_at - a.check_out_at)) / 60)::int`;
+  const jedaTerlama = `GREATEST(COALESCE(${jedaMasuk}, 0), COALESCE(${jedaPulang}, 0))`;
+
   const countResult = await pool.query<{ count: string }>(
     `SELECT COUNT(*) ${from} ${where}`,
     values,
@@ -534,10 +583,11 @@ export async function listOfflineSync(
     `SELECT ${KOLOM_ABSENSI},
             e.full_name AS employee_name, e.employee_number,
             d.name AS department_name, p.name AS position_name,
-            (EXTRACT(EPOCH FROM (a.created_at - a.check_in_at)) / 60)::int
-              AS sync_delay_minutes
+            ${jedaMasuk} AS check_in_delay_minutes,
+            ${jedaPulang} AS check_out_delay_minutes,
+            ${jedaTerlama} AS max_delay_minutes
      ${from} ${where}
-     ORDER BY a.created_at - a.check_in_at DESC
+     ORDER BY ${jedaTerlama} DESC, a.attendance_date DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
   );

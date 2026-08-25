@@ -3,6 +3,7 @@ import {
   ListEmployeeController,
   DetailEmployeeController,
   CreateEmployeeController,
+  CreateEmployeeBulkController,
   UpdateEmployeeController,
   DeleteEmployeeController,
 } from "../controller/employeeController.js";
@@ -21,6 +22,7 @@ import {
 import {
   listEmployeeQuerySchema,
   createEmployeeSchema,
+  createEmployeeBulkSchema,
   updateEmployeeSchema,
 } from "../schema/employeeSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
@@ -44,6 +46,13 @@ router.post(
   ...bolehTambahKaryawan,
   validate(createEmployeeSchema),
   CreateEmployeeController,
+);
+
+router.post(
+  "/employees/bulk",
+  ...bolehTambahKaryawan,
+  validate(createEmployeeBulkSchema),
+  CreateEmployeeBulkController,
 );
 
 router.get(

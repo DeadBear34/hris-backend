@@ -162,6 +162,19 @@ const fakeJadwal = {
   works_sunday: false,
 };
 
+// Tanggal lampau yang dijamin hari kerja. Memakai "kemarin" begitu saja membuat
+// pengujian gagal setiap Minggu dan Senin, karena rentang tanpa hari kerja
+// memicu galat yang berbeda sebelum aturan yang sedang diuji sempat berjalan.
+function hariKerjaLampau(): string {
+  const kursor = new Date();
+
+  do {
+    kursor.setUTCDate(kursor.getUTCDate() - 1);
+  } while (kursor.getUTCDay() === 0 || kursor.getUTCDay() === 6);
+
+  return toIsoDate(kursor);
+}
+
 function fakeRequest(override: Record<string, unknown> = {}) {
   return {
     id: REQUEST_ID,
@@ -449,12 +462,12 @@ describe("validasi pengajuan", () => {
   });
 
   it("menolak tanggal lampau untuk jenis cuti selain sakit", async () => {
-    const kemarin = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const lampau = hariKerjaLampau();
 
     const res = await ajukan({
       ...bodyPengajuan,
-      start_date: kemarin,
-      end_date: kemarin,
+      start_date: lampau,
+      end_date: lampau,
     });
 
     expect(res.status).toBe(400);
@@ -469,19 +482,15 @@ describe("validasi pengajuan", () => {
       deducts_balance: false,
     } as never);
 
-    const kemarin = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const lampau = hariKerjaLampau();
 
     const res = await ajukan({
       ...bodyPengajuan,
-      start_date: kemarin,
-      end_date: kemarin,
+      start_date: lampau,
+      end_date: lampau,
     });
 
-    // hanya lolos kalau kemarin bukan akhir pekan
-    expect([201, 400]).toContain(res.status);
-    if (res.status === 400) {
-      expect(res.body.message).toContain("hari kerja");
-    }
+    expect(res.status).toBe(201);
   });
 
   it("menolak jenis cuti yang tidak aktif", async () => {

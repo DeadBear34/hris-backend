@@ -13,7 +13,16 @@ export function statusLabel(status: AttendanceStatus): string {
 }
 
 export function butuhJamMasuk(status: AttendanceStatus): boolean {
-  return status === "present" || status === "late";
+  switch (status) {
+    case "present":
+    case "late":
+      return true;
+
+    case "absent":
+    case "leave":
+    case "holiday":
+      return false;
+  }
 }
 
 export function jamMenit(menit: number): string {
@@ -43,5 +52,33 @@ export function tentukanStatusKedatangan(
 
     default:
       return "present";
+  }
+}
+
+export type PenandaHarian = "holiday" | "leave" | "absent" | "lewati";
+
+export interface KeadaanHarian {
+  sudahAdaAbsensi: boolean;
+  hariLibur: boolean;
+  sedangCuti: boolean;
+  hariKerja: boolean;
+}
+
+export function tentukanPenandaHarian(keadaan: KeadaanHarian): PenandaHarian {
+  switch (true) {
+    case keadaan.sudahAdaAbsensi:
+      return "lewati";
+
+    case keadaan.hariLibur:
+      return "holiday";
+
+    case keadaan.sedangCuti:
+      return "leave";
+
+    case !keadaan.hariKerja:
+      return "lewati";
+
+    default:
+      return "absent";
   }
 }

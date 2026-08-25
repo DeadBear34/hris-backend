@@ -140,7 +140,7 @@ describe("insertUserByAdmin", () => {
     jest.clearAllMocks();
   });
 
-  it("membuat akun yang langsung aktif dan disetujui", async () => {
+  it("membuat akun yang langsung terverifikasi, disetujui, dan aktif", async () => {
     (fakeDb.query as jest.Mock).mockResolvedValue({
       rows: [{ ...fakeUser, is_active: true, must_change_password: true }],
     } as never);
@@ -155,9 +155,43 @@ describe("insertUserByAdmin", () => {
 
     const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
 
-    expect(sql).toContain("true");
-    expect(sql).toContain("approved_at");
-    expect(sql).toContain("must_change_password");
+    // Hanya daftar kolom yang diisi yang diperiksa, karena klausa RETURNING
+    // memuat seluruh nama kolom sehingga pemeriksaan atas keseluruhan teks
+    // dapat lolos tanpa kolomnya benar-benar ditulis.
+    const kolomDiisi = sql.slice(
+      sql.indexOf("(", sql.indexOf("INSERT INTO users")),
+      sql.indexOf("VALUES"),
+    );
+
+    for (const kolom of [
+      "email_verified_at",
+      "approved_at",
+      "is_active",
+      "must_change_password",
+    ]) {
+      expect(kolomDiisi).toContain(kolom);
+    }
+  });
+
+  it("akun buatan admin lolos ketiga syarat login tanpa verifikasi email", async () => {
+    (fakeDb.query as jest.Mock).mockResolvedValue({
+      rows: [fakeUser],
+    } as never);
+
+    await userModel.insertUserByAdmin(
+      fakeDb as never,
+      "baru@awan.io",
+      "hash",
+      "employee",
+      ADMIN_ID,
+    );
+
+    const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
+    const nilai = sql.slice(sql.indexOf("VALUES"), sql.indexOf("RETURNING"));
+
+    // email_verified_at dan approved_at diisi now(), is_active diisi true
+    expect(nilai.match(/now\(\)/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(nilai).toContain("true");
   });
 
   it("mencatat siapa yang membuat akun", async () => {

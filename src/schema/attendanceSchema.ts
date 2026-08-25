@@ -142,3 +142,28 @@ export const offlineLogQuerySchema = z
       path: ["end_date"],
     },
   );
+
+export const eventLogQuerySchema = z
+  .object({
+    employee_id: z.uuid("ID karyawan tidak valid").optional(),
+    kind: z.enum(["check_in", "check_out"]).optional(),
+    source: z
+      .enum(["online", "offline_sync", "system", "correction"])
+      .optional(),
+    only_rejected: z
+      .enum(["true", "false"])
+      .transform((nilai) => nilai === "true")
+      .optional(),
+    start_date: z.iso.date("Tanggal awal tidak valid").optional(),
+    end_date: z.iso.date("Tanggal akhir tidak valid").optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .refine(
+    (data) =>
+      !data.start_date || !data.end_date || data.end_date >= data.start_date,
+    {
+      message: "Tanggal akhir tidak boleh mendahului tanggal awal",
+      path: ["end_date"],
+    },
+  );

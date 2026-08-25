@@ -313,17 +313,22 @@ export function adalahHariKerja(
   schedule: WorkSchedule,
   hari: NamaHari,
 ): boolean {
-  const peta: Record<NamaHari, boolean> = {
-    monday: schedule.works_monday,
-    tuesday: schedule.works_tuesday,
-    wednesday: schedule.works_wednesday,
-    thursday: schedule.works_thursday,
-    friday: schedule.works_friday,
-    saturday: schedule.works_saturday,
-    sunday: schedule.works_sunday,
-  };
-
-  return peta[hari];
+  switch (hari) {
+    case "monday":
+      return schedule.works_monday;
+    case "tuesday":
+      return schedule.works_tuesday;
+    case "wednesday":
+      return schedule.works_wednesday;
+    case "thursday":
+      return schedule.works_thursday;
+    case "friday":
+      return schedule.works_friday;
+    case "saturday":
+      return schedule.works_saturday;
+    case "sunday":
+      return schedule.works_sunday;
+  }
 }
 
 export function tanggalKerjaDalamRentang(

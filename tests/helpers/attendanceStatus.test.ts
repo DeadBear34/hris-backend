@@ -4,6 +4,7 @@ import {
   butuhJamMasuk,
   jamMenit,
   tentukanStatusKedatangan,
+  tentukanPenandaHarian,
 } from "../../src/helpers/attendanceStatus.js";
 
 describe("statusLabel", () => {
@@ -94,5 +95,70 @@ describe("tentukanStatusKedatangan", () => {
   it("toleransi nol membuat satu menit terlambat langsung terhitung", () => {
     expect(tentukanStatusKedatangan(481, MASUK, 0, TUTUP)).toBe("late");
     expect(tentukanStatusKedatangan(480, MASUK, 0, TUTUP)).toBe("present");
+  });
+});
+
+describe("tentukanPenandaHarian", () => {
+  const keadaan = (
+    ubah: Partial<Parameters<typeof tentukanPenandaHarian>[0]>,
+  ) =>
+    tentukanPenandaHarian({
+      sudahAdaAbsensi: false,
+      hariLibur: false,
+      sedangCuti: false,
+      hariKerja: true,
+      ...ubah,
+    });
+
+  it("melewati karyawan yang sudah punya absensi", () => {
+    expect(keadaan({ sudahAdaAbsensi: true })).toBe("lewati");
+  });
+
+  it("absensi yang sudah ada mengalahkan seluruh pertimbangan lain", () => {
+    expect(
+      keadaan({ sudahAdaAbsensi: true, hariLibur: true, sedangCuti: true }),
+    ).toBe("lewati");
+  });
+
+  it("hari libur mengalahkan cuti", () => {
+    expect(keadaan({ hariLibur: true, sedangCuti: true })).toBe("holiday");
+  });
+
+  it("cuti mengalahkan tidak hadir", () => {
+    expect(keadaan({ sedangCuti: true })).toBe("leave");
+  });
+
+  it("hari kerja tanpa absensi menjadi tidak hadir", () => {
+    expect(keadaan({})).toBe("absent");
+  });
+
+  it("bukan hari kerja tidak menghasilkan baris apa pun", () => {
+    expect(keadaan({ hariKerja: false })).toBe("lewati");
+  });
+
+  it("hari libur tetap ditandai walau jatuh di luar hari kerja", () => {
+    expect(keadaan({ hariLibur: true, hariKerja: false })).toBe("holiday");
+  });
+
+  it("cuti tetap ditandai walau jatuh di luar hari kerja", () => {
+    expect(keadaan({ sedangCuti: true, hariKerja: false })).toBe("leave");
+  });
+
+  it("selalu memberi keputusan untuk setiap kombinasi keadaan", () => {
+    const nilai = [false, true];
+
+    for (const sudahAdaAbsensi of nilai)
+      for (const hariLibur of nilai)
+        for (const sedangCuti of nilai)
+          for (const hariKerja of nilai) {
+            const hasil = tentukanPenandaHarian({
+              sudahAdaAbsensi,
+              hariLibur,
+              sedangCuti,
+              hariKerja,
+            });
+
+            expect(["holiday", "leave", "absent", "lewati"]).toContain(hasil);
+          }
   });
 });

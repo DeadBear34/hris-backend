@@ -23,11 +23,16 @@ function ambilResend(): Resend {
 export type MailDriver = "log" | "resend";
 
 export function activeMailDriver(): MailDriver {
-  if (env.NODE_ENV === "test") return "log";
+  switch (env.NODE_ENV) {
+    case "test":
+      return "log";
 
-  if (env.MAIL_DRIVER) return env.MAIL_DRIVER;
+    case "production":
+      return env.MAIL_DRIVER ?? "resend";
 
-  return env.NODE_ENV === "production" ? "resend" : "log";
+    case "development":
+      return env.MAIL_DRIVER ?? "log";
+  }
 }
 
 export function isSecretLoggingAllowed(): boolean {
@@ -35,22 +40,27 @@ export function isSecretLoggingAllowed(): boolean {
 }
 
 export async function sendMail(mail: MailInput): Promise<void> {
-  if (activeMailDriver() === "log") {
-    logger.info(
-      { to: mail.to, subject: mail.subject, html: mail.html },
-      "Email tidak dikirim, MAIL_DRIVER sedang memakai mode log",
-    );
-    return;
-  }
+  switch (activeMailDriver()) {
+    case "log":
+      logger.info(
+        { to: mail.to, subject: mail.subject, html: mail.html },
+        "Email tidak dikirim, MAIL_DRIVER sedang memakai mode log",
+      );
+      return;
 
-  const { error } = await ambilResend().emails.send({
-    from: env.MAIL_FROM,
-    to: mail.to,
-    subject: mail.subject,
-    html: mail.html,
-  });
+    case "resend": {
+      const { error } = await ambilResend().emails.send({
+        from: env.MAIL_FROM,
+        to: mail.to,
+        subject: mail.subject,
+        html: mail.html,
+      });
 
-  if (error) {
-    throw new Error(`Gagal mengirim email: ${error.message}`);
+      if (error) {
+        throw new Error(`Gagal mengirim email: ${error.message}`);
+      }
+
+      return;
+    }
   }
 }

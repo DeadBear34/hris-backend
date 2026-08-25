@@ -75,3 +75,17 @@ export const updateEmployeeSchema = employeeDataSchema.partial().extend({
   is_active: z.boolean().optional(),
   resign_date: z.iso.date("Tanggal resign tidak valid").optional(),
 });
+
+export const BATAS_KARYAWAN_MASSAL = 100;
+
+export const createEmployeeBulkSchema = z.object({
+  employees: z
+    .array(createEmployeeSchema, {
+      message: "Daftar karyawan wajib diisi",
+    })
+    .min(1, "Minimal satu karyawan harus diisi")
+    .max(
+      BATAS_KARYAWAN_MASSAL,
+      `Maksimal ${BATAS_KARYAWAN_MASSAL} karyawan dalam satu permintaan`,
+    ),
+});

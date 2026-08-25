@@ -13,6 +13,7 @@ import type { UserRole } from "../models/user.js";
 import { hashPassword } from "../helpers/password.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import {
+  AppError,
   BadRequest,
   NotFound,
   Conflict,
@@ -157,6 +158,127 @@ export async function CreateEmployeeController(
           must_change_password: user.must_change_password,
         },
       },
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    next(err);
+  } finally {
+    client.release();
+  }
+}
+
+interface BarisGagal {
+  index: number;
+  email: string;
+  message: string;
+}
+
+async function periksaSatuBaris(
+  baris: CreateEmployeeInput & { email: string },
+  index: number,
+  emailSebelumnya: Map<string, number>,
+): Promise<BarisGagal | null> {
+  const gagal = (message: string): BarisGagal => ({
+    index,
+    email: baris.email,
+    message,
+  });
+
+  const kembar = emailSebelumnya.get(baris.email);
+  if (kembar !== undefined) {
+    return gagal(`Email sama dengan baris ke-${kembar + 1} pada permintaan ini`);
+  }
+  emailSebelumnya.set(baris.email, index);
+
+  const terdaftar = await userModel.findByEmail(baris.email);
+  if (terdaftar) return gagal("Email sudah terdaftar");
+
+  try {
+    await validasiRelasi(baris);
+  } catch (err) {
+    return gagal(err instanceof AppError ? err.message : "Data tidak valid");
+  }
+
+  return null;
+}
+
+export async function CreateEmployeeBulkController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const client = await pool.connect();
+
+  try {
+    if (!req.user)
+      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+
+    const { employees } = req.body as {
+      employees: (CreateEmployeeInput & {
+        email: string;
+        password: string;
+        role?: UserRole;
+      })[];
+    };
+
+    const emailSebelumnya = new Map<string, number>();
+    const gagal: BarisGagal[] = [];
+
+    for (const [index, baris] of employees.entries()) {
+      const masalah = await periksaSatuBaris(baris, index, emailSebelumnya);
+      if (masalah) gagal.push(masalah);
+    }
+
+    if (gagal.length > 0) {
+      throw BadRequest(
+        `${gagal.length} dari ${employees.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
+        { failed_rows: gagal },
+      );
+    }
+
+    const hashed = await Promise.all(
+      employees.map((baris) => hashPassword(baris.password)),
+    );
+
+    await client.query("BEGIN");
+
+    const dibuat = [];
+
+    for (const [index, baris] of employees.entries()) {
+      const { email, password: _password, role, ...employeeData } = baris;
+
+      const user = await userModel.insertUserByAdmin(
+        client,
+        email,
+        hashed[index]!,
+        role ?? "employee",
+        req.user.id,
+      );
+
+      const employee = await employeeModel.createEmployee(
+        client,
+        user.id,
+        employeeData,
+      );
+
+      dibuat.push({
+        employee,
+        account: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          must_change_password: user.must_change_password,
+        },
+      });
+    }
+
+    await client.query("COMMIT");
+
+    res.status(201).json({
+      success: true,
+      message: `${dibuat.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`,
+      data: dibuat,
+      meta: { created: dibuat.length },
     });
   } catch (err) {
     await client.query("ROLLBACK");

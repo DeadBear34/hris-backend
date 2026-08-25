@@ -154,6 +154,7 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`.
 | `POST`   | `/positions`       | `organization.manage` | Menambah jabatan                           |
 | `PATCH`  | `/positions/:id`   | `organization.manage` | Mengubah jabatan                           |
 | `DELETE` | `/positions/:id`   | `organization.manage` | Menghapus jabatan                          |
+| `POST`   | `/employees/bulk`         | `employee.create`  | Menambah banyak karyawan sekaligus, maksimal 100 |
 
 ### Hari Libur dan Jenis Cuti
 
@@ -242,6 +243,7 @@ masuk dan batas toleransinya sendiri sebelum melakukan absensi.
 | `GET`   | `/attendances`                  | `attendance.view_all`   | Absensi seluruh karyawan dengan penyaringan    |
 | `GET`   | `/attendances/report`           | `attendance.report`     | Rekap bulanan satu baris per karyawan          |
 | `GET`   | `/attendances/offline-log`      | `attendance.report`     | Audit absensi yang dikirim setelah offline     |
+| `GET`   | `/attendances/events`           | `attendance.report`     | Jejak mentah setiap penekanan tombol absen     |
 | `PATCH` | `/attendances/:id/correct`      | `attendance.correct`    | Koreksi absensi, alasan wajib diisi            |
 | `POST`  | `/attendances/close-day`        | `CRON_SECRET`           | Job penutup hari, dipanggil penjadwal eksternal |
 
@@ -297,6 +299,98 @@ penyimpanan belum dikonfigurasi.
   "photo_url": "https://xxx.supabase.co/storage/v1/object/public/employee-photos/..."
 }
 ```
+
+## Penambahan Karyawan Massal
+
+`POST /employees/bulk` menerima banyak karyawan sekaligus, maksimal 100 per
+permintaan.
+
+```json
+{
+  "employees": [
+    { "email": "andi@awan.io", "password": "12345678", "full_name": "Andi Saputra",
+      "phone": "+628110000101", "gender": "male" },
+    { "email": "citra@awan.io", "password": "12345678", "full_name": "Citra Dewi",
+      "phone": "+628110000102", "gender": "female" }
+  ]
+}
+```
+
+Akun yang dibuat admin, baik satuan maupun massal, **langsung terverifikasi,
+disetujui, dan aktif**, sehingga karyawan dapat login tanpa melewati alur
+verifikasi email. Admin yang memasukkan datanya sudah menjadi penjaminnya.
+Keduanya tetap ditandai `must_change_password`, jadi password awal wajib
+diganti saat login pertama.
+
+Alur verifikasi email hanya berlaku bagi pendaftaran mandiri, tempat
+kepemilikan alamat email memang perlu dibuktikan.
+
+Seluruh baris diperiksa lebih dulu, dan penyimpanan baru berjalan bila tidak
+ada satu pun yang bermasalah. Tidak ada keberhasilan sebagian: bila ada yang
+gagal, tidak ada karyawan yang ditambahkan sama sekali.
+
+Alasannya, impor sebagian menyulitkan pengguna. Kalau lima dari lima puluh
+baris gagal, admin harus mencari tahu mana yang sudah masuk sebelum mencoba
+lagi, dan percobaan ulang berisiko menduplikasi. Dengan menolak seluruhnya,
+memperbaiki berkas lalu mengirim ulang selalu aman.
+
+Yang diperiksa: bentuk data setiap baris, email kembar di dalam permintaan itu
+sendiri, email yang sudah terdaftar, serta keberadaan departemen, jabatan, dan
+manajer yang ditunjuk.
+
+Kegagalan dijawab 400 dengan seluruh baris bermasalah sekaligus, bukan satu per
+satu, sehingga admin dapat memperbaiki semuanya dalam sekali jalan:
+
+```json
+{
+  "success": false,
+  "message": "2 dari 3 baris tidak dapat diproses, tidak ada karyawan yang ditambahkan",
+  "code": "BAD_REQUEST",
+  "details": {
+    "failed_rows": [
+      { "index": 1, "email": "andi@awan.io", "message": "Email sudah terdaftar" },
+      { "index": 2, "email": "fajar@awan.io", "message": "Email sama dengan baris ke-1 pada permintaan ini" }
+    ]
+  }
+}
+```
+
+`index` dihitung dari nol mengikuti posisi pada larik yang dikirim.
+
+Setiap password di-hash dengan argon2, dan seratus baris berarti seratus
+hashing, sehingga permintaan berukuran penuh dapat memakan beberapa detik.
+
+## Jejak Kejadian Absensi
+
+Absensi menyimpan dua lapis: kejadian mentah pada `attendance_events`, dan
+hasil olahannya pada `attendances`.
+
+Setiap penekanan tombol absen ditulis ke `attendance_events` **sebelum satu pun
+perhitungan berjalan**. Waktu penekanan disimpan apa adanya sampai milidetik,
+terpisah dari waktu server menerimanya.
+
+| Kolom | Arti |
+| ----- | ---- |
+| `occurred_at` | Kapan tombol ditekan, presisi penuh |
+| `received_at` | Kapan server menerima |
+| `kind` | `check_in` atau `check_out` |
+| `source` | `online` atau `offline_sync` |
+| `attendance_id` | Baris absensi yang dihasilkan, kosong bila ditolak |
+| `rejection_reason` | Alasan penolakan, bila ada |
+
+Penulisannya berdiri sendiri di luar transaksi absensi. Akibatnya percobaan
+yang ditolak pun meninggalkan jejak, misalnya karyawan yang menekan tombol
+setelah batas absen atau pada hari libur. Jejak ini yang menjawab pertanyaan
+"apakah dia benar-benar menekan tombol" ketika hasil akhirnya tidak sesuai
+harapan karyawan.
+
+Kolom `received_at` memakai `clock_timestamp()` sebagai nilai bawaan, bukan
+`now()`, karena `now()` mengembalikan waktu mulai transaksi sehingga seluruh
+baris dalam satu transaksi akan bernilai sama persis.
+
+`GET /attendances/events` membaca jejak ini, dapat disaring `employee_id`,
+`kind`, `source`, `only_rejected`, `start_date`, dan `end_date`. Setiap baris
+menyertakan `delay_seconds`, yaitu selisih antara penekanan dan penerimaan.
 
 ## Aturan Absensi
 
@@ -443,9 +537,26 @@ mencatat siapa mengubah apa dan mengapa.
 
 ### Jejak yang tidak dapat dipalsukan
 
-Kolom `created_at` diisi database saat baris dibuat dan tidak dapat disentuh
-klien, sedangkan `check_in_at` berisi waktu yang diklaim. Selisih keduanya
-adalah lama sinkronisasi, dan selisih itulah yang menjadi bukti.
+Setiap absensi menyimpan dua waktu yang berpasangan dan berbeda artinya:
+
+| Kolom | Arti | Diisi oleh |
+| ----- | ---- | ---------- |
+| `check_in_at` | Kapan tombol ditekan | Klaim dari perangkat |
+| `check_in_recorded_at` | Kapan server menerima | Server |
+| `check_in_source` | `online`, `offline_sync`, `system`, atau `correction` | Server |
+
+Pasangan yang sama berlaku untuk `check_out_at`. Selisih antara `recorded_at`
+dan `at` adalah lama karyawan berada dalam kondisi offline, terpisah untuk
+absen masuk dan absen pulang.
+
+Ketiganya wajib terisi bersama atau kosong bersama, dijaga batasan
+`chk_attendance_checkin_witness` dan pasangannya untuk absen pulang, sehingga
+tidak mungkin ada jam absen tanpa keterangan asal-usulnya.
+
+Koreksi manual **mempertahankan sumber aslinya** selama jam absennya tidak
+diubah. Kalau atasan mengubah jam absennya, barulah sumbernya menjadi
+`correction`. Dengan begitu absensi offline yang sekadar dikoreksi catatannya
+tidak kehilangan jejak bahwa ia berasal dari sinkronisasi offline.
 
 Absensi offline juga ditandai pada `note` dengan bentuk tetap:
 
@@ -453,11 +564,11 @@ Absensi offline juga ditandai pada `note` dengan bentuk tetap:
 [Absen offline pukul 07:55, diterima server 09:12] Jaringan kantor mati
 ```
 
-`GET /attendances/offline-log` menampilkan seluruh absensi yang jeda
-sinkronisasinya melewati ambang tertentu, diurutkan dari yang terlama, beserta
-`sync_delay_minutes`. Daftarnya disusun dari selisih `created_at` dan
-`check_in_at`, bukan dari isi `note`, sehingga tetap benar walaupun catatannya
-diubah lewat koreksi.
+`GET /attendances/offline-log` menampilkan seluruh absensi yang bersumber
+`offline_sync`, diurutkan dari jeda terlama, beserta `check_in_delay_minutes`,
+`check_out_delay_minutes`, dan `max_delay_minutes`. Daftarnya disusun dari kolom
+`source` dan selisih waktu, bukan dari isi `note`, sehingga tetap benar walaupun
+catatannya diubah lewat koreksi.
 
 Query yang didukung: `start_date`, `end_date`, `department_id`, `employee_id`,
 `min_delay_minutes` (bawaan 2), `page`, `limit`.

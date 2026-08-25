@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "../config/databaseConnection.js";
 import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 import * as attendanceModel from "../models/attendance.js";
+import * as eventModel from "../models/attendanceEvent.js";
 import * as workScheduleModel from "../models/workSchedule.js";
 import * as employeeModel from "../models/employee.js";
 import * as holidayModel from "../models/holiday.js";
@@ -29,6 +31,7 @@ import {
   butuhJamMasuk,
   jamMenit,
   tentukanStatusKedatangan,
+  tentukanPenandaHarian,
   type HasilKedatangan,
 } from "../helpers/attendanceStatus.js";
 import { punyaFitur } from "../middlewares/feature.js";
@@ -151,6 +154,23 @@ async function alasanTidakBolehAbsen(
   return null;
 }
 
+/**
+ * Menandai kejadian sebagai ditolak lalu menyiapkan galat untuk dilempar.
+ * Penandaannya sengaja tidak ditunggu keberhasilannya sebelum galat dilempar,
+ * supaya kegagalan mencatat jejak tidak mengubah jawaban kepada pengguna.
+ */
+function tolakKejadian(
+  eventId: string,
+  alasan: string,
+  buatGalat: (pesan: string) => Error,
+): Error {
+  void eventModel
+    .markRejected(eventId, alasan)
+    .catch((err) => logger.warn({ err, eventId }, "Gagal menandai kejadian absensi yang ditolak"));
+
+  return buatGalat(alasan);
+}
+
 interface WaktuAbsen {
   waktu: Date;
   offline: boolean;
@@ -219,6 +239,20 @@ export async function CheckInController(
     const schedule = await ambilJadwal(employee.id);
 
     const absen = tentukanWaktuAbsen(offline_time, sekarang, schedule);
+
+    // Kejadian mentah disimpan sebelum satu pun perhitungan berjalan, sehingga
+    // saat penekanan tombol tercatat apa adanya sampai milidetik. Penulisannya
+    // berdiri sendiri di luar transaksi absensi, jadi percobaan yang nanti
+    // ditolak pun tetap meninggalkan jejak.
+    const event = await eventModel.recordEvent({
+      employee_id: employee.id,
+      kind: "check_in",
+      occurred_at: absen.waktu,
+      received_at: sekarang,
+      source: absen.offline ? "offline_sync" : "online",
+      note: note ?? null,
+    });
+
     const lokal = keWaktuLokal(absen.waktu);
     const tanggal = lokal.tanggal;
 
@@ -227,7 +261,7 @@ export async function CheckInController(
       schedule,
       tanggal,
     );
-    if (terhalang) throw BadRequest(terhalang);
+    if (terhalang) throw tolakKejadian(event.id, terhalang, BadRequest);
 
     const existing = await attendanceModel.findByEmployeeAndDate(
       employee.id,
@@ -235,21 +269,17 @@ export async function CheckInController(
     );
 
     if (existing) {
-      if (existing.check_in_at) {
-        throw Conflict(
-          `Kamu sudah melakukan absensi masuk hari ini pukul ${jamLokal(new Date(existing.check_in_at))}`,
-          { attendance: existing },
-        );
-      }
+      const pesan = existing.check_in_at
+        ? `Kamu sudah melakukan absensi masuk hari ini pukul ${jamLokal(new Date(existing.check_in_at))}`
+        : `Absensi tanggal ${tanggal} sudah tercatat dengan status ${statusLabel(existing.status)}`;
 
-      throw Conflict(
-        `Absensi tanggal ${tanggal} sudah tercatat dengan status ${statusLabel(existing.status)}`,
-        { attendance: existing },
-      );
+      await eventModel.markRejected(event.id, pesan);
+
+      throw Conflict(pesan, { attendance: existing });
     }
 
     const ditutup = alasanDiLuarJamAbsen(schedule, lokal.menitSejakTengahMalam);
-    if (ditutup) throw BadRequest(ditutup);
+    if (ditutup) throw tolakKejadian(event.id, ditutup, BadRequest);
 
     const menitMasuk = menitDariJam(schedule.start_time);
     const selisih = menitKeterlambatan(lokal.menitSejakTengahMalam, menitMasuk);
@@ -261,12 +291,16 @@ export async function CheckInController(
       employee_id: employee.id,
       attendance_date: tanggal,
       check_in_at: absen.waktu,
+      check_in_recorded_at: sekarang,
+      check_in_source: absen.offline ? "offline_sync" : "online",
       status: terlambat ? "late" : "present",
       late_minutes: terlambat ? selisih : 0,
       note: absen.offline
         ? susunCatatanOffline(absen.waktu, sekarang, note ?? null)
         : (note ?? null),
     });
+
+    await eventModel.linkToAttendance(event.id, attendance.id);
 
     const jamAbsen = jamLokal(absen.waktu);
 
@@ -297,6 +331,15 @@ export async function CheckOutController(
     const schedule = await ambilJadwal(employee.id);
 
     const absen = tentukanWaktuAbsen(offline_time, sekarang, schedule);
+
+    const event = await eventModel.recordEvent({
+      employee_id: employee.id,
+      kind: "check_out",
+      occurred_at: absen.waktu,
+      received_at: sekarang,
+      source: absen.offline ? "offline_sync" : "online",
+    });
+
     const lokal = keWaktuLokal(absen.waktu);
     const tanggal = lokal.tanggal;
 
@@ -306,23 +349,28 @@ export async function CheckOutController(
     );
 
     if (!existing || !existing.check_in_at) {
-      throw BadRequest(
+      throw tolakKejadian(
+        event.id,
         "Kamu belum melakukan absensi masuk hari ini sehingga belum dapat absen pulang",
+        BadRequest,
       );
     }
 
     if (existing.check_out_at) {
-      throw Conflict(
-        `Kamu sudah melakukan absensi pulang hari ini pukul ${jamLokal(new Date(existing.check_out_at))}`,
-        { attendance: existing },
-      );
+      const pesan = `Kamu sudah melakukan absensi pulang hari ini pukul ${jamLokal(new Date(existing.check_out_at))}`;
+
+      await eventModel.markRejected(event.id, pesan);
+
+      throw Conflict(pesan, { attendance: existing });
     }
 
     const menitMasuk = menitDariJam(schedule.start_time);
 
     if (lokal.menitSejakTengahMalam < menitMasuk) {
-      throw BadRequest(
+      throw tolakKejadian(
+        event.id,
         `Absensi pulang belum dapat dilakukan sebelum jam kerja dimulai pukul ${jamSingkat(schedule.start_time)}`,
+        BadRequest,
       );
     }
 
@@ -330,14 +378,18 @@ export async function CheckOutController(
     const menitKerja = selisihMenit(masuk, absen.waktu);
 
     if (menitKerja <= 0) {
-      throw BadRequest(
+      throw tolakKejadian(
+        event.id,
         `Jam pulang harus setelah jam masuk pukul ${jamLokal(masuk)}`,
+        BadRequest,
       );
     }
 
     const attendance = await attendanceModel.setCheckOut(
       existing.id,
       absen.waktu,
+      sekarang,
+      absen.offline ? "offline_sync" : "online",
       menitKerja,
     );
 
@@ -346,6 +398,8 @@ export async function CheckOutController(
         "Absensi pulang sudah tercatat dari permintaan lain, silakan muat ulang",
       );
     }
+
+    await eventModel.linkToAttendance(event.id, attendance.id);
 
     res.json({
       success: true,
@@ -533,6 +587,29 @@ function susunCatatanKoreksi(
   return `[Dikoreksi oleh ${pengoreksi.full_name} (${pengoreksi.employee_number}) pada ${tanggal} ${jamLokal(waktu)}] ${alasan}`;
 }
 
+interface SaksiWaktu {
+  recorded_at: Date | null;
+  source: attendanceModel.AttendanceSource | null;
+}
+
+function saksiSetelahKoreksi(
+  waktuBaru: Date | null,
+  waktuLama: Date | null,
+  saksiLama: SaksiWaktu,
+  waktuKoreksi: Date,
+): SaksiWaktu {
+  if (!waktuBaru) return { recorded_at: null, source: null };
+
+  const tidakBerubah =
+    waktuLama !== null && new Date(waktuLama).getTime() === waktuBaru.getTime();
+
+  if (tidakBerubah && saksiLama.recorded_at && saksiLama.source) {
+    return saksiLama;
+  }
+
+  return { recorded_at: waktuKoreksi, source: "correction" };
+}
+
 export async function CorrectAttendanceController(
   req: Request,
   res: Response,
@@ -574,16 +651,42 @@ export async function CorrectAttendanceController(
           : 0;
     }
 
+    const waktuKoreksi = new Date();
+    const masukBaru = butuhJamMasuk(data.status) ? masuk : null;
+    const pulangBaru = butuhJamMasuk(data.status) ? pulang : null;
+
+    const saksiMasuk = saksiSetelahKoreksi(
+      masukBaru,
+      existing.check_in_at,
+      {
+        recorded_at: existing.check_in_recorded_at,
+        source: existing.check_in_source,
+      },
+      waktuKoreksi,
+    );
+
+    const saksiPulang = saksiSetelahKoreksi(
+      pulangBaru,
+      existing.check_out_at,
+      {
+        recorded_at: existing.check_out_recorded_at,
+        source: existing.check_out_source,
+      },
+      waktuKoreksi,
+    );
+
     const attendance = await attendanceModel.correctAttendance(id, {
       status: data.status,
-      check_in_at: butuhJamMasuk(data.status) ? masuk : null,
-      check_out_at: butuhJamMasuk(data.status) ? pulang : null,
+      check_in_at: masukBaru,
+      check_in_recorded_at: saksiMasuk.recorded_at,
+      check_in_source: saksiMasuk.source,
+      check_out_at: pulangBaru,
+      check_out_recorded_at: saksiPulang.recorded_at,
+      check_out_source: saksiPulang.source,
       late_minutes: menitTerlambat,
       work_minutes:
-        masuk && pulang && butuhJamMasuk(data.status)
-          ? selisihMenit(masuk, pulang)
-          : null,
-      note: susunCatatanKoreksi(pengoreksi, data.reason, new Date()),
+        masukBaru && pulangBaru ? selisihMenit(masukBaru, pulangBaru) : null,
+      note: susunCatatanKoreksi(pengoreksi, data.reason, waktuKoreksi),
     });
 
     res.json({
@@ -635,32 +738,36 @@ export async function CloseDayController(
     let dilewati = 0;
 
     for (const { employee_id, schedule } of jadwalKaryawan) {
-      if (sudahAda.has(employee_id)) {
-        dilewati += 1;
-        continue;
-      }
-
-      if (holiday) {
-        penanda.push({
-          employee_id,
-          status: "holiday",
-          note: holiday.name,
-        });
-        continue;
-      }
-
       const leave_request_id = petaCuti.get(employee_id);
-      if (leave_request_id) {
-        penanda.push({ employee_id, status: "leave", leave_request_id });
-        continue;
-      }
 
-      if (!adalahHariKerja(schedule, hari)) {
-        dilewati += 1;
-        continue;
-      }
+      switch (
+        tentukanPenandaHarian({
+          sudahAdaAbsensi: sudahAda.has(employee_id),
+          hariLibur: Boolean(holiday),
+          sedangCuti: Boolean(leave_request_id),
+          hariKerja: adalahHariKerja(schedule, hari),
+        })
+      ) {
+        case "holiday":
+          penanda.push({
+            employee_id,
+            status: "holiday",
+            note: holiday?.name ?? null,
+          });
+          break;
 
-      penanda.push({ employee_id, status: "absent" });
+        case "leave":
+          penanda.push({ employee_id, status: "leave", leave_request_id });
+          break;
+
+        case "absent":
+          penanda.push({ employee_id, status: "absent" });
+          break;
+
+        case "lewati":
+          dilewati += 1;
+          break;
+      }
     }
 
     let tersimpan = 0;
@@ -717,6 +824,25 @@ export async function OfflineLogController(
   try {
     const query = res.locals.query as attendanceModel.OfflineLogParams;
     const { rows, total } = await attendanceModel.listOfflineSync(query);
+
+    res.json({
+      success: true,
+      data: rows,
+      meta: meta(total, query.page, query.limit),
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function EventLogController(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const query = res.locals.query as eventModel.ListEventParams;
+    const { rows, total } = await eventModel.listEvents(query);
 
     res.json({
       success: true,

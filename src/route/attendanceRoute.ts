@@ -10,6 +10,7 @@ import {
   CorrectAttendanceController,
   CloseDayController,
   OfflineLogController,
+  EventLogController,
 } from "../controller/attendanceController.js";
 import { authenticate } from "../middlewares/auth.js";
 import { requireFeature } from "../middlewares/feature.js";
@@ -27,6 +28,7 @@ import {
   correctAttendanceSchema,
   closeDayQuerySchema,
   offlineLogQuerySchema,
+  eventLogQuerySchema,
 } from "../schema/attendanceSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
@@ -80,6 +82,13 @@ router.get(
   ...bolehLaporan,
   validateQuery(reportQuerySchema),
   ReportAttendanceController,
+);
+
+router.get(
+  "/attendances/events",
+  ...bolehLaporan,
+  validateQuery(eventLogQuerySchema),
+  EventLogController,
 );
 
 router.get(

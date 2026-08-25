@@ -910,3 +910,209 @@ describe("DELETE /api/v1/employees/:id", () => {
     expect(mockClient.release).toHaveBeenCalled();
   });
 });
+
+describe("POST /api/v1/employees/bulk", () => {
+  const baris = (nomor: number) => ({
+    ...validCreate,
+    email: `karyawan${nomor}@awan.io`,
+    full_name: `Karyawan Nomor ${nomor}`,
+  });
+
+  function tambahMassal(employees: unknown[], token = adminToken) {
+    return request(app)
+      .post("/api/v1/employees/bulk")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ employees });
+  }
+
+  beforeEach(() => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
+      fakeAccount as never,
+    );
+    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+    (departmentModel.findById as jest.Mock).mockResolvedValue({
+      id: DEPARTMENT_ID,
+      name: "Engineering",
+    } as never);
+    (positionModel.findById as jest.Mock).mockResolvedValue({
+      id: POSITION_ID,
+      name: "Software Engineer",
+    } as never);
+  });
+
+  it("menolak tamu yang belum login", async () => {
+    const res = await request(app)
+      .post("/api/v1/employees/bulk")
+      .send({ employees: [baris(1)] });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("menolak karyawan biasa tanpa fitur employee.create", async () => {
+    const res = await tambahMassal([baris(1)], employeeToken);
+
+    expect(res.status).toBe(403);
+    expect(res.body.details.required_feature).toBe("employee.create");
+  });
+
+  it("menambah beberapa karyawan sekaligus", async () => {
+    const res = await tambahMassal([baris(1), baris(2), baris(3)]);
+
+    expect(res.status).toBe(201);
+    expect(res.body.meta.created).toBe(3);
+    expect(res.body.data).toHaveLength(3);
+    expect(employeeModel.createEmployee).toHaveBeenCalledTimes(3);
+  });
+
+  it("membungkus seluruh baris dalam satu transaksi", async () => {
+    await tambahMassal([baris(1), baris(2)]);
+
+    expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
+    expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+  });
+
+  it("menolak daftar kosong", async () => {
+    const res = await tambahMassal([]);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("menolak jumlah melebihi batas seratus", async () => {
+    const banyak = Array.from({ length: 101 }, (_, i) => baris(i));
+
+    const res = await tambahMassal(banyak);
+
+    expect(res.status).toBe(400);
+    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+  });
+
+  it("menolak seluruh permintaan bila ada satu email kembar di dalamnya", async () => {
+    const res = await tambahMassal([baris(1), baris(2), baris(1)]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.failed_rows).toHaveLength(1);
+    expect(res.body.details.failed_rows[0].index).toBe(2);
+    expect(res.body.details.failed_rows[0].message).toContain("baris ke-1");
+    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+  });
+
+  it("menolak seluruh permintaan bila ada email yang sudah terdaftar", async () => {
+    (userModel.findByEmail as jest.Mock).mockImplementation((email) =>
+      Promise.resolve(email === "karyawan2@awan.io" ? fakeAccount : null),
+    );
+
+    const res = await tambahMassal([baris(1), baris(2), baris(3)]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.failed_rows[0].email).toBe("karyawan2@awan.io");
+    expect(res.body.details.failed_rows[0].message).toContain(
+      "sudah terdaftar",
+    );
+  });
+
+  it("melaporkan seluruh baris bermasalah sekaligus, bukan satu per satu", async () => {
+    (userModel.findByEmail as jest.Mock).mockImplementation((email) =>
+      Promise.resolve(
+        email === "karyawan1@awan.io" || email === "karyawan3@awan.io"
+          ? fakeAccount
+          : null,
+      ),
+    );
+
+    const res = await tambahMassal([baris(1), baris(2), baris(3)]);
+
+    expect(res.body.details.failed_rows).toHaveLength(2);
+    expect(res.body.message).toContain("2 dari 3 baris");
+  });
+
+  it("menolak baris yang departemennya tidak ditemukan", async () => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await tambahMassal([
+      { ...baris(1), department_id: DEPARTMENT_ID },
+    ]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.failed_rows[0].message).toContain(
+      "Departemen tidak ditemukan",
+    );
+  });
+
+  it("menolak baris yang tidak lolos validasi bentuk", async () => {
+    const res = await tambahMassal([baris(1), { email: "bukan-email" }]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+  });
+
+  it("tidak pernah mengembalikan password pada responsnya", async () => {
+    const res = await tambahMassal([baris(1)]);
+
+    expect(JSON.stringify(res.body)).not.toContain("password123");
+  });
+});
+
+describe("akun buatan admin langsung dapat dipakai", () => {
+  const baris = {
+    email: "langsung@awan.io",
+    password: "12345678",
+    full_name: "Karyawan Langsung",
+    phone: "+628110000201",
+    gender: "male",
+  };
+
+  beforeEach(() => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
+      fakeAccount as never,
+    );
+    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+  });
+
+  it("penambahan satuan memakai jalur pembuatan akun oleh admin", async () => {
+    const res = await request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(baris);
+
+    expect(res.status).toBe(201);
+    expect(userModel.insertUserByAdmin).toHaveBeenCalledTimes(1);
+    expect(userModel.insertUser).not.toHaveBeenCalled();
+  });
+
+  it("penambahan massal memakai jalur yang sama, bukan jalur pendaftaran mandiri", async () => {
+    const res = await request(app)
+      .post("/api/v1/employees/bulk")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        employees: [
+          baris,
+          { ...baris, email: "langsung2@awan.io", full_name: "Karyawan Dua" },
+        ],
+      });
+
+    expect(res.status).toBe(201);
+    expect(userModel.insertUserByAdmin).toHaveBeenCalledTimes(2);
+    expect(userModel.insertUser).not.toHaveBeenCalled();
+  });
+
+  it("kedua jalur tetap mewajibkan penggantian password saat login pertama", async () => {
+    await request(app)
+      .post("/api/v1/employees/bulk")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ employees: [baris] });
+
+    const res = await request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...baris, email: "langsung3@awan.io" });
+
+    expect(res.body.data.account.must_change_password).toBe(true);
+  });
+});

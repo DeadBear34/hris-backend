@@ -7,26 +7,36 @@ import {
 
 const MENIT_MASUK = 8 * 60;
 
-const wib = (tanggal: string, jam: string) => new Date(`${tanggal}T${jam}:00+07:00`);
+const wib = (tanggal: string, jam: string) =>
+  new Date(`${tanggal}T${jam}:00+07:00`);
 
 const tolak = (offline: Date, server: Date) =>
   alasanWaktuOfflineDitolak(offline, server, MENIT_MASUK);
 
 describe("alasanWaktuOfflineDitolak", () => {
   it("menerima absen offline yang disinkronkan tak lama setelahnya", () => {
-    expect(tolak(wib("2026-08-20", "07:55"), wib("2026-08-20", "09:12"))).toBeNull();
+    expect(
+      tolak(wib("2026-08-20", "07:55"), wib("2026-08-20", "09:12")),
+    ).toBeNull();
   });
 
   it("menerima sinkronisasi yang datang seketika", () => {
-    expect(tolak(wib("2026-08-20", "07:55"), wib("2026-08-20", "07:55"))).toBeNull();
+    expect(
+      tolak(wib("2026-08-20", "07:55"), wib("2026-08-20", "07:55")),
+    ).toBeNull();
   });
 
   it("menerima selisih jam perangkat yang sedikit mendahului server", () => {
-    expect(tolak(wib("2026-08-20", "08:01"), wib("2026-08-20", "08:00"))).toBeNull();
+    expect(
+      tolak(wib("2026-08-20", "08:01"), wib("2026-08-20", "08:00")),
+    ).toBeNull();
   });
 
   it("menolak waktu absen yang berada di masa depan", () => {
-    const alasan = tolak(wib("2026-08-20", "08:30"), wib("2026-08-20", "08:00"));
+    const alasan = tolak(
+      wib("2026-08-20", "08:30"),
+      wib("2026-08-20", "08:00"),
+    );
 
     expect(alasan).toContain("masa depan");
   });
@@ -43,7 +53,9 @@ describe("alasanWaktuOfflineDitolak", () => {
 
   it("menerima sinkronisasi tepat pada batas jeda", () => {
     const offline = wib("2026-08-20", "08:00");
-    const server = new Date(offline.getTime() + BATAS_SINKRONISASI_MENIT * 60_000);
+    const server = new Date(
+      offline.getTime() + BATAS_SINKRONISASI_MENIT * 60_000,
+    );
 
     expect(tolak(offline, server)).toBeNull();
   });
@@ -59,25 +71,36 @@ describe("alasanWaktuOfflineDitolak", () => {
 
   it("menolak absen offline yang melewati pergantian hari", () => {
     // jedanya hanya dua jam, tetapi tanggal WIB-nya sudah berbeda
-    const alasan = tolak(wib("2026-08-19", "23:00"), wib("2026-08-20", "01:00"));
+    const alasan = tolak(
+      wib("2026-08-19", "23:00"),
+      wib("2026-08-20", "01:00"),
+    );
 
     expect(alasan).toContain("hari yang sama");
   });
 
   it("absen kemarin tertahan batas jeda lebih dulu", () => {
-    const alasan = tolak(wib("2026-08-19", "08:00"), wib("2026-08-20", "09:00"));
+    const alasan = tolak(
+      wib("2026-08-19", "08:00"),
+      wib("2026-08-20", "09:00"),
+    );
 
     expect(alasan).toContain("paling lambat");
   });
 
   it("menolak waktu yang terlalu jauh sebelum jam masuk", () => {
-    const alasan = tolak(wib("2026-08-20", "05:00"), wib("2026-08-20", "09:00"));
+    const alasan = tolak(
+      wib("2026-08-20", "05:00"),
+      wib("2026-08-20", "09:00"),
+    );
 
     expect(alasan).toContain("terlalu jauh sebelum jam masuk");
   });
 
   it("menerima datang dua jam sebelum jam masuk", () => {
-    expect(tolak(wib("2026-08-20", "06:00"), wib("2026-08-20", "09:00"))).toBeNull();
+    expect(
+      tolak(wib("2026-08-20", "06:00"), wib("2026-08-20", "09:00")),
+    ).toBeNull();
   });
 
   it("membedakan hari memakai zona waktu kantor, bukan UTC", () => {

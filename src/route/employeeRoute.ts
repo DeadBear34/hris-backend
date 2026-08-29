@@ -3,7 +3,6 @@ import {
   ListEmployeeController,
   DetailEmployeeController,
   CreateEmployeeController,
-  CreateEmployeeBulkController,
   UpdateEmployeeController,
   DeleteEmployeeController,
 } from "../controller/employeeController.js";
@@ -21,8 +20,7 @@ import {
 } from "../middlewares/validate.js";
 import {
   listEmployeeQuerySchema,
-  createEmployeeSchema,
-  createEmployeeBulkSchema,
+  createEmployeePayloadSchema,
   updateEmployeeSchema,
 } from "../schema/employeeSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
@@ -44,16 +42,10 @@ router.get(
 router.post(
   "/employees",
   ...bolehTambahKaryawan,
-  validate(createEmployeeSchema),
+  validate(createEmployeePayloadSchema),
   CreateEmployeeController,
 );
 
-router.post(
-  "/employees/bulk",
-  ...bolehTambahKaryawan,
-  validate(createEmployeeBulkSchema),
-  CreateEmployeeBulkController,
-);
 
 router.get(
   "/employees/:id",

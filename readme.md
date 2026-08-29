@@ -154,7 +154,6 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`.
 | `POST`   | `/positions`       | `organization.manage` | Menambah jabatan                           |
 | `PATCH`  | `/positions/:id`   | `organization.manage` | Mengubah jabatan                           |
 | `DELETE` | `/positions/:id`   | `organization.manage` | Menghapus jabatan                          |
-| `POST`   | `/employees/bulk`         | `employee.create`  | Menambah banyak karyawan sekaligus, maksimal 100 |
 
 ### Hari Libur dan Jenis Cuti
 
@@ -300,34 +299,47 @@ penyimpanan belum dikonfigurasi.
 }
 ```
 
-## Penambahan Karyawan Massal
+## Menambah Karyawan, Satu atau Banyak
 
-`POST /employees/bulk` menerima banyak karyawan sekaligus, maksimal 100 per
-permintaan.
+`POST /employees` menerima dua bentuk kiriman, dan bentuknya ditentukan dari
+isi permintaan, bukan dari endpoint yang berbeda.
+
+Satu karyawan dikirim sebagai objek:
 
 ```json
-{
-  "employees": [
-    { "email": "andi@awan.io", "password": "12345678", "full_name": "Andi Saputra",
-      "phone": "+628110000101", "gender": "male" },
-    { "email": "citra@awan.io", "password": "12345678", "full_name": "Citra Dewi",
-      "phone": "+628110000102", "gender": "female" }
-  ]
-}
+{ "email": "andi@awan.io", "password": "12345678", "full_name": "Andi Saputra",
+  "phone": "+628110000101", "gender": "male" }
 ```
 
-Akun yang dibuat admin, baik satuan maupun massal, **langsung terverifikasi,
-disetujui, dan aktif**, sehingga karyawan dapat login tanpa melewati alur
-verifikasi email. Admin yang memasukkan datanya sudah menjadi penjaminnya.
-Keduanya tetap ditandai `must_change_password`, jadi password awal wajib
-diganti saat login pertama.
+Banyak karyawan dikirim sebagai larik, maksimal 100 per permintaan:
+
+```json
+[
+  { "email": "andi@awan.io", "password": "12345678", "full_name": "Andi Saputra",
+    "phone": "+628110000101", "gender": "male" },
+  { "email": "citra@awan.io", "password": "12345678", "full_name": "Citra Dewi",
+    "phone": "+628110000102", "gender": "female" }
+]
+```
+
+Bentuk respons mengikuti bentuk kirimannya. Objek dijawab `data` berupa objek
+tanpa `meta`, larik dijawab `data` berupa larik beserta `meta.created`. Larik
+berisi satu tetap dijawab sebagai larik, sehingga pemanggil tidak perlu
+menebak.
+
+Akun yang dibuat admin **langsung terverifikasi, disetujui, dan aktif**,
+sehingga karyawan dapat login tanpa melewati alur verifikasi email. Admin yang
+memasukkan datanya sudah menjadi penjaminnya. Keduanya tetap ditandai
+`must_change_password`, jadi password awal wajib diganti saat login pertama.
 
 Alur verifikasi email hanya berlaku bagi pendaftaran mandiri, tempat
 kepemilikan alamat email memang perlu dibuktikan.
 
+### Tidak ada keberhasilan sebagian
+
 Seluruh baris diperiksa lebih dulu, dan penyimpanan baru berjalan bila tidak
-ada satu pun yang bermasalah. Tidak ada keberhasilan sebagian: bila ada yang
-gagal, tidak ada karyawan yang ditambahkan sama sekali.
+ada satu pun yang bermasalah. Bila ada yang gagal, tidak ada karyawan yang
+ditambahkan sama sekali.
 
 Alasannya, impor sebagian menyulitkan pengguna. Kalau lima dari lima puluh
 baris gagal, admin harus mencari tahu mana yang sudah masuk sebelum mencoba
@@ -338,8 +350,19 @@ Yang diperiksa: bentuk data setiap baris, email kembar di dalam permintaan itu
 sendiri, email yang sudah terdaftar, serta keberadaan departemen, jabatan, dan
 manajer yang ditunjuk.
 
-Kegagalan dijawab 400 dengan seluruh baris bermasalah sekaligus, bukan satu per
-satu, sehingga admin dapat memperbaiki semuanya dalam sekali jalan:
+### Bentuk galat mengikuti bentuk kiriman
+
+Galat validasi bentuk data menunjuk kolom saja untuk kiriman objek, dan
+menunjuk nomor baris beserta kolomnya untuk kiriman larik:
+
+```
+objek  ->  "field": "email"
+larik  ->  "field": "1.email"
+```
+
+Kegagalan pemeriksaan isi pada kiriman larik dijawab 400 dengan seluruh baris
+bermasalah sekaligus, bukan satu per satu, sehingga admin dapat memperbaiki
+semuanya dalam sekali jalan:
 
 ```json
 {
@@ -356,6 +379,10 @@ satu, sehingga admin dapat memperbaiki semuanya dalam sekali jalan:
 ```
 
 `index` dihitung dari nol mengikuti posisi pada larik yang dikirim.
+
+Pada kiriman objek tunggal, email yang sudah terdaftar tetap dijawab 409
+seperti sebelumnya, bukan 400, karena tidak ada daftar baris yang perlu
+dilaporkan.
 
 Setiap password di-hash dengan argon2, dan seratus baris berarti seratus
 hashing, sehingga permintaan berukuran penuh dapat memakan beberapa detik.

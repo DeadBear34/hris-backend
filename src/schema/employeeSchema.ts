@@ -78,14 +78,23 @@ export const updateEmployeeSchema = employeeDataSchema.partial().extend({
 
 export const BATAS_KARYAWAN_MASSAL = 100;
 
-export const createEmployeeBulkSchema = z.object({
-  employees: z
-    .array(createEmployeeSchema, {
-      message: "Daftar karyawan wajib diisi",
-    })
-    .min(1, "Minimal satu karyawan harus diisi")
-    .max(
-      BATAS_KARYAWAN_MASSAL,
-      `Maksimal ${BATAS_KARYAWAN_MASSAL} karyawan dalam satu permintaan`,
-    ),
-});
+const daftarKaryawanSchema = z
+  .array(createEmployeeSchema)
+  .min(1, "Minimal satu karyawan harus diisi")
+  .max(
+    BATAS_KARYAWAN_MASSAL,
+    `Maksimal ${BATAS_KARYAWAN_MASSAL} karyawan dalam satu permintaan`,
+  );
+
+/**
+ * Menerima satu karyawan berbentuk objek, atau banyak karyawan berbentuk
+ * larik. Bentuknya ditentukan dari kiriman, bukan dari endpoint yang berbeda.
+ *
+ * Larik diperiksa lebih dulu supaya kiriman berbentuk larik yang isinya keliru
+ * tidak dilaporkan sebagai "bukan objek karyawan", melainkan menunjuk baris
+ * dan kolom yang bermasalah.
+ */
+export const createEmployeePayloadSchema = z.union([
+  daftarKaryawanSchema,
+  createEmployeeSchema,
+]);

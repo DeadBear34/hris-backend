@@ -1,3 +1,4 @@
+import type pg from "pg";
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "../config/databaseConnection.js";
 import * as employeeModel from "../models/employee.js";
@@ -102,6 +103,98 @@ export async function DetailEmployeeController(
   }
 }
 
+type KaryawanBaru = CreateEmployeeInput & {
+  email: string;
+  password: string;
+  role?: UserRole;
+};
+
+interface BarisGagal {
+  index: number;
+  email: string;
+  message: string;
+  /** Email yang sudah dipakai dijawab 409 bila kirimannya satu karyawan. */
+  duplikat: boolean;
+}
+
+async function periksaSatuBaris(
+  baris: KaryawanBaru,
+  index: number,
+  emailSebelumnya: Map<string, number>,
+): Promise<BarisGagal | null> {
+  const gagal = (message: string, duplikat = false): BarisGagal => ({
+    index,
+    email: baris.email,
+    message,
+    duplikat,
+  });
+
+  const kembar = emailSebelumnya.get(baris.email);
+  if (kembar !== undefined) {
+    return gagal(
+      `Email sama dengan baris ke-${kembar + 1} pada permintaan ini`,
+      true,
+    );
+  }
+  emailSebelumnya.set(baris.email, index);
+
+  const terdaftar = await userModel.findByEmail(baris.email);
+  if (terdaftar) return gagal("Email sudah terdaftar", true);
+
+  try {
+    await validasiRelasi(baris);
+  } catch (err) {
+    return gagal(err instanceof AppError ? err.message : "Data tidak valid");
+  }
+
+  return null;
+}
+
+async function simpanSatuKaryawan(
+  client: pg.PoolClient,
+  baris: KaryawanBaru,
+  password: string,
+  dibuatOleh: string,
+) {
+  const { email, password: _password, role, ...employeeData } = baris;
+
+  const user = await userModel.insertUserByAdmin(
+    client,
+    email,
+    password,
+    role ?? "employee",
+    dibuatOleh,
+  );
+
+  const employee = await employeeModel.createEmployee(
+    client,
+    user.id,
+    employeeData,
+  );
+
+  return {
+    employee,
+    account: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      must_change_password: user.must_change_password,
+    },
+  };
+}
+
+/**
+ * Menambah satu karyawan atau banyak sekaligus lewat satu endpoint. Bentuknya
+ * ditentukan dari kiriman: objek berarti satu, larik berarti banyak.
+ *
+ * Bentuk respons mengikuti bentuk kiriman, sehingga pemanggil yang mengirim
+ * satu objek tetap menerima satu objek seperti sebelumnya.
+ *
+ * Seluruh baris diperiksa lebih dulu dan penyimpanan baru berjalan bila tidak
+ * ada satu pun yang bermasalah. Keberhasilan sebagian sengaja tidak
+ * disediakan, karena memaksa admin menebak baris mana yang sudah tersimpan
+ * sebelum mencoba lagi.
+ */
 export async function CreateEmployeeController(
   req: Request,
   res: Response,
@@ -113,172 +206,60 @@ export async function CreateEmployeeController(
     if (!req.user)
       throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
-    const { email, password, role, ...employeeData } =
-      req.body as CreateEmployeeInput & {
-        email: string;
-        password: string;
-        role?: UserRole;
-      };
-
-    const existing = await userModel.findByEmail(email);
-    if (existing) throw Conflict("Email sudah terdaftar");
-
-    await validasiRelasi(employeeData);
-
-    const hashed = await hashPassword(password);
-
-    await client.query("BEGIN");
-
-    const user = await userModel.insertUserByAdmin(
-      client,
-      email,
-      hashed,
-      role ?? "employee",
-      req.user.id,
-    );
-
-    const employee = await employeeModel.createEmployee(
-      client,
-      user.id,
-      employeeData,
-    );
-
-    await client.query("COMMIT");
-
-    res.status(201).json({
-      success: true,
-      message:
-        "Karyawan berhasil ditambahkan. Sampaikan password awal kepada karyawan dan minta menggantinya saat login pertama.",
-      data: {
-        employee,
-        account: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          must_change_password: user.must_change_password,
-        },
-      },
-    });
-  } catch (err) {
-    await client.query("ROLLBACK");
-    next(err);
-  } finally {
-    client.release();
-  }
-}
-
-interface BarisGagal {
-  index: number;
-  email: string;
-  message: string;
-}
-
-async function periksaSatuBaris(
-  baris: CreateEmployeeInput & { email: string },
-  index: number,
-  emailSebelumnya: Map<string, number>,
-): Promise<BarisGagal | null> {
-  const gagal = (message: string): BarisGagal => ({
-    index,
-    email: baris.email,
-    message,
-  });
-
-  const kembar = emailSebelumnya.get(baris.email);
-  if (kembar !== undefined) {
-    return gagal(`Email sama dengan baris ke-${kembar + 1} pada permintaan ini`);
-  }
-  emailSebelumnya.set(baris.email, index);
-
-  const terdaftar = await userModel.findByEmail(baris.email);
-  if (terdaftar) return gagal("Email sudah terdaftar");
-
-  try {
-    await validasiRelasi(baris);
-  } catch (err) {
-    return gagal(err instanceof AppError ? err.message : "Data tidak valid");
-  }
-
-  return null;
-}
-
-export async function CreateEmployeeBulkController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  const client = await pool.connect();
-
-  try {
-    if (!req.user)
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
-
-    const { employees } = req.body as {
-      employees: (CreateEmployeeInput & {
-        email: string;
-        password: string;
-        role?: UserRole;
-      })[];
-    };
+    const kiriman = req.body as KaryawanBaru | KaryawanBaru[];
+    const banyak = Array.isArray(kiriman);
+    const daftar = banyak ? kiriman : [kiriman];
 
     const emailSebelumnya = new Map<string, number>();
     const gagal: BarisGagal[] = [];
 
-    for (const [index, baris] of employees.entries()) {
+    for (const [index, baris] of daftar.entries()) {
       const masalah = await periksaSatuBaris(baris, index, emailSebelumnya);
       if (masalah) gagal.push(masalah);
     }
 
     if (gagal.length > 0) {
+      const pertama = gagal[0]!;
+
+      if (!banyak) {
+        throw pertama.duplikat
+          ? Conflict(pertama.message)
+          : BadRequest(pertama.message);
+      }
+
       throw BadRequest(
-        `${gagal.length} dari ${employees.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
-        { failed_rows: gagal },
+        `${gagal.length} dari ${daftar.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
+        {
+          failed_rows: gagal.map(({ duplikat: _duplikat, ...baris }) => baris),
+        },
       );
     }
 
     const hashed = await Promise.all(
-      employees.map((baris) => hashPassword(baris.password)),
+      daftar.map((baris) => hashPassword(baris.password)),
     );
 
     await client.query("BEGIN");
 
     const dibuat = [];
 
-    for (const [index, baris] of employees.entries()) {
-      const { email, password: _password, role, ...employeeData } = baris;
-
-      const user = await userModel.insertUserByAdmin(
-        client,
-        email,
-        hashed[index]!,
-        role ?? "employee",
-        req.user.id,
+    for (const [index, baris] of daftar.entries()) {
+      dibuat.push(
+        await simpanSatuKaryawan(client, baris, hashed[index]!, req.user.id),
       );
-
-      const employee = await employeeModel.createEmployee(
-        client,
-        user.id,
-        employeeData,
-      );
-
-      dibuat.push({
-        employee,
-        account: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          must_change_password: user.must_change_password,
-        },
-      });
     }
 
     await client.query("COMMIT");
 
+    const pesan = banyak
+      ? `${dibuat.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`
+      : "Karyawan berhasil ditambahkan. Sampaikan password awal kepada karyawan dan minta menggantinya saat login pertama.";
+
     res.status(201).json({
       success: true,
-      message: `${dibuat.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`,
-      data: dibuat,
-      meta: { created: dibuat.length },
+      message: pesan,
+      data: banyak ? dibuat : dibuat[0],
+      ...(banyak ? { meta: { created: dibuat.length } } : {}),
     });
   } catch (err) {
     await client.query("ROLLBACK");

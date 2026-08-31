@@ -154,11 +154,6 @@ async function alasanTidakBolehAbsen(
   return null;
 }
 
-/**
- * Menandai kejadian sebagai ditolak lalu menyiapkan galat untuk dilempar.
- * Penandaannya sengaja tidak ditunggu keberhasilannya sebelum galat dilempar,
- * supaya kegagalan mencatat jejak tidak mengubah jawaban kepada pengguna.
- */
 function tolakKejadian(
   eventId: string,
   alasan: string,
@@ -166,7 +161,12 @@ function tolakKejadian(
 ): Error {
   void eventModel
     .markRejected(eventId, alasan)
-    .catch((err) => logger.warn({ err, eventId }, "Gagal menandai kejadian absensi yang ditolak"));
+    .catch((err) =>
+      logger.warn(
+        { err, eventId },
+        "Gagal menandai kejadian absensi yang ditolak",
+      ),
+    );
 
   return buatGalat(alasan);
 }
@@ -240,10 +240,6 @@ export async function CheckInController(
 
     const absen = tentukanWaktuAbsen(offline_time, sekarang, schedule);
 
-    // Kejadian mentah disimpan sebelum satu pun perhitungan berjalan, sehingga
-    // saat penekanan tombol tercatat apa adanya sampai milidetik. Penulisannya
-    // berdiri sendiri di luar transaksi absensi, jadi percobaan yang nanti
-    // ditolak pun tetap meninggalkan jejak.
     const event = await eventModel.recordEvent({
       employee_id: employee.id,
       kind: "check_in",

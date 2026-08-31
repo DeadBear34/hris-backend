@@ -16,8 +16,10 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 jest.unstable_mockModule("../../src/models/user.js", () => ({
   insertUser: jest.fn(),
   insertUserByAdmin: jest.fn(),
+  insertUsersByAdmin: jest.fn(),
   findById: jest.fn(),
   findByEmail: jest.fn(),
+  findExistingEmails: jest.fn(),
   updateLastLogin: jest.fn(),
   updatePassword: jest.fn(),
   approveUser: jest.fn(),
@@ -31,6 +33,7 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
   insertEmployee: jest.fn(),
   createEmployee: jest.fn(),
+  createEmployees: jest.fn(),
   updateEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
   findByUserId: jest.fn(),
@@ -126,6 +129,16 @@ const fakeDetail = {
   is_active: true,
 };
 
+function akunPalsu(index: number, email: string, role = "employee") {
+  return {
+    id: `user-${index}`,
+    email,
+    role,
+    is_active: true,
+    must_change_password: true,
+  };
+}
+
 const fakeAccount = {
   id: USER_ID,
   email: "baru@awan.io",
@@ -140,6 +153,26 @@ const fakePosition = { id: POSITION_ID, code: "SWE", name: "Engineer" };
 beforeEach(() => {
   jest.clearAllMocks();
   mockClient.query.mockResolvedValue({ rows: [] } as never);
+
+  (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
+
+  // Penyimpanan massal mengembalikan sebanyak baris yang diminta
+  (userModel.insertUsersByAdmin as jest.Mock).mockImplementation((_db, daftar) =>
+    Promise.resolve(
+      (daftar as { email: string; role: string }[]).map((baris, i) =>
+        akunPalsu(i, baris.email, baris.role),
+      ),
+    ) as never,
+  );
+  (employeeModel.createEmployees as jest.Mock).mockImplementation((_db, daftar) =>
+    Promise.resolve(
+      (daftar as { data: { full_name: string } }[]).map((baris, i) => ({
+        ...fakeEmployee,
+        id: `emp-${i}`,
+        full_name: baris.data.full_name,
+      })),
+    ) as never,
+  );
 });
 
 describe("GET /api/v1/employees", () => {
@@ -396,9 +429,9 @@ describe("POST /api/v1/employees", () => {
   });
 
   it("menolak email yang sudah terdaftar", async () => {
-    (userModel.findByEmail as jest.Mock).mockResolvedValue({
-      id: USER_ID,
-    } as never);
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "baru@awan.io",
+    ] as never);
 
     const res = await request(app)
       .post("/api/v1/employees")
@@ -406,7 +439,7 @@ describe("POST /api/v1/employees", () => {
       .send(validCreate);
 
     expect(res.status).toBe(409);
-    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+    expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 
   it("menolak departemen yang tidak ada", async () => {
@@ -457,7 +490,7 @@ describe("POST /api/v1/employees", () => {
       .send(validCreate);
 
     expect(res.status).toBe(201);
-    expect(res.body.data.employee.id).toBe(EMPLOYEE_ID);
+    expect(res.body.data.employee.full_name).toBe("Karyawan Baru");
   });
 
   it("menyimpan password dalam bentuk hash argon2", async () => {
@@ -468,8 +501,9 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
-    const [, , passwordTersimpan] = (userModel.insertUserByAdmin as jest.Mock)
-      .mock.calls[0] as [unknown, string, string];
+    const [, daftar] = (userModel.insertUsersByAdmin as jest.Mock).mock
+      .calls[0] as [unknown, { password: string }[]];
+    const passwordTersimpan = daftar[0]!.password;
 
     expect(passwordTersimpan).not.toBe("password123");
     expect(passwordTersimpan).toContain("$argon2id$");
@@ -494,8 +528,9 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
-    const [, , , role] = (userModel.insertUserByAdmin as jest.Mock).mock
-      .calls[0] as [unknown, string, string, string];
+    const [, daftarRole] = (userModel.insertUsersByAdmin as jest.Mock).mock
+      .calls[0] as [unknown, { role: string }[]];
+    const role = daftarRole[0]!.role;
 
     expect(role).toBe("employee");
   });
@@ -508,8 +543,9 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...validCreate, role: "admin" });
 
-    const [, , , role] = (userModel.insertUserByAdmin as jest.Mock).mock
-      .calls[0] as [unknown, string, string, string];
+    const [, daftarRole] = (userModel.insertUsersByAdmin as jest.Mock).mock
+      .calls[0] as [unknown, { role: string }[]];
+    const role = daftarRole[0]!.role;
 
     expect(role).toBe("admin");
   });
@@ -522,8 +558,8 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
-    const [, , , , approvedBy] = (userModel.insertUserByAdmin as jest.Mock).mock
-      .calls[0] as [unknown, string, string, string, string];
+    const [, , approvedBy] = (userModel.insertUsersByAdmin as jest.Mock).mock
+      .calls[0] as [unknown, unknown, string];
 
     expect(approvedBy).toBe(ADMIN_ID);
   });
@@ -536,8 +572,9 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...validCreate, role: "admin" });
 
-    const [, , data] = (employeeModel.createEmployee as jest.Mock).mock
-      .calls[0] as [unknown, string, Record<string, unknown>];
+    const [, daftarData] = (employeeModel.createEmployees as jest.Mock).mock
+      .calls[0] as [unknown, { data: Record<string, unknown> }[]];
+    const data = daftarData[0]!.data;
 
     expect(data).not.toHaveProperty("email");
     expect(data).not.toHaveProperty("password");
@@ -564,9 +601,9 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
-    const [dbUser] = (userModel.insertUserByAdmin as jest.Mock).mock
+    const [dbUser] = (userModel.insertUsersByAdmin as jest.Mock).mock
       .calls[0] as [unknown];
-    const [dbEmployee] = (employeeModel.createEmployee as jest.Mock).mock
+    const [dbEmployee] = (employeeModel.createEmployees as jest.Mock).mock
       .calls[0] as [unknown];
 
     expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
@@ -583,15 +620,15 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
-    const [, userId] = (employeeModel.createEmployee as jest.Mock).mock
-      .calls[0] as [unknown, string];
+    const [, daftar] = (employeeModel.createEmployees as jest.Mock).mock
+      .calls[0] as [unknown, { user_id: string }[]];
 
-    expect(userId).toBe(USER_ID);
+    expect(daftar[0]!.user_id).toBe("user-0");
   });
 
   it("menjalankan ROLLBACK saat penyimpanan karyawan gagal", async () => {
     siapkanBerhasil();
-    (employeeModel.createEmployee as jest.Mock).mockRejectedValue(
+    (employeeModel.createEmployees as jest.Mock).mockRejectedValue(
       new Error("gagal") as never,
     );
 
@@ -607,7 +644,7 @@ describe("POST /api/v1/employees", () => {
 
   it("selalu mengembalikan koneksi ke pool meski terjadi error", async () => {
     siapkanBerhasil();
-    (userModel.insertUserByAdmin as jest.Mock).mockRejectedValue(
+    (userModel.insertUsersByAdmin as jest.Mock).mockRejectedValue(
       new Error("gagal") as never,
     );
 
@@ -911,7 +948,7 @@ describe("DELETE /api/v1/employees/:id", () => {
   });
 });
 
-describe("POST /api/v1/employees dengan larik", () => {
+describe("POST /api/v1/employees dengan array", () => {
   const baris = (nomor: number) => ({
     ...validCreate,
     email: `karyawan${nomor}@awan.io`,
@@ -964,7 +1001,7 @@ describe("POST /api/v1/employees dengan larik", () => {
     expect(res.status).toBe(201);
     expect(res.body.meta.created).toBe(3);
     expect(res.body.data).toHaveLength(3);
-    expect(employeeModel.createEmployee).toHaveBeenCalledTimes(3);
+    expect(employeeModel.createEmployees).toHaveBeenCalledTimes(1);
   });
 
   it("membungkus seluruh baris dalam satu transaksi", async () => {
@@ -980,13 +1017,13 @@ describe("POST /api/v1/employees dengan larik", () => {
     expect(res.status).toBe(400);
   });
 
-  it("menolak jumlah melebihi batas seratus", async () => {
-    const banyak = Array.from({ length: 101 }, (_, i) => baris(i));
+  it("menolak jumlah melebihi batas lima ratus", async () => {
+    const banyak = Array.from({ length: 501 }, (_, i) => baris(i));
 
     const res = await tambahMassal(banyak);
 
     expect(res.status).toBe(400);
-    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+    expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 
   it("menolak seluruh permintaan bila ada satu email kembar di dalamnya", async () => {
@@ -996,13 +1033,13 @@ describe("POST /api/v1/employees dengan larik", () => {
     expect(res.body.details.failed_rows).toHaveLength(1);
     expect(res.body.details.failed_rows[0].index).toBe(2);
     expect(res.body.details.failed_rows[0].message).toContain("baris ke-1");
-    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+    expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 
   it("menolak seluruh permintaan bila ada email yang sudah terdaftar", async () => {
-    (userModel.findByEmail as jest.Mock).mockImplementation((email) =>
-      Promise.resolve(email === "karyawan2@awan.io" ? fakeAccount : null),
-    );
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "karyawan2@awan.io",
+    ] as never);
 
     const res = await tambahMassal([baris(1), baris(2), baris(3)]);
 
@@ -1014,13 +1051,10 @@ describe("POST /api/v1/employees dengan larik", () => {
   });
 
   it("melaporkan seluruh baris bermasalah sekaligus, bukan satu per satu", async () => {
-    (userModel.findByEmail as jest.Mock).mockImplementation((email) =>
-      Promise.resolve(
-        email === "karyawan1@awan.io" || email === "karyawan3@awan.io"
-          ? fakeAccount
-          : null,
-      ),
-    );
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "karyawan1@awan.io",
+      "karyawan3@awan.io",
+    ] as never);
 
     const res = await tambahMassal([baris(1), baris(2), baris(3)]);
 
@@ -1041,12 +1075,12 @@ describe("POST /api/v1/employees dengan larik", () => {
     );
   });
 
-  it("menolak baris yang tidak lolos validasi bentuk", async () => {
+  it("menolak baris yang kolomnya kosong atau datanya tidak sesuai", async () => {
     const res = await tambahMassal([baris(1), { email: "bukan-email" }]);
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe("VALIDATION_ERROR");
-    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+    expect(res.body.details.failed_rows[0].index).toBe(1);
+    expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 
   it("tidak pernah mengembalikan password pada responsnya", async () => {
@@ -1082,7 +1116,7 @@ describe("akun buatan admin langsung dapat dipakai", () => {
       .send(baris);
 
     expect(res.status).toBe(201);
-    expect(userModel.insertUserByAdmin).toHaveBeenCalledTimes(1);
+    expect(userModel.insertUsersByAdmin).toHaveBeenCalledTimes(1);
     expect(userModel.insertUser).not.toHaveBeenCalled();
   });
 
@@ -1096,7 +1130,7 @@ describe("akun buatan admin langsung dapat dipakai", () => {
       ]);
 
     expect(res.status).toBe(201);
-    expect(userModel.insertUserByAdmin).toHaveBeenCalledTimes(2);
+    expect(userModel.insertUsersByAdmin).toHaveBeenCalledTimes(1);
     expect(userModel.insertUser).not.toHaveBeenCalled();
   });
 
@@ -1151,7 +1185,7 @@ describe("satu endpoint, dua bentuk kiriman", () => {
     expect(res.body.meta).toBeUndefined();
   });
 
-  it("larik menghasilkan data berbentuk larik beserta meta", async () => {
+  it("array menghasilkan data berbentuk array beserta meta", async () => {
     const res = await kirim([satu, { ...satu, email: "tunggal2@awan.io" }]);
 
     expect(res.status).toBe(201);
@@ -1160,7 +1194,7 @@ describe("satu endpoint, dua bentuk kiriman", () => {
     expect(res.body.meta.created).toBe(2);
   });
 
-  it("larik berisi satu tetap dijawab sebagai larik", async () => {
+  it("array berisi satu tetap dijawab sebagai array", async () => {
     const res = await kirim([satu]);
 
     expect(Array.isArray(res.body.data)).toBe(true);
@@ -1177,19 +1211,23 @@ describe("satu endpoint, dua bentuk kiriman", () => {
       .toBe(true);
   });
 
-  it("galat larik menunjuk nomor baris beserta kolomnya", async () => {
+  it("galat array menunjuk nomor baris beserta kolomnya", async () => {
     const res = await kirim([satu, { ...satu, email: "bukan-email" }]);
 
     expect(res.status).toBe(400);
+
+    const [gagal] = res.body.details.failed_rows;
+
+    expect(gagal.index).toBe(1);
     expect(
-      res.body.errors.some((e: { field: string }) => e.field === "1.email"),
+      gagal.errors.some((e: { field: string }) => e.field === "email"),
     ).toBe(true);
   });
 
   it("email duplikat pada kiriman tunggal tetap dijawab 409", async () => {
-    (userModel.findByEmail as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "tunggal@awan.io",
+    ] as never);
 
     const res = await kirim(satu);
 
@@ -1197,10 +1235,10 @@ describe("satu endpoint, dua bentuk kiriman", () => {
     expect(res.body.message).toContain("sudah terdaftar");
   });
 
-  it("email duplikat pada kiriman larik dijawab 400 beserta daftar barisnya", async () => {
-    (userModel.findByEmail as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
+  it("email duplikat pada kiriman array dijawab 400 beserta daftar barisnya", async () => {
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "tunggal@awan.io",
+    ] as never);
 
     const res = await kirim([satu]);
 
@@ -1209,9 +1247,9 @@ describe("satu endpoint, dua bentuk kiriman", () => {
   });
 
   it("tidak membocorkan penanda internal pada daftar baris gagal", async () => {
-    (userModel.findByEmail as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "tunggal@awan.io",
+    ] as never);
 
     const res = await kirim([satu]);
 
@@ -1219,13 +1257,152 @@ describe("satu endpoint, dua bentuk kiriman", () => {
       index: 0,
       email: "tunggal@awan.io",
       message: "Email sudah terdaftar",
+      errors: [{ field: "email", message: "Email sudah terdaftar" }],
     });
   });
 
-  it("menolak larik kosong", async () => {
+  it("menolak array kosong", async () => {
     const res = await kirim([]);
 
     expect(res.status).toBe(400);
-    expect(employeeModel.createEmployee).not.toHaveBeenCalled();
+    expect(employeeModel.createEmployees).not.toHaveBeenCalled();
+  });
+});
+
+describe("laporan per baris pada impor massal", () => {
+  const utuh = (n: number) => ({
+    email: `orang${n}@awan.io`,
+    password: "12345678",
+    full_name: `Orang Nomor ${n}`,
+    phone: "+628110000401",
+    gender: "male",
+  });
+
+  function kirim(body: unknown[]) {
+    return request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body as never);
+  }
+
+  beforeEach(() => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
+      fakeAccount as never,
+    );
+    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+    (departmentModel.findById as jest.Mock).mockResolvedValue({
+      id: DEPARTMENT_ID,
+    } as never);
+  });
+
+  it("melaporkan jumlah baris yang benar dan yang bermasalah", async () => {
+    const res = await kirim([utuh(1), { email: "rusak" }, utuh(3)]);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.total).toBe(3);
+    expect(res.body.details.valid).toBe(2);
+    expect(res.body.details.invalid).toBe(1);
+  });
+
+  it("menyebut setiap kolom yang kosong pada satu baris", async () => {
+    const res = await kirim([utuh(1), { email: "ada@awan.io" }]);
+
+    const kolom = res.body.details.failed_rows[0].errors.map(
+      (e: { field: string }) => e.field,
+    );
+
+    expect(kolom).toEqual(
+      expect.arrayContaining(["password", "full_name", "phone", "gender"]),
+    );
+  });
+
+  it("membedakan kolom kosong dari data yang tidak sesuai", async () => {
+    const res = await kirim([
+      { ...utuh(1), email: "bukan-email", gender: "" },
+    ]);
+
+    const errors = res.body.details.failed_rows[0].errors as {
+      field: string;
+      message: string;
+    }[];
+
+    expect(errors.find((e) => e.field === "email")?.message).toContain(
+      "Format email tidak valid",
+    );
+    expect(errors.find((e) => e.field === "gender")).toBeDefined();
+  });
+
+  it("menandai kolom relasi yang tidak ditemukan, bukan kolom email", async () => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await kirim([{ ...utuh(1), department_id: DEPARTMENT_ID }]);
+
+    expect(res.body.details.failed_rows[0].errors).toEqual([
+      { field: "department_id", message: "Departemen tidak ditemukan" },
+    ]);
+  });
+
+  it("nomor baris tetap benar walau yang gagal ada di tahap berbeda", async () => {
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([
+      "orang3@awan.io",
+    ] as never);
+
+    // baris 1 gagal bentuk, baris 3 gagal isi
+    const res = await kirim([utuh(0), { email: "rusak" }, utuh(2), utuh(3)]);
+
+    const indeks = res.body.details.failed_rows.map(
+      (r: { index: number }) => r.index,
+    );
+
+    expect(indeks).toEqual([1, 3]);
+  });
+
+  it("ringkasan pesan tetap ada agar klien lama tidak rusak", async () => {
+    const res = await kirim([{ email: "ada@awan.io" }]);
+
+    expect(typeof res.body.details.failed_rows[0].message).toBe("string");
+    expect(res.body.details.failed_rows[0].message.length).toBeGreaterThan(0);
+  });
+
+  it("password yang sama hanya di-hash sekali", async () => {
+    const daftar = Array.from({ length: 5 }, (_, i) => utuh(i));
+
+    const res = await kirim(daftar);
+
+    expect(res.status).toBe(201);
+
+    const [, daftarHash] = (userModel.insertUsersByAdmin as jest.Mock).mock
+      .calls[0] as [unknown, { password: string }[]];
+    const hashTersimpan = daftarHash.map((baris) => baris.password);
+
+    expect(hashTersimpan).toHaveLength(5);
+    expect(new Set(hashTersimpan).size).toBe(1);
+  });
+
+  it("password berbeda tetap menghasilkan hash yang berbeda", async () => {
+    const res = await kirim([
+      { ...utuh(1), password: "12345678" },
+      { ...utuh(2), password: "87654321" },
+    ]);
+
+    expect(res.status).toBe(201);
+
+    const [, daftarHash] = (userModel.insertUsersByAdmin as jest.Mock).mock
+      .calls[0] as [unknown, { password: string }[]];
+    const hashTersimpan = daftarHash.map((baris) => baris.password);
+
+    expect(new Set(hashTersimpan).size).toBe(2);
+  });
+
+  it("menerima jumlah baris di bawah batas baru", async () => {
+    const daftar = Array.from({ length: 250 }, (_, i) => utuh(i));
+
+    const res = await kirim(daftar);
+
+    expect(res.status).toBe(201);
+    expect(res.body.meta.created).toBe(250);
   });
 });

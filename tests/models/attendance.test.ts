@@ -196,7 +196,7 @@ describe("penyaringan daftar absensi", () => {
     expect(sql).toContain("a.status = $2::attendance_status");
     expect(sql).toContain("a.attendance_date >= $3::date");
     expect(sql).toContain("a.attendance_date <= $4::date");
-    // limit dan offset ditambahkan ke larik yang sama setelah query hitung
+    // limit dan offset ditambahkan ke array yang sama setelah query hitung
     // berjalan, jadi keduanya dibuang saat memeriksa nilai penyaringnya
     expect(values.slice(0, -2)).toEqual([
       DEPARTMENT_ID,
@@ -430,7 +430,7 @@ describe("penanda job penutup hari", () => {
     );
   });
 
-  it("mengirim setiap kolom sebagai larik sejajar", async () => {
+  it("mengirim setiap kolom sebagai array sejajar", async () => {
     mockQuery.mockResolvedValue({ rowCount: 2 } as never);
 
     await attendanceModel.insertMarkers(mockDb as never, "2026-03-10", [

@@ -195,3 +195,49 @@ export async function findPending(): Promise<PendingUser[]> {
   );
   return result.rows;
 }
+
+// Membuat banyak akun sekaligus dalam satu query, biar tidak bolak-balik
+// ke database sebanyak jumlah barisnya
+export async function insertUsersByAdmin(
+  db: Executor,
+  daftar: { email: string; password: string; role: UserRole }[],
+  approved_by: string,
+): Promise<User[]> {
+  if (daftar.length === 0) return [];
+
+  const result = await db.query<User>(
+    `INSERT INTO users
+       (email, password, role, is_active, terms_accepted_at,
+        password_changed_at, email_verified_at, approved_at, approved_by,
+        must_change_password)
+     SELECT baris.email, baris.password, baris.role::user_role, true, now(),
+            now(), now(), now(), $4::uuid, true
+     FROM unnest($1::text[], $2::text[], $3::text[])
+       AS baris(email, password, role)
+     RETURNING ${SAFE_COLUMNS}`,
+    [
+      daftar.map((baris) => baris.email),
+      daftar.map((baris) => baris.password),
+      daftar.map((baris) => baris.role),
+      approved_by,
+    ],
+  );
+
+  if (result.rows.length !== daftar.length) {
+    throw new Error("Gagal menyimpan sebagian akun");
+  }
+
+  return result.rows;
+}
+
+// Cek banyak email sekaligus, biar tidak satu query per baris
+export async function findExistingEmails(emails: string[]): Promise<string[]> {
+  if (emails.length === 0) return [];
+
+  const result = await pool.query<{ email: string }>(
+    `SELECT email FROM users WHERE email = ANY($1::text[])`,
+    [emails],
+  );
+
+  return result.rows.map((baris) => baris.email);
+}

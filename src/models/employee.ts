@@ -376,3 +376,51 @@ export async function updatePhotoPath(
 
   return result.rows[0] ?? null;
 }
+
+// Membuat banyak karyawan sekaligus dalam satu query
+export async function createEmployees(
+  db: Executor,
+  daftar: { user_id: string | null; data: CreateEmployeeInput }[],
+): Promise<Employee[]> {
+  if (daftar.length === 0) return [];
+
+  const kolom = <T>(ambil: (baris: (typeof daftar)[number]) => T) =>
+    daftar.map(ambil);
+
+  const result = await db.query<Employee>(
+    `INSERT INTO employees
+       (user_id, full_name, phone, gender, birth_date, address,
+        department_id, position_id, manager_id, employment_status, join_date)
+     SELECT b.user_id::uuid, b.full_name, b.phone, b.gender::employee_gender,
+            b.birth_date::date, b.address,
+            b.department_id::uuid, b.position_id::uuid, b.manager_id::uuid,
+            COALESCE(b.employment_status::employment_status, 'probation'),
+            COALESCE(b.join_date::date, current_date)
+     FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[],
+                 $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+                 $11::text[])
+       AS b(user_id, full_name, phone, gender, birth_date, address,
+            department_id, position_id, manager_id, employment_status,
+            join_date)
+     RETURNING *`,
+    [
+      kolom((b) => b.user_id),
+      kolom((b) => b.data.full_name),
+      kolom((b) => b.data.phone),
+      kolom((b) => b.data.gender),
+      kolom((b) => b.data.birth_date ?? null),
+      kolom((b) => b.data.address ?? null),
+      kolom((b) => b.data.department_id ?? null),
+      kolom((b) => b.data.position_id ?? null),
+      kolom((b) => b.data.manager_id ?? null),
+      kolom((b) => b.data.employment_status ?? null),
+      kolom((b) => b.data.join_date ?? null),
+    ],
+  );
+
+  if (result.rows.length !== daftar.length) {
+    throw new Error("Gagal menyimpan sebagian data karyawan");
+  }
+
+  return result.rows;
+}

@@ -311,7 +311,7 @@ Satu karyawan dikirim sebagai objek:
   "phone": "+628110000101", "gender": "male" }
 ```
 
-Banyak karyawan dikirim sebagai larik, maksimal 100 per permintaan:
+Banyak karyawan dikirim sebagai array, maksimal 500 per permintaan:
 
 ```json
 [
@@ -323,8 +323,8 @@ Banyak karyawan dikirim sebagai larik, maksimal 100 per permintaan:
 ```
 
 Bentuk respons mengikuti bentuk kirimannya. Objek dijawab `data` berupa objek
-tanpa `meta`, larik dijawab `data` berupa larik beserta `meta.created`. Larik
-berisi satu tetap dijawab sebagai larik, sehingga pemanggil tidak perlu
+tanpa `meta`, array dijawab `data` berupa array beserta `meta.created`. Array
+berisi satu tetap dijawab sebagai array, sehingga pemanggil tidak perlu
 menebak.
 
 Akun yang dibuat admin **langsung terverifikasi, disetujui, dan aktif**,
@@ -353,39 +353,85 @@ manajer yang ditunjuk.
 ### Bentuk galat mengikuti bentuk kiriman
 
 Galat validasi bentuk data menunjuk kolom saja untuk kiriman objek, dan
-menunjuk nomor baris beserta kolomnya untuk kiriman larik:
+menunjuk nomor baris beserta kolomnya untuk kiriman array:
 
 ```
 objek  ->  "field": "email"
-larik  ->  "field": "1.email"
+array  ->  "field": "1.email"
 ```
 
-Kegagalan pemeriksaan isi pada kiriman larik dijawab 400 dengan seluruh baris
-bermasalah sekaligus, bukan satu per satu, sehingga admin dapat memperbaiki
-semuanya dalam sekali jalan:
+Kiriman array selalu dijawab 400 dengan satu laporan yang memuat seluruh baris
+bermasalah sekaligus, apa pun jenis masalahnya: kolom kosong, data tidak
+sesuai, email kembar, email sudah terdaftar, maupun relasi yang tidak
+ditemukan. Admin cukup sekali perbaikan untuk semuanya.
 
 ```json
 {
   "success": false,
-  "message": "2 dari 3 baris tidak dapat diproses, tidak ada karyawan yang ditambahkan",
+  "message": "3 dari 6 baris tidak dapat diproses, tidak ada karyawan yang ditambahkan",
   "code": "BAD_REQUEST",
   "details": {
+    "total": 6,
+    "valid": 3,
+    "invalid": 3,
     "failed_rows": [
-      { "index": 1, "email": "andi@awan.io", "message": "Email sudah terdaftar" },
-      { "index": 2, "email": "fajar@awan.io", "message": "Email sama dengan baris ke-1 pada permintaan ini" }
+      {
+        "index": 1,
+        "email": "",
+        "message": "Nama lengkap minimal 3 karakter; Jenis kelamin wajib dipilih",
+        "errors": [
+          { "field": "full_name", "message": "Nama lengkap minimal 3 karakter" },
+          { "field": "gender", "message": "Jenis kelamin wajib dipilih" }
+        ]
+      },
+      {
+        "index": 3,
+        "email": "andi@awan.io",
+        "message": "Email sudah terdaftar",
+        "errors": [{ "field": "email", "message": "Email sudah terdaftar" }]
+      },
+      {
+        "index": 5,
+        "email": "dina@awan.io",
+        "message": "Departemen tidak ditemukan",
+        "errors": [
+          { "field": "department_id", "message": "Departemen tidak ditemukan" }
+        ]
+      }
     ]
   }
 }
 ```
 
-`index` dihitung dari nol mengikuti posisi pada larik yang dikirim.
+`index` dihitung dari nol mengikuti posisi pada array yang dikirim. Baris yang
+tidak muncul pada `failed_rows` berarti tidak bermasalah, dan `valid`
+menyebutkan jumlahnya. Karena tidak ada keberhasilan sebagian, baris yang benar
+pun tetap tidak tersimpan sampai seluruhnya bersih.
+
+`errors` menyebut kolom yang bermasalah satu per satu sehingga frontend dapat
+menyorot sel yang tepat, sedangkan `message` adalah ringkasan gabungannya untuk
+ditampilkan langsung.
 
 Pada kiriman objek tunggal, email yang sudah terdaftar tetap dijawab 409
 seperti sebelumnya, bukan 400, karena tidak ada daftar baris yang perlu
 dilaporkan.
 
-Setiap password di-hash dengan argon2, dan seratus baris berarti seratus
-hashing, sehingga permintaan berukuran penuh dapat memakan beberapa detik.
+### Kinerja impor besar
+
+Impor 250 baris tercatat **1,2 detik** setelah tiga hal diperbaiki. Tanpa
+ketiganya, angkanya 46 detik dan melewati batas waktu tunggu frontend.
+
+| Perbaikan | Sebelumnya |
+| --------- | ---------- |
+| Password yang sama cukup di-hash sekali | 250 hashing argon2, sekitar 11 detik |
+| Semua email diperiksa dalam satu query | 250 query, sekitar 10 detik |
+| Penyimpanan diborongkan jadi dua query | 500 query, sekitar 20 detik |
+
+Pemeriksaan departemen, jabatan, dan manajer juga dipakai ulang antar baris,
+karena satu berkas impor biasanya menunjuk departemen yang itu-itu saja.
+
+Hashing tetap dikerjakan sebelum transaksi dibuka, sehingga transaksi database
+tetap pendek walaupun setiap baris memakai password yang berbeda.
 
 ## Jejak Kejadian Absensi
 

@@ -1,17 +1,17 @@
 import { describe, it, expect } from "@jest/globals";
 import {
-  alasanWaktuOfflineDitolak,
-  susunCatatanOffline,
-  BATAS_SINKRONISASI_MENIT,
+  rejectionReasonForOfflineTime,
+  buildOfflineNote,
+  MAX_SYNC_DELAY_MINUTES,
 } from "../../src/helpers/offlineAttendance.js";
 
 const MENIT_MASUK = 8 * 60;
 
-const wib = (tanggal: string, jam: string) =>
-  new Date(`${tanggal}T${jam}:00+07:00`);
+const wib = (date: string, hour: string) =>
+  new Date(`${date}T${hour}:00+07:00`);
 
 const tolak = (offline: Date, server: Date) =>
-  alasanWaktuOfflineDitolak(offline, server, MENIT_MASUK);
+  rejectionReasonForOfflineTime(offline, server, MENIT_MASUK);
 
 describe("alasanWaktuOfflineDitolak", () => {
   it("menerima absen offline yang disinkronkan tak lama setelahnya", () => {
@@ -33,28 +33,28 @@ describe("alasanWaktuOfflineDitolak", () => {
   });
 
   it("menolak waktu absen yang berada di masa depan", () => {
-    const alasan = tolak(
+    const reason = tolak(
       wib("2026-08-20", "08:30"),
       wib("2026-08-20", "08:00"),
     );
 
-    expect(alasan).toContain("masa depan");
+    expect(reason).toContain("masa depan");
   });
 
   it("menolak waktu yang tidak dapat dibaca", () => {
-    const alasan = alasanWaktuOfflineDitolak(
+    const reason = rejectionReasonForOfflineTime(
       new Date("bukan tanggal"),
       wib("2026-08-20", "08:00"),
       MENIT_MASUK,
     );
 
-    expect(alasan).toContain("tidak dapat dibaca");
+    expect(reason).toContain("tidak dapat dibaca");
   });
 
   it("menerima sinkronisasi tepat pada batas jeda", () => {
     const offline = wib("2026-08-20", "08:00");
     const server = new Date(
-      offline.getTime() + BATAS_SINKRONISASI_MENIT * 60_000,
+      offline.getTime() + MAX_SYNC_DELAY_MINUTES * 60_000,
     );
 
     expect(tolak(offline, server)).toBeNull();
@@ -63,7 +63,7 @@ describe("alasanWaktuOfflineDitolak", () => {
   it("menolak sinkronisasi yang melewati batas jeda", () => {
     const offline = wib("2026-08-20", "08:00");
     const server = new Date(
-      offline.getTime() + (BATAS_SINKRONISASI_MENIT + 1) * 60_000,
+      offline.getTime() + (MAX_SYNC_DELAY_MINUTES + 1) * 60_000,
     );
 
     expect(tolak(offline, server)).toContain("paling lambat");
@@ -71,30 +71,30 @@ describe("alasanWaktuOfflineDitolak", () => {
 
   it("menolak absen offline yang melewati pergantian hari", () => {
     // jedanya hanya dua jam, tetapi tanggal WIB-nya sudah berbeda
-    const alasan = tolak(
+    const reason = tolak(
       wib("2026-08-19", "23:00"),
       wib("2026-08-20", "01:00"),
     );
 
-    expect(alasan).toContain("hari yang sama");
+    expect(reason).toContain("hari yang sama");
   });
 
   it("absen kemarin tertahan batas jeda lebih dulu", () => {
-    const alasan = tolak(
+    const reason = tolak(
       wib("2026-08-19", "08:00"),
       wib("2026-08-20", "09:00"),
     );
 
-    expect(alasan).toContain("paling lambat");
+    expect(reason).toContain("paling lambat");
   });
 
   it("menolak waktu yang terlalu jauh sebelum jam masuk", () => {
-    const alasan = tolak(
+    const reason = tolak(
       wib("2026-08-20", "05:00"),
       wib("2026-08-20", "09:00"),
     );
 
-    expect(alasan).toContain("terlalu jauh sebelum jam masuk");
+    expect(reason).toContain("terlalu jauh sebelum jam masuk");
   });
 
   it("menerima datang dua jam sebelum jam masuk", () => {
@@ -109,29 +109,29 @@ describe("alasanWaktuOfflineDitolak", () => {
     const offline = new Date("2026-08-19T23:00:00Z");
     const server = new Date("2026-08-20T02:00:00Z");
 
-    expect(alasanWaktuOfflineDitolak(offline, server, MENIT_MASUK)).toBeNull();
+    expect(rejectionReasonForOfflineTime(offline, server, MENIT_MASUK)).toBeNull();
   });
 });
 
 describe("susunCatatanOffline", () => {
   it("mencantumkan jam absen dan jam terima server", () => {
-    const catatan = susunCatatanOffline(
+    const noteField = buildOfflineNote(
       wib("2026-08-20", "07:55"),
       wib("2026-08-20", "09:12"),
       null,
     );
 
-    expect(catatan).toBe("[Absen offline pukul 07:55, diterima server 09:12]");
+    expect(noteField).toBe("[Absen offline pukul 07:55, diterima server 09:12]");
   });
 
   it("mempertahankan catatan asli karyawan", () => {
-    const catatan = susunCatatanOffline(
+    const noteField = buildOfflineNote(
       wib("2026-08-20", "07:55"),
       wib("2026-08-20", "09:12"),
       "Jaringan kantor mati",
     );
 
-    expect(catatan).toContain("Jaringan kantor mati");
-    expect(catatan.startsWith("[Absen offline")).toBe(true);
+    expect(noteField).toContain("Jaringan kantor mati");
+    expect(noteField.startsWith("[Absen offline")).toBe(true);
   });
 });

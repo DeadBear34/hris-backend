@@ -49,12 +49,12 @@ describe("testConnection", () => {
   });
 
   it("mengembalikan baris pertama hasil query", async () => {
-    const waktu = new Date();
-    mockQuery.mockResolvedValue({ rows: [{ now: waktu }] } as never);
+    const at = new Date();
+    mockQuery.mockResolvedValue({ rows: [{ now: at }] } as never);
 
-    const hasil = await testConnection();
+    const result = await testConnection();
 
-    expect(hasil).toEqual({ now: waktu });
+    expect(result).toEqual({ now: at });
   });
 
   it("meneruskan error jika database tidak dapat dihubungi", async () => {

@@ -327,6 +327,20 @@ tanpa `meta`, array dijawab `data` berupa array beserta `meta.created`. Array
 berisi satu tetap dijawab sebagai array, sehingga pemanggil tidak perlu
 menebak.
 
+Setiap baris yang berhasil menyebut `index`, sehingga frontend dapat
+mencocokkan hasilnya kembali ke nomor kiriman tanpa mengandalkan urutan:
+
+```json
+{
+  "data": [
+    { "index": 0,
+      "employee": { "employee_number": "017", "full_name": "Ujang Sutisna", "...": "..." },
+      "account":  { "email": "ujang@awan.io", "must_change_password": true, "...": "..." } }
+  ],
+  "meta": { "created": 1 }
+}
+```
+
 Akun yang dibuat admin **langsung terverifikasi, disetujui, dan aktif**,
 sehingga karyawan dapat login tanpa melewati alur verifikasi email. Admin yang
 memasukkan datanya sudah menjadi penjaminnya. Keduanya tetap ditandai
@@ -334,6 +348,59 @@ memasukkan datanya sudah menjadi penjaminnya. Keduanya tetap ditandai
 
 Alur verifikasi email hanya berlaku bagi pendaftaran mandiri, tempat
 kepemilikan alamat email memang perlu dibuktikan.
+
+### Kolom mana yang wajib
+
+Yang wajib hanyalah kolom yang tidak boleh kosong di database dan tidak punya
+nilai bawaan:
+
+| Kolom | Wajib | Keterangan |
+| ----- | ----- | ---------- |
+| `email`, `password` | Ya | Untuk akun loginnya |
+| `full_name`, `phone`, `gender` | Ya | Kolom `not null` tanpa bawaan |
+| `birth_date`, `address` | Tidak | Sering belum lengkap saat karyawan didaftarkan |
+| `department_id`, `position_id`, `manager_id` | Tidak | Struktur organisasi bisa menyusul |
+| `employment_status` | Tidak | Bawaannya `probation` |
+| `join_date` | Tidak | Bawaannya tanggal hari ini |
+| `role` | Tidak | Bawaannya `employee` |
+
+Sengaja tidak lebih banyak yang diwajibkan. Admin sering menambahkan karyawan
+sebelum seluruh berkasnya lengkap, dan memaksa alamat atau tanggal lahir terisi
+hanya membuat data karangan.
+
+Satu hal yang perlu diketahui: **karyawan tanpa `position_id` tidak memiliki
+fitur apa pun** selain yang melekat pada dirinya sendiri, karena hak akses
+diberikan lewat jabatan. Karyawannya tetap dapat login dan absen, tetapi tidak
+akan melihat menu apa pun. Jabatan sebaiknya diisi begitu diketahui.
+
+### Sel kosong pada CSV
+
+Sel kosong pada berkas CSV terbaca sebagai string kosong, bukan sebagai tidak
+diisi. Karena itu kolom opsional menerima string kosong dan memperlakukannya
+sama dengan tidak dikirim:
+
+```json
+{ "birth_date": "", "address": "   ", "department_id": "" }
+```
+
+Ketiganya tersimpan sebagai kosong di database, bukan sebagai string kosong,
+sehingga tidak ada campuran antara baris bernilai `NULL` dan baris bernilai
+`""` pada kolom yang sama.
+
+### Kewajaran tanggal
+
+Format yang benar saja tidak cukup, karena tanggal yang sah secara format bisa
+tetap mustahil:
+
+| Aturan | Batas |
+| ------ | ----- |
+| Usia minimal | 15 tahun, mengikuti UU Ketenagakerjaan |
+| Usia maksimal | 100 tahun |
+| Tanggal bergabung ke depan | maksimal 365 hari |
+| Tanggal bergabung terhadap tanggal lahir | tidak boleh mendahului |
+
+Aturan yang sama berlaku saat mengubah data karyawan, bukan hanya saat
+menambah.
 
 ### Tidak ada keberhasilan sebagian
 
@@ -402,6 +469,43 @@ ditemukan. Admin cukup sekali perbaikan untuk semuanya.
   }
 }
 ```
+
+### Objek berkunci nomor
+
+Selain array, banyak karyawan juga dapat dikirim sebagai objek yang kuncinya
+nomor urut mulai dari nol:
+
+```json
+{
+  "0": { "email": "ujang@awan.io", "full_name": "Ujang Sutisna", "...": "..." },
+  "1": { "email": "siti@awan.io",  "full_name": "Siti Aminah",   "...": "..." }
+}
+```
+
+Bentuk ini dibedakan dari satu karyawan karena seluruh kuncinya berupa angka.
+Hasilnya sama persis dengan array: `data` berupa array beserta `meta.created`,
+dan `index` pada laporan galat sama dengan nomor kunci yang dikirim.
+
+Dua penjagaan diterapkan, keduanya menutup kelemahan bawaan bentuk objek:
+
+**Urutan ditentukan backend**, bukan diserahkan pada urutan kunci. JavaScript
+hanya mengurutkan kunci bilangan bulat murni, sehingga kunci berpadding seperti
+`"01"` akan mengikuti urutan kiriman dan membuat nomor karyawan tertukar.
+
+**Kunci wajib 0 sampai n-1 tanpa bolong.** JSON dengan kunci ganda membuat satu
+baris hilang saat diurai, tanpa error apa pun. Lubang pada urutan adalah bekas
+yang tersisa untuk menangkapnya:
+
+```json
+{
+  "message": "Kunci karyawan harus berurutan dari 0 sampai 1 tanpa ada yang terlewat. Yang hilang: 1. Yang diterima: 0, 3",
+  "details": { "expected": 2, "missing": [1], "received": [0, 3] }
+}
+```
+
+Nomor berpadding tetap diterima selama nilainya berurutan, jadi `"000"` dan
+`"001"` sah. Yang ditolak adalah dua kunci yang bernilai sama, misalnya `"01"`
+bersama `"1"`.
 
 `index` dihitung dari nol mengikuti posisi pada array yang dikirim. Baris yang
 tidak muncul pada `failed_rows` berarti tidak bermasalah, dan `valid`

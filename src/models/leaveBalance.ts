@@ -49,7 +49,7 @@ export interface ListLedgerParams {
   limit: number;
 }
 
-const KOLOM = `id, employee_id, leave_type_id, period_year,
+const COLUMNS = `id, employee_id, leave_type_id, period_year,
   amount::float8 AS amount, type, leave_request_id, note,
   created_by, created_at`;
 
@@ -63,7 +63,7 @@ export async function createTransaction(
         leave_request_id, note, created_by)
      VALUES ($1::uuid, $2::uuid, $3::int, $4::numeric,
              $5::leave_transaction_type, $6::uuid, $7, $8::uuid)
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       data.employee_id,
       data.leave_type_id,
@@ -175,7 +175,7 @@ export async function convertHoldToDeduction(
      SET type = 'deduction'::leave_transaction_type
      WHERE leave_request_id = $1::uuid
        AND type = 'hold'::leave_transaction_type
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [leave_request_id],
   );
 
@@ -186,7 +186,7 @@ export async function findByRequest(
   leave_request_id: string,
 ): Promise<LeaveBalanceTransaction[]> {
   const result = await pool.query<LeaveBalanceTransaction>(
-    `SELECT ${KOLOM} FROM leave_balance_transactions
+    `SELECT ${COLUMNS} FROM leave_balance_transactions
      WHERE leave_request_id = $1::uuid
      ORDER BY created_at ASC`,
     [leave_request_id],

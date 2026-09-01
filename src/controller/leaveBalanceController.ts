@@ -10,7 +10,7 @@ function tahunBerjalan(): number {
   return new Date().getUTCFullYear();
 }
 
-async function ambilKaryawanPengguna(req: Request) {
+async function getRequesterEmployee(req: Request) {
   if (!req.user)
     throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
@@ -31,7 +31,7 @@ export async function MyLeaveBalanceController(
   next: NextFunction,
 ) {
   try {
-    const employee = await ambilKaryawanPengguna(req);
+    const employee = await getRequesterEmployee(req);
     const { period_year } = res.locals.query as { period_year?: number };
     const periode = period_year ?? tahunBerjalan();
 
@@ -81,7 +81,7 @@ export async function MyLeaveLedgerController(
   next: NextFunction,
 ) {
   try {
-    const employee = await ambilKaryawanPengguna(req);
+    const employee = await getRequesterEmployee(req);
     const query = res.locals.query as Omit<ListLedgerParams, "employee_id">;
 
     const { rows, total } = await balanceModel.listLedger({

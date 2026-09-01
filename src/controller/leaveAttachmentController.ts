@@ -4,7 +4,7 @@ import * as leaveRequestModel from "../models/leaveRequest.js";
 import * as attachmentModel from "../models/leaveAttachment.js";
 import type { LeaveRequest } from "../models/leaveRequest.js";
 import { detectImageMimeType, MAX_FILE_SIZE } from "../helpers/fileType.js";
-import { punyaFitur } from "../middlewares/feature.js";
+import { hasFeature } from "../middlewares/feature.js";
 import {
   buildStoragePath,
   checksumOf,
@@ -19,7 +19,7 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 
-async function pastikanBolehMengakses(
+async function assertMayAccess(
   req: Request,
   res: Response,
   request: LeaveRequest,
@@ -35,14 +35,14 @@ async function pastikanBolehMengakses(
     );
   }
 
-  const bolehLihatSemua = await punyaFitur(req, res, "leave.view_all");
+  const canViewAll = await hasFeature(req, res, "leave.view_all");
 
-  const boleh =
-    bolehLihatSemua ||
+  const allowed =
+    canViewAll ||
     request.employee_id === employee.id ||
     request.approver_id === employee.id;
 
-  if (!boleh) {
+  if (!allowed) {
     throw Forbidden("Kamu tidak punya akses ke lampiran pengajuan cuti ini");
   }
 
@@ -75,7 +75,7 @@ export async function UploadLeaveAttachmentController(
     const request = await leaveRequestModel.findById(id);
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    const employeeId = await pastikanBolehMengakses(req, res, request);
+    const employeeId = await assertMayAccess(req, res, request);
 
     const mime = detectImageMimeType(berkas.buffer);
 
@@ -120,7 +120,7 @@ export async function ListLeaveAttachmentController(
     const request = await leaveRequestModel.findById(id);
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    await pastikanBolehMengakses(req, res, request);
+    await assertMayAccess(req, res, request);
 
     const attachments = await attachmentModel.findByRequest(id);
 
@@ -152,7 +152,7 @@ export async function SignedUrlLeaveAttachmentController(
     );
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    await pastikanBolehMengakses(req, res, request);
+    await assertMayAccess(req, res, request);
 
     const { url, expires_in } = await createSignedUrl(attachment.storage_path);
 

@@ -8,7 +8,7 @@ const SIGNED_URL_BERLAKU_DETIK = 15 * 60;
 
 let client: SupabaseClient | null = null;
 
-function ambilClient(): SupabaseClient {
+function getStorageClient(): SupabaseClient {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
       "SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY belum diatur, penyimpanan lampiran tidak tersedia",
@@ -42,7 +42,7 @@ export async function uploadAttachment(
   buffer: Buffer,
   contentType: AllowedMimeType,
 ): Promise<void> {
-  const { error } = await ambilClient()
+  const { error } = await getStorageClient()
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
     .upload(storagePath, buffer, { contentType, upsert: false });
 
@@ -55,7 +55,7 @@ export async function createSignedUrl(storagePath: string): Promise<{
   url: string;
   expires_in: number;
 }> {
-  const { data, error } = await ambilClient()
+  const { data, error } = await getStorageClient()
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
     .createSignedUrl(storagePath, SIGNED_URL_BERLAKU_DETIK);
 
@@ -80,7 +80,7 @@ export async function uploadPhoto(
   buffer: Buffer,
   contentType: AllowedMimeType,
 ): Promise<void> {
-  const { error } = await ambilClient()
+  const { error } = await getStorageClient()
     .storage.from(env.SUPABASE_PHOTO_BUCKET)
     .upload(storagePath, buffer, { contentType, upsert: false });
 
@@ -90,7 +90,7 @@ export async function uploadPhoto(
 }
 
 export async function deletePhoto(storagePath: string): Promise<void> {
-  const { error } = await ambilClient()
+  const { error } = await getStorageClient()
     .storage.from(env.SUPABASE_PHOTO_BUCKET)
     .remove([storagePath]);
 
@@ -102,7 +102,7 @@ export async function deletePhoto(storagePath: string): Promise<void> {
 export function photoUrlFor(storagePath: string | null): string | null {
   if (!storagePath || !isStorageConfigured()) return null;
 
-  const { data } = ambilClient()
+  const { data } = getStorageClient()
     .storage.from(env.SUPABASE_PHOTO_BUCKET)
     .getPublicUrl(storagePath);
 

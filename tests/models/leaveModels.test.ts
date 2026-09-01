@@ -49,12 +49,12 @@ describe("model holiday", () => {
       rows: [{ holiday_date: "2026-08-17" }],
     } as never);
 
-    const tanggal = await holidayModel.findDatesBetween(
+    const date = await holidayModel.findDatesBetween(
       "2026-08-01",
       "2026-08-31",
     );
 
-    expect(tanggal).toEqual(["2026-08-17"]);
+    expect(date).toEqual(["2026-08-17"]);
   });
 
   it("menyaring daftar berdasarkan tahun", async () => {
@@ -175,9 +175,9 @@ describe("model leaveType", () => {
   it("menghitung pengajuan yang memakai jenis cuti", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "4" }] } as never);
 
-    const jumlah = await leaveTypeModel.countLeaveRequests(LEAVE_TYPE_ID);
+    const count = await leaveTypeModel.countLeaveRequests(LEAVE_TYPE_ID);
 
-    expect(jumlah).toBe(4);
+    expect(count).toBe(4);
   });
 });
 
@@ -479,9 +479,9 @@ describe("model leaveAttachment", () => {
   it("menghitung lampiran untuk pemeriksaan kewajiban bukti", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "2" }] } as never);
 
-    const jumlah = await attachmentModel.countByRequest(REQUEST_ID);
+    const count = await attachmentModel.countByRequest(REQUEST_ID);
 
-    expect(jumlah).toBe(2);
+    expect(count).toBe(2);
   });
 
   it("mencari lampiran berdasarkan id", async () => {

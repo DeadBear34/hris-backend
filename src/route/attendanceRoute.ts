@@ -36,10 +36,10 @@ const router = Router();
 
 const loggedIn = [authenticate];
 
-const bolehLihatTim = [authenticate, requireFeature("attendance.view_team")];
-const bolehLihatSemua = [authenticate, requireFeature("attendance.view_all")];
-const bolehKoreksi = [authenticate, requireFeature("attendance.correct")];
-const bolehLaporan = [authenticate, requireFeature("attendance.report")];
+const canViewTeam = [authenticate, requireFeature("attendance.view_team")];
+const canViewAll = [authenticate, requireFeature("attendance.view_all")];
+const canCorrect = [authenticate, requireFeature("attendance.correct")];
+const canViewReport = [authenticate, requireFeature("attendance.report")];
 
 router.post(
   "/attendances/close-day",
@@ -72,42 +72,42 @@ router.get(
 
 router.get(
   "/attendances/team",
-  ...bolehLihatTim,
+  ...canViewTeam,
   validateQuery(listAttendanceQuerySchema),
   TeamAttendanceController,
 );
 
 router.get(
   "/attendances/report",
-  ...bolehLaporan,
+  ...canViewReport,
   validateQuery(reportQuerySchema),
   ReportAttendanceController,
 );
 
 router.get(
   "/attendances/events",
-  ...bolehLaporan,
+  ...canViewReport,
   validateQuery(eventLogQuerySchema),
   EventLogController,
 );
 
 router.get(
   "/attendances/offline-log",
-  ...bolehLaporan,
+  ...canViewReport,
   validateQuery(offlineLogQuerySchema),
   OfflineLogController,
 );
 
 router.get(
   "/attendances",
-  ...bolehLihatSemua,
+  ...canViewAll,
   validateQuery(listAttendanceQuerySchema),
   ListAttendanceController,
 );
 
 router.patch(
   "/attendances/:id/correct",
-  ...bolehKoreksi,
+  ...canCorrect,
   validateParams(idParamSchema),
   validate(correctAttendanceSchema),
   CorrectAttendanceController,

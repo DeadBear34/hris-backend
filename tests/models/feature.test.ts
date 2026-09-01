@@ -44,9 +44,9 @@ describe("findAllFeatures", () => {
 
 describe("findByCodes", () => {
   it("tidak menyentuh database untuk daftar kosong", async () => {
-    const hasil = await featureModel.findByCodes([]);
+    const result = await featureModel.findByCodes([]);
 
-    expect(hasil).toEqual([]);
+    expect(result).toEqual([]);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -147,14 +147,14 @@ describe("replacePositionFeatures", () => {
   });
 
   it("cukup menghapus saja bila daftar barunya kosong", async () => {
-    const jumlah = await featureModel.replacePositionFeatures(
+    const count = await featureModel.replacePositionFeatures(
       fakeDb as never,
       POSITION_ID,
       [],
       USER_ID,
     );
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
     expect(fakeDb.query).toHaveBeenCalledTimes(1);
   });
 
@@ -185,16 +185,16 @@ describe("countGrantsByPosition", () => {
   it("menghitung pemberian fitur sebuah jabatan", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "13" }] } as never);
 
-    const jumlah = await featureModel.countGrantsByPosition(POSITION_ID);
+    const count = await featureModel.countGrantsByPosition(POSITION_ID);
 
-    expect(jumlah).toBe(13);
+    expect(count).toBe(13);
   });
 
   it("mengembalikan nol bila belum ada pemberian", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const jumlah = await featureModel.countGrantsByPosition(POSITION_ID);
+    const count = await featureModel.countGrantsByPosition(POSITION_ID);
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
   });
 });

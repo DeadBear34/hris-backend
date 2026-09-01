@@ -89,11 +89,11 @@ export async function DeleteLeaveTypeController(
     const existing = await leaveTypeModel.findById(id);
     if (!existing) throw NotFound("Jenis cuti tidak ditemukan");
 
-    const jumlah = await leaveTypeModel.countLeaveRequests(id);
-    if (jumlah > 0) {
+    const count = await leaveTypeModel.countLeaveRequests(id);
+    if (count > 0) {
       throw BadRequest(
-        `Jenis cuti tidak dapat dihapus karena sudah dipakai oleh ${jumlah} pengajuan. Nonaktifkan saja agar tidak dapat dipilih lagi.`,
-        { leave_request_count: jumlah },
+        `Jenis cuti tidak dapat dihapus karena sudah dipakai oleh ${count} pengajuan. Nonaktifkan saja agar tidak dapat dipilih lagi.`,
+        { leave_request_count: count },
       );
     }
 

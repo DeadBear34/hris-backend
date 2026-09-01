@@ -16,27 +16,27 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehKelolaPendaftaran = [
+const canManageRegistration = [
   authenticate,
   requireFeature("employee.approve_user"),
 ];
 
 router.get(
   "/users/pending",
-  ...bolehKelolaPendaftaran,
+  ...canManageRegistration,
   ListPendingUserController,
 );
 
 router.patch(
   "/users/:id/approve",
-  ...bolehKelolaPendaftaran,
+  ...canManageRegistration,
   validateParams(idParamSchema),
   ApproveUserController,
 );
 
 router.patch(
   "/users/:id/status",
-  ...bolehKelolaPendaftaran,
+  ...canManageRegistration,
   validateParams(idParamSchema),
   validate(setUserActiveSchema),
   SetUserActiveController,

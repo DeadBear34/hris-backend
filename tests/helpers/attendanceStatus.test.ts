@@ -1,10 +1,10 @@
 import { describe, it, expect } from "@jest/globals";
 import {
   statusLabel,
-  butuhJamMasuk,
-  jamMenit,
-  tentukanStatusKedatangan,
-  tentukanPenandaHarian,
+  requiresCheckIn,
+  formatDuration,
+  decideArrivalStatus,
+  decideDailyMarker,
 } from "../../src/helpers/attendanceStatus.js";
 
 describe("statusLabel", () => {
@@ -19,32 +19,32 @@ describe("statusLabel", () => {
 
 describe("butuhJamMasuk", () => {
   it("hanya hadir dan terlambat yang mengharuskan jam masuk", () => {
-    expect(butuhJamMasuk("present")).toBe(true);
-    expect(butuhJamMasuk("late")).toBe(true);
+    expect(requiresCheckIn("present")).toBe(true);
+    expect(requiresCheckIn("late")).toBe(true);
   });
 
   it("status tanpa kehadiran justru tidak boleh memiliki jam masuk", () => {
-    expect(butuhJamMasuk("absent")).toBe(false);
-    expect(butuhJamMasuk("leave")).toBe(false);
-    expect(butuhJamMasuk("holiday")).toBe(false);
+    expect(requiresCheckIn("absent")).toBe(false);
+    expect(requiresCheckIn("leave")).toBe(false);
+    expect(requiresCheckIn("holiday")).toBe(false);
   });
 });
 
 describe("jamMenit", () => {
   it("menampilkan jam dan menit sekaligus", () => {
-    expect(jamMenit(510)).toBe("8 jam 30 menit");
+    expect(formatDuration(510)).toBe("8 jam 30 menit");
   });
 
   it("menghilangkan menit ketika pas pada jam bulat", () => {
-    expect(jamMenit(540)).toBe("9 jam");
+    expect(formatDuration(540)).toBe("9 jam");
   });
 
   it("menampilkan menit saja untuk durasi di bawah satu jam", () => {
-    expect(jamMenit(45)).toBe("45 menit");
+    expect(formatDuration(45)).toBe("45 menit");
   });
 
   it("durasi nol tetap terbaca", () => {
-    expect(jamMenit(0)).toBe("0 menit");
+    expect(formatDuration(0)).toBe("0 menit");
   });
 });
 
@@ -53,8 +53,8 @@ describe("tentukanStatusKedatangan", () => {
   const TOLERANSI = 5;
   const TUTUP = 8 * 60 + 10;
 
-  const putuskan = (jam: number, menit: number) =>
-    tentukanStatusKedatangan(jam * 60 + menit, MASUK, TOLERANSI, TUTUP);
+  const putuskan = (hour: number, minute: number) =>
+    decideArrivalStatus(hour * 60 + minute, MASUK, TOLERANSI, TUTUP);
 
   it("datang sebelum jam masuk tetap hadir", () => {
     expect(putuskan(7, 30)).toBe("present");
@@ -85,80 +85,80 @@ describe("tentukanStatusKedatangan", () => {
   });
 
   it("tidak menyisakan menit tanpa keputusan sepanjang hari", () => {
-    for (let menit = 0; menit < 1440; menit++) {
-      const hasil = tentukanStatusKedatangan(menit, MASUK, TOLERANSI, TUTUP);
+    for (let minute = 0; minute < 1440; minute++) {
+      const result = decideArrivalStatus(minute, MASUK, TOLERANSI, TUTUP);
 
-      expect(["present", "late", "ditolak"]).toContain(hasil);
+      expect(["present", "late", "ditolak"]).toContain(result);
     }
   });
 
   it("toleransi nol membuat satu menit terlambat langsung terhitung", () => {
-    expect(tentukanStatusKedatangan(481, MASUK, 0, TUTUP)).toBe("late");
-    expect(tentukanStatusKedatangan(480, MASUK, 0, TUTUP)).toBe("present");
+    expect(decideArrivalStatus(481, MASUK, 0, TUTUP)).toBe("late");
+    expect(decideArrivalStatus(480, MASUK, 0, TUTUP)).toBe("present");
   });
 });
 
 describe("tentukanPenandaHarian", () => {
-  const keadaan = (
-    ubah: Partial<Parameters<typeof tentukanPenandaHarian>[0]>,
+  const state = (
+    ubah: Partial<Parameters<typeof decideDailyMarker>[0]>,
   ) =>
-    tentukanPenandaHarian({
-      sudahAdaAbsensi: false,
-      hariLibur: false,
-      sedangCuti: false,
-      hariKerja: true,
+    decideDailyMarker({
+      alreadyRecorded: false,
+      isHoliday: false,
+      onLeave: false,
+      isWorkday: true,
       ...ubah,
     });
 
   it("melewati karyawan yang sudah punya absensi", () => {
-    expect(keadaan({ sudahAdaAbsensi: true })).toBe("lewati");
+    expect(state({ alreadyRecorded: true })).toBe("lewati");
   });
 
   it("absensi yang sudah ada mengalahkan seluruh pertimbangan lain", () => {
     expect(
-      keadaan({ sudahAdaAbsensi: true, hariLibur: true, sedangCuti: true }),
+      state({ alreadyRecorded: true, isHoliday: true, onLeave: true }),
     ).toBe("lewati");
   });
 
   it("hari libur mengalahkan cuti", () => {
-    expect(keadaan({ hariLibur: true, sedangCuti: true })).toBe("holiday");
+    expect(state({ isHoliday: true, onLeave: true })).toBe("holiday");
   });
 
   it("cuti mengalahkan tidak hadir", () => {
-    expect(keadaan({ sedangCuti: true })).toBe("leave");
+    expect(state({ onLeave: true })).toBe("leave");
   });
 
   it("hari kerja tanpa absensi menjadi tidak hadir", () => {
-    expect(keadaan({})).toBe("absent");
+    expect(state({})).toBe("absent");
   });
 
   it("bukan hari kerja tidak menghasilkan baris apa pun", () => {
-    expect(keadaan({ hariKerja: false })).toBe("lewati");
+    expect(state({ isWorkday: false })).toBe("lewati");
   });
 
   it("hari libur tetap ditandai walau jatuh di luar hari kerja", () => {
-    expect(keadaan({ hariLibur: true, hariKerja: false })).toBe("holiday");
+    expect(state({ isHoliday: true, isWorkday: false })).toBe("holiday");
   });
 
   it("cuti tetap ditandai walau jatuh di luar hari kerja", () => {
-    expect(keadaan({ sedangCuti: true, hariKerja: false })).toBe("leave");
+    expect(state({ onLeave: true, isWorkday: false })).toBe("leave");
   });
 
   it("selalu memberi keputusan untuk setiap kombinasi keadaan", () => {
-    const nilai = [false, true];
+    const value = [false, true];
 
-    for (const sudahAdaAbsensi of nilai)
-      for (const hariLibur of nilai)
-        for (const sedangCuti of nilai)
-          for (const hariKerja of nilai) {
-            const hasil = tentukanPenandaHarian({
-              sudahAdaAbsensi,
-              hariLibur,
-              sedangCuti,
-              hariKerja,
+    for (const alreadyRecorded of value)
+      for (const isHoliday of value)
+        for (const onLeave of value)
+          for (const isWorkday of value) {
+            const result = decideDailyMarker({
+              sudahAdaAbsensi: alreadyRecorded,
+              hariLibur: isHoliday,
+              sedangCuti: onLeave,
+              hariKerja: isWorkday,
             });
 
-            expect(["holiday", "leave", "absent", "lewati"]).toContain(hasil);
+            expect(["holiday", "leave", "absent", "lewati"]).toContain(result);
           }
   });
 });

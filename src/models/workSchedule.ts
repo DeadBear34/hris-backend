@@ -1,9 +1,9 @@
 import { pool } from "../config/databaseConnection.js";
 import {
-  namaHariDariTanggal,
-  rentangTanggal,
+  dayNameOf,
+  dateRange,
   type IsoDate,
-  type NamaHari,
+  type DayName,
 } from "../helpers/timezone.js";
 
 export interface WorkSchedule {
@@ -44,7 +44,7 @@ export interface WorkScheduleInput {
   is_active?: boolean;
 }
 
-export interface JadwalKaryawan {
+export interface EmployeeSchedule {
   employee_id: string;
   schedule: WorkSchedule | null;
 }
@@ -74,9 +74,9 @@ const COLUMN_CAST: Record<string, string> = {
   late_tolerance_minutes: "::int",
 };
 
-const KOLOM_WAKTU = new Set(["start_time", "end_time", "absent_cutoff_time"]);
+const TIME_COLUMNS = new Set(["start_time", "end_time", "absent_cutoff_time"]);
 
-const KOLOM_NAMA = [
+const COLUMN_NAMES = [
   "id",
   "name",
   "department_id",
@@ -97,22 +97,22 @@ const KOLOM_NAMA = [
   "updated_at",
 ] as const;
 
-function daftarKolom(prefiks = ""): string {
-  const awalan = prefiks ? `${prefiks}.` : "";
+function columnList(prefix = ""): string {
+  const dot = prefix ? `${prefix}.` : "";
 
-  return KOLOM_NAMA.map((kolom) =>
-    KOLOM_WAKTU.has(kolom)
-      ? `${awalan}${kolom}::text AS ${kolom}`
-      : `${awalan}${kolom}`,
+  return COLUMN_NAMES.map((column) =>
+    TIME_COLUMNS.has(column)
+      ? `${dot}${column}::text AS ${column}`
+      : `${dot}${column}`,
   ).join(", ");
 }
 
-const KOLOM = daftarKolom();
-const KOLOM_JADWAL = daftarKolom("j");
+const COLUMNS = columnList();
+const SCHEDULE_COLUMNS = columnList("j");
 
 export async function findAll(): Promise<WorkSchedule[]> {
   const result = await pool.query<WorkSchedule>(
-    `SELECT ${KOLOM} FROM work_schedules
+    `SELECT ${COLUMNS} FROM work_schedules
      WHERE deleted_at IS NULL
      ORDER BY department_id NULLS FIRST, name ASC`,
   );
@@ -122,7 +122,7 @@ export async function findAll(): Promise<WorkSchedule[]> {
 
 export async function findById(id: string): Promise<WorkSchedule | null> {
   const result = await pool.query<WorkSchedule>(
-    `SELECT ${KOLOM} FROM work_schedules
+    `SELECT ${COLUMNS} FROM work_schedules
      WHERE id = $1::uuid AND deleted_at IS NULL`,
     [id],
   );
@@ -132,7 +132,7 @@ export async function findById(id: string): Promise<WorkSchedule | null> {
 
 export async function findDefault(): Promise<WorkSchedule | null> {
   const result = await pool.query<WorkSchedule>(
-    `SELECT ${KOLOM} FROM work_schedules
+    `SELECT ${COLUMNS} FROM work_schedules
      WHERE department_id IS NULL AND deleted_at IS NULL`,
   );
 
@@ -143,7 +143,7 @@ export async function findByDepartment(
   department_id: string,
 ): Promise<WorkSchedule | null> {
   const result = await pool.query<WorkSchedule>(
-    `SELECT ${KOLOM} FROM work_schedules
+    `SELECT ${COLUMNS} FROM work_schedules
      WHERE department_id = $1::uuid AND deleted_at IS NULL`,
     [department_id],
   );
@@ -155,7 +155,7 @@ export async function resolveForEmployee(
   employee_id: string,
 ): Promise<WorkSchedule | null> {
   const result = await pool.query<WorkSchedule>(
-    `SELECT ${KOLOM_JADWAL}
+    `SELECT ${SCHEDULE_COLUMNS}
      FROM employees e
      JOIN LATERAL (
        SELECT ws.*,
@@ -183,7 +183,7 @@ export async function resolveForAllActive(): Promise<
   { employee_id: string; schedule: WorkSchedule }[]
 > {
   const result = await pool.query<WorkSchedule & { employee_id: string }>(
-    `SELECT e.id AS employee_id, ${KOLOM_JADWAL}
+    `SELECT e.id AS employee_id, ${SCHEDULE_COLUMNS}
      FROM employees e
      JOIN LATERAL (
        SELECT ws.*,
@@ -226,7 +226,7 @@ export async function createSchedule(
              COALESCE($9::boolean, true), COALESCE($10::boolean, true),
              COALESCE($11::boolean, true), COALESCE($12::boolean, false),
              COALESCE($13::boolean, false))
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       data.name,
       data.department_id ?? null,
@@ -278,7 +278,7 @@ export async function updateSchedule(
   const result = await pool.query<WorkSchedule>(
     `UPDATE work_schedules SET ${fields.join(", ")}
      WHERE id = $${values.length}::uuid AND deleted_at IS NULL
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     values,
   );
 
@@ -292,7 +292,7 @@ export async function softDeleteSchedule(
     `UPDATE work_schedules
      SET deleted_at = now(), is_active = false, updated_at = now()
      WHERE id = $1::uuid AND deleted_at IS NULL
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [id],
   );
 
@@ -309,11 +309,11 @@ export async function countEmployees(id: string): Promise<number> {
   return Number(result.rows[0]?.count ?? 0);
 }
 
-export function adalahHariKerja(
+export function isWorkingDay(
   schedule: WorkSchedule,
-  hari: NamaHari,
+  day: DayName,
 ): boolean {
-  switch (hari) {
+  switch (day) {
     case "monday":
       return schedule.works_monday;
     case "tuesday":
@@ -331,17 +331,15 @@ export function adalahHariKerja(
   }
 }
 
-export function tanggalKerjaDalamRentang(
+export function workingDatesInRange(
   schedule: WorkSchedule,
   start: IsoDate,
   end: IsoDate,
   holidays: IsoDate[] = [],
 ): IsoDate[] {
-  const libur = new Set(holidays);
+  const holidaySet = new Set(holidays);
 
-  return rentangTanggal(start, end).filter(
-    (tanggal) =>
-      adalahHariKerja(schedule, namaHariDariTanggal(tanggal)) &&
-      !libur.has(tanggal),
+  return dateRange(start, end).filter(
+    (date) => isWorkingDay(schedule, dayNameOf(date)) && !holidaySet.has(date),
   );
 }

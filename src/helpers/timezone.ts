@@ -2,17 +2,17 @@ import { env } from "../config/env.js";
 
 export type IsoDate = string;
 
-export type JamDinding = string;
+export type ClockTime = string;
 
-export interface WaktuLokal {
-  tanggal: IsoDate;
-  menitSejakTengahMalam: number;
-  jam: number;
-  menit: number;
-  hari: number;
+export interface LocalTime {
+  date: IsoDate;
+  minutesSinceMidnight: number;
+  hour: number;
+  minute: number;
+  day: number;
 }
 
-const HARI = [
+const DAY_NAMES = [
   "sunday",
   "monday",
   "tuesday",
@@ -22,16 +22,16 @@ const HARI = [
   "saturday",
 ] as const;
 
-export type NamaHari = (typeof HARI)[number];
+export type DayName = (typeof DAY_NAMES)[number];
 
-const formatterPerZona = new Map<string, Intl.DateTimeFormat>();
+const formatterByZone = new Map<string, Intl.DateTimeFormat>();
 
-function ambilFormatter(zona: string): Intl.DateTimeFormat {
-  let formatter = formatterPerZona.get(zona);
+function getFormatter(zone: string): Intl.DateTimeFormat {
+  let formatter = formatterByZone.get(zone);
 
   if (!formatter) {
     formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: zona,
+      timeZone: zone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -41,49 +41,49 @@ function ambilFormatter(zona: string): Intl.DateTimeFormat {
       weekday: "short",
       hour12: false,
     });
-    formatterPerZona.set(zona, formatter);
+    formatterByZone.set(zone, formatter);
   }
 
   return formatter;
 }
 
-export function keWaktuLokal(waktu: Date = new Date()): WaktuLokal {
-  const bagian = ambilFormatter(env.TIMEZONE).formatToParts(waktu);
+export function toLocalTime(at: Date = new Date()): LocalTime {
+  const parts = getFormatter(env.TIMEZONE).formatToParts(at);
 
-  const ambil = (tipe: string) =>
-    bagian.find((b) => b.type === tipe)?.value ?? "";
+  const read = (tipe: string) =>
+    parts.find((b) => b.type === tipe)?.value ?? "";
 
-  const tahun = ambil("year");
-  const bulan = ambil("month");
-  const hari = ambil("day");
+  const year = read("year");
+  const month = read("month");
+  const day = read("day");
 
-  const jam = Number(ambil("hour")) % 24;
-  const menit = Number(ambil("minute"));
+  const hour = Number(read("hour")) % 24;
+  const minute = Number(read("minute"));
 
-  const singkatanHari = ambil("weekday").toLowerCase();
-  const indeksHari = HARI.findIndex((h) => h.startsWith(singkatanHari));
+  const dayAbbrev = read("weekday").toLowerCase();
+  const dayIndex = DAY_NAMES.findIndex((name) => name.startsWith(dayAbbrev));
 
   return {
-    tanggal: `${tahun}-${bulan}-${hari}`,
-    menitSejakTengahMalam: jam * 60 + menit,
-    jam,
-    menit,
-    hari: indeksHari === -1 ? 0 : indeksHari,
+    date: `${year}-${month}-${day}`,
+    minutesSinceMidnight: hour * 60 + minute,
+    hour,
+    minute,
+    day: dayIndex === -1 ? 0 : dayIndex,
   };
 }
 
-export function tanggalHariIni(waktu: Date = new Date()): IsoDate {
-  return keWaktuLokal(waktu).tanggal;
+export function todayInOfficeZone(at: Date = new Date()): IsoDate {
+  return toLocalTime(at).date;
 }
 
-export function jamLokal(waktu: Date): JamDinding {
-  const { jam, menit } = keWaktuLokal(waktu);
+export function clockTimeOf(at: Date): ClockTime {
+  const { hour, minute } = toLocalTime(at);
 
-  return `${String(jam).padStart(2, "0")}:${String(menit).padStart(2, "0")}`;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-export function menitDariJam(jam: JamDinding): number {
-  const [h, m] = jam.split(":").map(Number);
+export function minutesFromClockTime(hour: ClockTime): number {
+  const [h, m] = hour.split(":").map(Number);
 
   if (
     h === undefined ||
@@ -91,36 +91,36 @@ export function menitDariJam(jam: JamDinding): number {
     Number.isNaN(h) ||
     Number.isNaN(m)
   ) {
-    throw new Error(`Format jam tidak valid: ${jam}`);
+    throw new Error(`Format jam tidak valid: ${hour}`);
   }
 
   return h * 60 + m;
 }
 
-export function namaHariDariTanggal(tanggal: IsoDate): NamaHari {
-  const [tahun, bulan, hari] = tanggal.split("-").map(Number);
+export function dayNameOf(date: IsoDate): DayName {
+  const [year, month, day] = date.split("-").map(Number);
 
-  if (!tahun || !bulan || !hari) {
-    throw new Error(`Tanggal tidak valid: ${tanggal}`);
+  if (!year || !month || !day) {
+    throw new Error(`Tanggal tidak valid: ${date}`);
   }
 
-  const indeks = new Date(Date.UTC(tahun, bulan - 1, hari)).getUTCDay();
+  const indeks = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
-  return HARI[indeks]!;
+  return DAY_NAMES[indeks]!;
 }
 
-export function menitKeterlambatan(
-  menitDatang: number,
-  menitMasuk: number,
+export function lateMinutesFrom(
+  arrivalMinutes: number,
+  startMinutes: number,
 ): number {
-  return Math.max(0, menitDatang - menitMasuk);
+  return Math.max(0, arrivalMinutes - startMinutes);
 }
 
-export function selisihMenit(awal: Date, akhir: Date): number {
-  return Math.floor((akhir.getTime() - awal.getTime()) / 60_000);
+export function minutesBetween(start: Date, end: Date): number {
+  return Math.floor((end.getTime() - start.getTime()) / 60_000);
 }
 
-export function rentangTanggal(start: IsoDate, end: IsoDate): IsoDate[] {
+export function dateRange(start: IsoDate, end: IsoDate): IsoDate[] {
   const [ty, tm, td] = start.split("-").map(Number);
   const [ay, am, ad] = end.split("-").map(Number);
 
@@ -128,14 +128,14 @@ export function rentangTanggal(start: IsoDate, end: IsoDate): IsoDate[] {
     throw new Error(`Rentang tanggal tidak valid: ${start} sampai ${end}`);
   }
 
-  const hasil: IsoDate[] = [];
-  const kursor = new Date(Date.UTC(ty, tm - 1, td));
-  const akhir = new Date(Date.UTC(ay, am - 1, ad));
+  const result: IsoDate[] = [];
+  const cursor = new Date(Date.UTC(ty, tm - 1, td));
+  const last = new Date(Date.UTC(ay, am - 1, ad));
 
-  while (kursor.getTime() <= akhir.getTime()) {
-    hasil.push(kursor.toISOString().slice(0, 10));
-    kursor.setUTCDate(kursor.getUTCDate() + 1);
+  while (cursor.getTime() <= last.getTime()) {
+    result.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
-  return hasil;
+  return result;
 }

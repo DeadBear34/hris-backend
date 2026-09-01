@@ -98,9 +98,9 @@ describe("server berhasil dijalankan", () => {
     ];
     siap();
 
-    const pesan = mockLoggerInfo.mock.calls.map(([p]) => String(p));
+    const message = mockLoggerInfo.mock.calls.map(([p]) => String(p));
 
-    expect(pesan.some((p) => p.includes(String(env.PORT)))).toBe(true);
+    expect(message.some((p) => p.includes(String(env.PORT)))).toBe(true);
   });
 
   it("tidak menghentikan proses saat database sehat", async () => {

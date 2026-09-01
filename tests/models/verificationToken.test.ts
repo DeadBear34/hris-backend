@@ -254,23 +254,23 @@ describe("invalidateActive", () => {
   it("mengembalikan jumlah token yang dibatalkan", async () => {
     mockQuery.mockResolvedValue({ rowCount: 2 } as never);
 
-    const jumlah = await tokenModel.invalidateActive(
+    const count = await tokenModel.invalidateActive(
       EMAIL,
       "email_verification",
     );
 
-    expect(jumlah).toBe(2);
+    expect(count).toBe(2);
   });
 
   it("mengembalikan nol jika tidak ada yang dibatalkan", async () => {
     mockQuery.mockResolvedValue({ rowCount: null } as never);
 
-    const jumlah = await tokenModel.invalidateActive(
+    const count = await tokenModel.invalidateActive(
       EMAIL,
       "email_verification",
     );
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
   });
 
   it("tidak menyentuh purpose lain", async () => {

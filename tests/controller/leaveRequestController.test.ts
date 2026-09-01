@@ -64,8 +64,8 @@ jest.unstable_mockModule("../../src/models/attendance.js", () => ({
 jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
   resolveForEmployee: jest.fn(),
   resolveForAllActive: jest.fn(),
-  tanggalKerjaDalamRentang: jest.fn(),
-  adalahHariKerja: jest.fn(() => true),
+  workingDatesInRange: jest.fn(),
+  isWorkingDay: jest.fn(() => true),
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
@@ -105,21 +105,21 @@ const adminToken = createToken({
 
 /** Senin jauh di depan supaya tidak pernah dianggap tanggal lampau. */
 function seninDiMasaDepan(): string {
-  const tanggal = new Date();
-  tanggal.setUTCDate(tanggal.getUTCDate() + 40);
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 40);
 
-  while (tanggal.getUTCDay() !== 1) {
-    tanggal.setUTCDate(tanggal.getUTCDate() + 1);
+  while (date.getUTCDay() !== 1) {
+    date.setUTCDate(date.getUTCDate() + 1);
   }
 
-  return toIsoDate(tanggal);
+  return toIsoDate(date);
 }
 
-function geser(dari: string, hari: number): string {
-  const tanggal = new Date(`${dari}T00:00:00Z`);
-  tanggal.setUTCDate(tanggal.getUTCDate() + hari);
+function geser(dari: string, day: number): string {
+  const date = new Date(`${dari}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + day);
 
-  return toIsoDate(tanggal);
+  return toIsoDate(date);
 }
 
 const MULAI = seninDiMasaDepan();
@@ -237,7 +237,7 @@ beforeEach(() => {
   (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
     fakeJadwal as never,
   );
-  (workScheduleModel.tanggalKerjaDalamRentang as jest.Mock).mockReturnValue([
+  (workScheduleModel.workingDatesInRange as jest.Mock).mockReturnValue([
     MULAI,
     SELESAI,
   ] as never);
@@ -795,10 +795,10 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
   it("meneruskan catatan keputusan ke model", async () => {
     await tolak();
 
-    const [, , , catatan] = (leaveRequestModel.rejectRequest as jest.Mock).mock
+    const [, , , noteField] = (leaveRequestModel.rejectRequest as jest.Mock).mock
       .calls[0] as [unknown, string, string, string | null];
 
-    expect(catatan).toBe("Kebutuhan tim sedang tinggi");
+    expect(noteField).toBe("Kebutuhan tim sedang tinggi");
   });
 
   it("menjalankan ROLLBACK saat pencatatan pengembalian gagal", async () => {
@@ -1081,7 +1081,7 @@ describe("penandaan absensi saat cuti disetujui", () => {
 
     await setujui();
 
-    expect(workScheduleModel.tanggalKerjaDalamRentang).toHaveBeenCalledWith(
+    expect(workScheduleModel.workingDatesInRange).toHaveBeenCalledWith(
       fakeJadwal,
       MULAI,
       SELESAI,

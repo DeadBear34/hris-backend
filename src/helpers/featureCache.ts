@@ -7,7 +7,7 @@ interface Entri {
 
 const cache = new Map<string, Entri>();
 
-export function ambilDariCache(position_id: string): string[] | null {
+export function readFromCache(position_id: string): string[] | null {
   const entri = cache.get(position_id);
 
   if (!entri) return null;
@@ -20,14 +20,14 @@ export function ambilDariCache(position_id: string): string[] | null {
   return entri.codes;
 }
 
-export function simpanKeCache(position_id: string, codes: string[]): void {
+export function writeToCache(position_id: string, codes: string[]): void {
   cache.set(position_id, {
     codes,
     kedaluwarsaPada: Date.now() + MASA_BERLAKU_MS,
   });
 }
 
-export function batalkanCacheFitur(position_id?: string): void {
+export function invalidateFeatureCache(position_id?: string): void {
   if (position_id) {
     cache.delete(position_id);
     return;
@@ -36,6 +36,6 @@ export function batalkanCacheFitur(position_id?: string): void {
   cache.clear();
 }
 
-export function ukuranCacheFitur(): number {
+export function featureCacheSize(): number {
   return cache.size;
 }

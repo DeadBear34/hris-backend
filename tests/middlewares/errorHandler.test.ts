@@ -18,14 +18,14 @@ interface HasilRespons {
   body: Record<string, unknown>;
 }
 
-function siapkanRes(hasil: HasilRespons) {
+function siapkanRes(result: HasilRespons) {
   const res = {
     status(code: number) {
-      hasil.status = code;
+      result.status = code;
       return res;
     },
     json(body: Record<string, unknown>) {
-      hasil.body = body;
+      result.body = body;
       return res;
     },
   };
@@ -34,16 +34,16 @@ function siapkanRes(hasil: HasilRespons) {
 }
 
 function jalankan(err: unknown): HasilRespons {
-  const hasil: HasilRespons = { status: 200, body: {} };
+  const result: HasilRespons = { status: 200, body: {} };
 
   errorHandler(
     err,
     {} as Request,
-    siapkanRes(hasil),
+    siapkanRes(result),
     jest.fn() as unknown as NextFunction,
   );
 
-  return hasil;
+  return result;
 }
 
 function buatZodError() {
@@ -61,27 +61,27 @@ function buatZodError() {
 
 describe("notFoundHandler", () => {
   it("mengembalikan status 404", () => {
-    const hasil: HasilRespons = { status: 200, body: {} };
+    const result: HasilRespons = { status: 200, body: {} };
 
     notFoundHandler(
       { method: "GET", originalUrl: "/api/v1/tidakada" } as Request,
-      siapkanRes(hasil),
+      siapkanRes(result),
     );
 
-    expect(hasil.status).toBe(404);
+    expect(result.status).toBe(404);
   });
 
   it("menyebutkan metode dan alamat yang diminta", () => {
-    const hasil: HasilRespons = { status: 200, body: {} };
+    const result: HasilRespons = { status: 200, body: {} };
 
     notFoundHandler(
       { method: "POST", originalUrl: "/api/v1/tidakada" } as Request,
-      siapkanRes(hasil),
+      siapkanRes(result),
     );
 
-    expect(hasil.body.success).toBe(false);
-    expect(hasil.body.message).toContain("POST");
-    expect(hasil.body.message).toContain("/api/v1/tidakada");
+    expect(result.body.success).toBe(false);
+    expect(result.body.message).toContain("POST");
+    expect(result.body.message).toContain("/api/v1/tidakada");
   });
 });
 
@@ -91,28 +91,28 @@ describe("errorHandler untuk error validasi", () => {
   });
 
   it("mengembalikan status 400", () => {
-    const hasil = jalankan(buatZodError());
+    const result = jalankan(buatZodError());
 
-    expect(hasil.status).toBe(400);
+    expect(result.status).toBe(400);
   });
 
   it("memakai kode VALIDATION_ERROR", () => {
-    const hasil = jalankan(buatZodError());
+    const result = jalankan(buatZodError());
 
-    expect(hasil.body.code).toBe("VALIDATION_ERROR");
-    expect(hasil.body.success).toBe(false);
+    expect(result.body.code).toBe("VALIDATION_ERROR");
+    expect(result.body.success).toBe(false);
   });
 
   it("merinci setiap field yang bermasalah", () => {
-    const hasil = jalankan(buatZodError());
-    const errors = hasil.body.errors as { field: string; message: string }[];
+    const result = jalankan(buatZodError());
+    const errors = result.body.errors as { field: string; message: string }[];
 
     expect(errors.map((e) => e.field)).toEqual(["email", "password"]);
   });
 
   it("menyertakan pesan kesalahan tiap field", () => {
-    const hasil = jalankan(buatZodError());
-    const errors = hasil.body.errors as { field: string; message: string }[];
+    const result = jalankan(buatZodError());
+    const errors = result.body.errors as { field: string; message: string }[];
 
     expect(errors[0]?.message).toBe("Format email tidak valid");
   });
@@ -133,16 +133,16 @@ describe("errorHandler untuk JSON yang rusak", () => {
     const err = new SyntaxError("Unexpected token } in JSON");
     Object.assign(err, { body: "{rusak" });
 
-    const hasil = jalankan(err);
+    const result = jalankan(err);
 
-    expect(hasil.status).toBe(400);
-    expect(hasil.body.code).toBe("INVALID_JSON");
+    expect(result.status).toBe(400);
+    expect(result.body.code).toBe("INVALID_JSON");
   });
 
   it("memperlakukan SyntaxError biasa sebagai error server", () => {
-    const hasil = jalankan(new SyntaxError("kesalahan lain"));
+    const result = jalankan(new SyntaxError("kesalahan lain"));
 
-    expect(hasil.status).toBe(500);
+    expect(result.status).toBe(500);
   });
 });
 
@@ -152,40 +152,40 @@ describe("errorHandler untuk AppError", () => {
   });
 
   it("memakai status dan kode dari error yang dilempar", () => {
-    const hasil = jalankan(NotFound("Karyawan tidak ditemukan"));
+    const result = jalankan(NotFound("Karyawan tidak ditemukan"));
 
-    expect(hasil.status).toBe(404);
-    expect(hasil.body.code).toBe("NOT_FOUND");
-    expect(hasil.body.message).toBe("Karyawan tidak ditemukan");
+    expect(result.status).toBe(404);
+    expect(result.body.code).toBe("NOT_FOUND");
+    expect(result.body.message).toBe("Karyawan tidak ditemukan");
   });
 
   it("meneruskan status konflik", () => {
-    const hasil = jalankan(Conflict("Email sudah terdaftar"));
+    const result = jalankan(Conflict("Email sudah terdaftar"));
 
-    expect(hasil.status).toBe(409);
-    expect(hasil.body.code).toBe("CONFLICT");
+    expect(result.status).toBe(409);
+    expect(result.body.code).toBe("CONFLICT");
   });
 
   it("menyertakan detail tambahan jika tersedia", () => {
-    const hasil = jalankan(
+    const result = jalankan(
       BadRequest("Masih punya bawahan", { subordinates: [{ id: "1" }] }),
     );
 
-    expect(hasil.status).toBe(400);
-    expect(hasil.body.details).toEqual({ subordinates: [{ id: "1" }] });
+    expect(result.status).toBe(400);
+    expect(result.body.details).toEqual({ subordinates: [{ id: "1" }] });
   });
 
   it("tidak menyertakan properti details jika tidak ada", () => {
-    const hasil = jalankan(BadRequest("Permintaan tidak valid"));
+    const result = jalankan(BadRequest("Permintaan tidak valid"));
 
-    expect(hasil.body).not.toHaveProperty("details");
+    expect(result.body).not.toHaveProperty("details");
   });
 
   it("meneruskan status khusus yang ditulis manual", () => {
-    const hasil = jalankan(new AppError(418, "Teko kopi", "TEAPOT"));
+    const result = jalankan(new AppError(418, "Teko kopi", "TEAPOT"));
 
-    expect(hasil.status).toBe(418);
-    expect(hasil.body.code).toBe("TEAPOT");
+    expect(result.status).toBe(418);
+    expect(result.body.code).toBe("TEAPOT");
   });
 
   it("tidak mencatat AppError ke log karena sudah ditangani", () => {
@@ -201,22 +201,22 @@ describe("errorHandler untuk error tak terduga", () => {
   });
 
   it("mengembalikan status 500", () => {
-    const hasil = jalankan(new Error("relation users does not exist"));
+    const result = jalankan(new Error("relation users does not exist"));
 
-    expect(hasil.status).toBe(500);
-    expect(hasil.body.success).toBe(false);
+    expect(result.status).toBe(500);
+    expect(result.body.success).toBe(false);
   });
 
   it("tidak membocorkan pesan asli error", () => {
-    const hasil = jalankan(new Error("relation users does not exist"));
+    const result = jalankan(new Error("relation users does not exist"));
 
-    expect(hasil.body.message).toBe("Terjadi kesalahan pada server");
+    expect(result.body.message).toBe("Terjadi kesalahan pada server");
   });
 
   it("tidak menyertakan stack trace dalam respons", () => {
-    const hasil = jalankan(new Error("gagal"));
+    const result = jalankan(new Error("gagal"));
 
-    expect(hasil.body).not.toHaveProperty("stack");
+    expect(result.body).not.toHaveProperty("stack");
   });
 
   it("mencatat error ke log agar bisa ditelusuri", () => {
@@ -228,9 +228,9 @@ describe("errorHandler untuk error tak terduga", () => {
   });
 
   it("menangani nilai yang dilempar selain Error", () => {
-    const hasil = jalankan("kesalahan berupa teks");
+    const result = jalankan("kesalahan berupa teks");
 
-    expect(hasil.status).toBe(500);
-    expect(hasil.body.message).toBe("Terjadi kesalahan pada server");
+    expect(result.status).toBe(500);
+    expect(result.body.message).toBe("Terjadi kesalahan pada server");
   });
 });

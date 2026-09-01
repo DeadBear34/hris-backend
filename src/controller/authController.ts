@@ -3,11 +3,11 @@ import * as userModel from "../models/user.js";
 import * as employeeModel from "../models/employee.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
-import { ambilKodeFiturPengguna } from "../middlewares/feature.js";
+import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { photoUrlFor } from "../helpers/storage.js";
 
-function susunProfil(
+function buildProfile(
   user: userModel.User,
   employee: employeeModel.Employee | null,
   detail: employeeModel.EmployeeListItem | null,
@@ -134,11 +134,11 @@ export async function MeController(
 
     res.json({
       success: true,
-      data: susunProfil(
+      data: buildProfile(
         user,
         employee,
         detail,
-        await ambilKodeFiturPengguna(req, res),
+        await getUserFeatureCodes(req, res),
       ),
     });
   } catch (err) {
@@ -178,11 +178,11 @@ export async function UpdateMeController(
     res.json({
       success: true,
       message: "Profil berhasil diperbarui",
-      data: susunProfil(
+      data: buildProfile(
         user,
         diperbarui ?? employee,
         detail,
-        await ambilKodeFiturPengguna(req, res),
+        await getUserFeatureCodes(req, res),
       ),
     });
   } catch (err) {

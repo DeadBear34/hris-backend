@@ -70,12 +70,12 @@ export async function UpdatePositionController(
     }
 
     if (data.is_active === false && existing.is_active) {
-      const jumlah = await positionModel.countEmployees(id);
+      const count = await positionModel.countEmployees(id);
 
-      if (jumlah > 0) {
+      if (count > 0) {
         throw BadRequest(
-          `Jabatan tidak dapat dinonaktifkan karena masih digunakan oleh ${jumlah} karyawan`,
-          { employee_count: jumlah },
+          `Jabatan tidak dapat dinonaktifkan karena masih digunakan oleh ${count} karyawan`,
+          { employee_count: count },
         );
       }
     }
@@ -99,11 +99,11 @@ export async function DeletePositionController(
     const existing = await positionModel.findById(id);
     if (!existing) throw NotFound("Jabatan tidak ditemukan");
 
-    const jumlah = await positionModel.countEmployees(id);
-    if (jumlah > 0) {
+    const count = await positionModel.countEmployees(id);
+    if (count > 0) {
       throw BadRequest(
-        `Jabatan tidak dapat dihapus karena masih digunakan oleh ${jumlah} karyawan. Pindahkan karyawan ke jabatan lain terlebih dahulu.`,
-        { employee_count: jumlah },
+        `Jabatan tidak dapat dihapus karena masih digunakan oleh ${count} karyawan. Pindahkan karyawan ke jabatan lain terlebih dahulu.`,
+        { employee_count: count },
       );
     }
 

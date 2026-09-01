@@ -17,11 +17,11 @@ const SENIN_BERIKUTNYA = "2026-01-12";
 
 describe("parseIsoDate dan toIsoDate", () => {
   it("membaca tanggal sebagai tanggal kalender UTC", () => {
-    const tanggal = parseIsoDate(SENIN);
+    const date = parseIsoDate(SENIN);
 
-    expect(tanggal.getUTCFullYear()).toBe(2026);
-    expect(tanggal.getUTCMonth()).toBe(0);
-    expect(tanggal.getUTCDate()).toBe(5);
+    expect(date.getUTCFullYear()).toBe(2026);
+    expect(date.getUTCMonth()).toBe(0);
+    expect(date.getUTCDate()).toBe(5);
   });
 
   it("bolak-balik tanpa kehilangan nilai", () => {
@@ -125,11 +125,11 @@ describe("countWorkdays", () => {
 });
 
 describe("daysFromToday dan isPastDate", () => {
-  function geser(hari: number): string {
-    const tanggal = new Date();
-    tanggal.setUTCDate(tanggal.getUTCDate() + hari);
+  function geser(day: number): string {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + day);
 
-    return toIsoDate(tanggal);
+    return toIsoDate(date);
   }
 
   it("hari ini berjarak nol hari", () => {

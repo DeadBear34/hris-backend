@@ -3,11 +3,11 @@ import { pool } from "../config/databaseConnection.js";
 import * as featureModel from "../models/feature.js";
 import * as positionModel from "../models/position.js";
 import type { Feature, FeatureCategory } from "../models/feature.js";
-import { batalkanCacheFitur } from "../helpers/featureCache.js";
-import { ambilKodeFiturPengguna } from "../middlewares/feature.js";
+import { invalidateFeatureCache } from "../helpers/featureCache.js";
+import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { BadRequest, NotFound } from "../helpers/appError.js";
 
-const URUTAN_KATEGORI: FeatureCategory[] = [
+const CATEGORY_ORDER: FeatureCategory[] = [
   "employee",
   "organization",
   "leave",
@@ -15,7 +15,7 @@ const URUTAN_KATEGORI: FeatureCategory[] = [
   "system",
 ];
 
-const LABEL_KATEGORI: Record<FeatureCategory, string> = {
+const CATEGORY_LABEL: Record<FeatureCategory, string> = {
   employee: "Kepegawaian",
   organization: "Organisasi",
   leave: "Cuti",
@@ -24,9 +24,9 @@ const LABEL_KATEGORI: Record<FeatureCategory, string> = {
 };
 
 function kelompokkanPerKategori(features: Feature[]) {
-  return URUTAN_KATEGORI.map((category) => ({
+  return CATEGORY_ORDER.map((category) => ({
     category,
-    label: LABEL_KATEGORI[category],
+    label: CATEGORY_LABEL[category],
     features: features.filter((f) => f.category === category),
   })).filter((grup) => grup.features.length > 0);
 }
@@ -115,7 +115,7 @@ export async function ReplacePositionFeatureController(
 
     await client.query("COMMIT");
 
-    batalkanCacheFitur(id);
+    invalidateFeatureCache(id);
 
     res.json({
       success: true,
@@ -170,7 +170,7 @@ export async function MyFeatureController(
   next: NextFunction,
 ) {
   try {
-    const codes = await ambilKodeFiturPengguna(req, res);
+    const codes = await getUserFeatureCodes(req, res);
 
     res.json({
       success: true,

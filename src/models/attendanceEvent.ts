@@ -44,7 +44,7 @@ export interface ListEventParams {
   limit: number;
 }
 
-const KOLOM_NAMA = [
+const COLUMN_NAMES = [
   "id",
   "employee_id",
   "kind",
@@ -57,14 +57,14 @@ const KOLOM_NAMA = [
   "created_at",
 ] as const;
 
-function daftarKolom(prefiks = ""): string {
-  const awalan = prefiks ? `${prefiks}.` : "";
+function columnList(prefix = ""): string {
+  const dot = prefix ? `${prefix}.` : "";
 
-  return KOLOM_NAMA.map((kolom) => `${awalan}${kolom}`).join(", ");
+  return COLUMN_NAMES.map((column) => `${dot}${column}`).join(", ");
 }
 
-const KOLOM = daftarKolom();
-const KOLOM_EVENT = daftarKolom("ev");
+const COLUMNS = columnList();
+const EVENT_COLUMNS = columnList("ev");
 
 export async function recordEvent(
   data: RecordEventInput,
@@ -75,7 +75,7 @@ export async function recordEvent(
        (employee_id, kind, occurred_at, received_at, source, note)
      VALUES ($1::uuid, $2::attendance_event_kind, $3::timestamptz,
              $4::timestamptz, $5::attendance_source, $6)
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       data.employee_id,
       data.kind,
@@ -167,7 +167,7 @@ export async function listEvents(
   values.push(params.limit, offset);
 
   const dataResult = await pool.query<AttendanceEventDetail>(
-    `SELECT ${KOLOM_EVENT},
+    `SELECT ${EVENT_COLUMNS},
             e.full_name AS employee_name, e.employee_number,
             EXTRACT(EPOCH FROM (ev.received_at - ev.occurred_at))::int
               AS delay_seconds

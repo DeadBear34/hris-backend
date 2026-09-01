@@ -55,7 +55,7 @@ const COLUMN_CAST: Record<string, string> = {
   gender_restriction: "::employee_gender",
 };
 
-const KOLOM = `id, code, name, default_quota::float8 AS default_quota,
+const COLUMNS = `id, code, name, default_quota::float8 AS default_quota,
   deducts_balance, is_paid, requires_attachment, attachment_required_after,
   max_days_per_request, min_notice_days, gender_restriction, is_active,
   deleted_at, created_at, updated_at`;
@@ -66,7 +66,7 @@ export async function findAll(hanyaAktif = false): Promise<LeaveType[]> {
     : "WHERE deleted_at IS NULL";
 
   const result = await pool.query<LeaveType>(
-    `SELECT ${KOLOM} FROM leave_types ${where} ORDER BY name ASC`,
+    `SELECT ${COLUMNS} FROM leave_types ${where} ORDER BY name ASC`,
   );
 
   return result.rows;
@@ -74,7 +74,7 @@ export async function findAll(hanyaAktif = false): Promise<LeaveType[]> {
 
 export async function findById(id: string): Promise<LeaveType | null> {
   const result = await pool.query<LeaveType>(
-    `SELECT ${KOLOM} FROM leave_types WHERE id = $1::uuid AND deleted_at IS NULL`,
+    `SELECT ${COLUMNS} FROM leave_types WHERE id = $1::uuid AND deleted_at IS NULL`,
     [id],
   );
 
@@ -83,7 +83,7 @@ export async function findById(id: string): Promise<LeaveType | null> {
 
 export async function findByCode(code: string): Promise<LeaveType | null> {
   const result = await pool.query<LeaveType>(
-    `SELECT ${KOLOM} FROM leave_types WHERE code = $1 AND deleted_at IS NULL`,
+    `SELECT ${COLUMNS} FROM leave_types WHERE code = $1 AND deleted_at IS NULL`,
     [code],
   );
 
@@ -102,7 +102,7 @@ export async function createLeaveType(
              COALESCE($4::boolean, true), COALESCE($5::boolean, true),
              COALESCE($6::boolean, false), $7::int, $8::int,
              COALESCE($9::int, 0), $10::employee_gender)
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       data.code,
       data.name,
@@ -151,7 +151,7 @@ export async function updateLeaveType(
   const result = await pool.query<LeaveType>(
     `UPDATE leave_types SET ${fields.join(", ")}
      WHERE id = $${values.length}::uuid AND deleted_at IS NULL
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     values,
   );
 
@@ -165,7 +165,7 @@ export async function softDeleteLeaveType(
     `UPDATE leave_types
      SET deleted_at = now(), is_active = false, updated_at = now()
      WHERE id = $1::uuid AND deleted_at IS NULL
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [id],
   );
 

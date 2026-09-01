@@ -20,15 +20,15 @@ export interface FeatureGrant {
   feature_id: string;
 }
 
-const KOLOM = `id, code, name, description, category, is_active,
+const COLUMNS = `id, code, name, description, category, is_active,
   created_at, updated_at`;
 
-const KOLOM_F = `f.id, f.code, f.name, f.description, f.category, f.is_active,
+const FEATURE_COLUMNS = `f.id, f.code, f.name, f.description, f.category, f.is_active,
   f.created_at, f.updated_at`;
 
 export async function findAllFeatures(): Promise<Feature[]> {
   const result = await pool.query<Feature>(
-    `SELECT ${KOLOM} FROM features
+    `SELECT ${COLUMNS} FROM features
      WHERE is_active = true
      ORDER BY category ASC, code ASC`,
   );
@@ -40,7 +40,7 @@ export async function findByCodes(codes: string[]): Promise<Feature[]> {
   if (codes.length === 0) return [];
 
   const result = await pool.query<Feature>(
-    `SELECT ${KOLOM} FROM features
+    `SELECT ${COLUMNS} FROM features
      WHERE code = ANY($1::text[]) AND is_active = true
      ORDER BY category ASC, code ASC`,
     [codes],
@@ -76,7 +76,7 @@ export async function findFeaturesByPosition(
   position_id: string,
 ): Promise<Feature[]> {
   const result = await pool.query<Feature>(
-    `SELECT ${KOLOM_F}
+    `SELECT ${FEATURE_COLUMNS}
      FROM position_features pf
      JOIN features f ON f.id = pf.feature_id
      WHERE pf.position_id = $1::uuid AND f.is_active = true

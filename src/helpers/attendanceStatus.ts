@@ -12,7 +12,7 @@ export function statusLabel(status: AttendanceStatus): string {
   return LABEL[status];
 }
 
-export function butuhJamMasuk(status: AttendanceStatus): boolean {
+export function requiresCheckIn(status: AttendanceStatus): boolean {
   switch (status) {
     case "present":
     case "late":
@@ -25,29 +25,29 @@ export function butuhJamMasuk(status: AttendanceStatus): boolean {
   }
 }
 
-export function jamMenit(menit: number): string {
-  const jam = Math.floor(menit / 60);
-  const sisa = menit % 60;
+export function formatDuration(minute: number): string {
+  const hour = Math.floor(minute / 60);
+  const remainder = minute % 60;
 
-  if (jam === 0) return `${sisa} menit`;
-  if (sisa === 0) return `${jam} jam`;
+  if (hour === 0) return `${remainder} menit`;
+  if (remainder === 0) return `${hour} jam`;
 
-  return `${jam} jam ${sisa} menit`;
+  return `${hour} jam ${remainder} menit`;
 }
 
-export type HasilKedatangan = "present" | "late" | "ditolak";
+export type ArrivalOutcome = "present" | "late" | "ditolak";
 
-export function tentukanStatusKedatangan(
-  menitDatang: number,
-  menitMasuk: number,
-  toleransiMenit: number,
-  menitTutup: number,
-): HasilKedatangan {
+export function decideArrivalStatus(
+  arrivalMinutes: number,
+  startMinutes: number,
+  toleranceMinutes: number,
+  cutoffMinutes: number,
+): ArrivalOutcome {
   switch (true) {
-    case menitDatang > menitTutup:
+    case arrivalMinutes > cutoffMinutes:
       return "ditolak";
 
-    case menitDatang - menitMasuk > toleransiMenit:
+    case arrivalMinutes - startMinutes > toleranceMinutes:
       return "late";
 
     default:
@@ -55,27 +55,27 @@ export function tentukanStatusKedatangan(
   }
 }
 
-export type PenandaHarian = "holiday" | "leave" | "absent" | "lewati";
+export type DailyMarker = "holiday" | "leave" | "absent" | "lewati";
 
-export interface KeadaanHarian {
-  sudahAdaAbsensi: boolean;
-  hariLibur: boolean;
-  sedangCuti: boolean;
-  hariKerja: boolean;
+export interface DailyState {
+  alreadyRecorded: boolean;
+  isHoliday: boolean;
+  onLeave: boolean;
+  isWorkday: boolean;
 }
 
-export function tentukanPenandaHarian(keadaan: KeadaanHarian): PenandaHarian {
+export function decideDailyMarker(state: DailyState): DailyMarker {
   switch (true) {
-    case keadaan.sudahAdaAbsensi:
+    case state.alreadyRecorded:
       return "lewati";
 
-    case keadaan.hariLibur:
+    case state.isHoliday:
       return "holiday";
 
-    case keadaan.sedangCuti:
+    case state.onLeave:
       return "leave";
 
-    case !keadaan.hariKerja:
+    case !state.isWorkday:
       return "lewati";
 
     default:

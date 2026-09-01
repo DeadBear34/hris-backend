@@ -24,7 +24,7 @@ export const adjustBalanceSchema = z.object({
 
   amount: z.coerce
     .number()
-    .refine((nilai) => nilai !== 0, "Jumlah penyesuaian tidak boleh nol"),
+    .refine((value) => value !== 0, "Jumlah penyesuaian tidak boleh nol"),
 
   note: z
     .string({ message: "Alasan penyesuaian wajib diisi" })

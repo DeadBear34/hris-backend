@@ -21,7 +21,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehKelolaOrganisasi = [
+const canManageOrganization = [
   authenticate,
   requireFeature("organization.manage"),
 ];
@@ -37,14 +37,14 @@ router.get(
 
 router.post(
   "/positions",
-  ...bolehKelolaOrganisasi,
+  ...canManageOrganization,
   validate(createPositionSchema),
   CreatePositionController,
 );
 
 router.patch(
   "/positions/:id",
-  ...bolehKelolaOrganisasi,
+  ...canManageOrganization,
   validateParams(idParamSchema),
   validate(updatePositionSchema),
   UpdatePositionController,
@@ -52,7 +52,7 @@ router.patch(
 
 router.delete(
   "/positions/:id",
-  ...bolehKelolaOrganisasi,
+  ...canManageOrganization,
   validateParams(idParamSchema),
   DeletePositionController,
 );

@@ -2,15 +2,15 @@ import type { Request, Response, NextFunction } from "express";
 import * as employeeModel from "../models/employee.js";
 import * as featureModel from "../models/feature.js";
 import type { Employee } from "../models/employee.js";
-import { ambilDariCache, simpanKeCache } from "../helpers/featureCache.js";
+import { readFromCache, writeToCache } from "../helpers/featureCache.js";
 import { Forbidden } from "../helpers/appError.js";
 
-async function ambilKaryawanRequest(
+async function getRequestEmployee(
   req: Request,
   res: Response,
 ): Promise<Employee | null> {
-  const tersimpan = res.locals.employee as Employee | undefined;
-  if (tersimpan) return tersimpan;
+  const stored = res.locals.employee as Employee | undefined;
+  if (stored) return stored;
 
   if (!req.user) return null;
 
@@ -22,17 +22,17 @@ async function ambilKaryawanRequest(
   return employee;
 }
 
-async function ambilKodeFiturJabatan(position_id: string): Promise<string[]> {
-  const dariCache = ambilDariCache(position_id);
+async function getPositionFeatureCodes(position_id: string): Promise<string[]> {
+  const dariCache = readFromCache(position_id);
   if (dariCache) return dariCache;
 
   const codes = await featureModel.findCodesByPosition(position_id);
-  simpanKeCache(position_id, codes);
+  writeToCache(position_id, codes);
 
   return codes;
 }
 
-export async function ambilKodeFiturPengguna(
+export async function getUserFeatureCodes(
   req: Request,
   res: Response,
 ): Promise<string[]> {
@@ -40,25 +40,25 @@ export async function ambilKodeFiturPengguna(
     return featureModel.findAllCodes();
   }
 
-  const employee = await ambilKaryawanRequest(req, res);
+  const employee = await getRequestEmployee(req, res);
 
   if (!employee?.position_id) return [];
 
-  return ambilKodeFiturJabatan(employee.position_id);
+  return getPositionFeatureCodes(employee.position_id);
 }
 
-export async function punyaFitur(
+export async function hasFeature(
   req: Request,
   res: Response,
   code: string,
 ): Promise<boolean> {
   if (req.user?.role === "admin") return true;
 
-  const employee = await ambilKaryawanRequest(req, res);
+  const employee = await getRequestEmployee(req, res);
 
   if (!employee?.position_id) return false;
 
-  const codes = await ambilKodeFiturJabatan(employee.position_id);
+  const codes = await getPositionFeatureCodes(employee.position_id);
 
   return codes.includes(code);
 }
@@ -68,7 +68,7 @@ export function requireFeature(code: string) {
     try {
       if (req.user?.role === "admin") return next();
 
-      const employee = await ambilKaryawanRequest(req, res);
+      const employee = await getRequestEmployee(req, res);
 
       if (!employee) {
         throw Forbidden(
@@ -84,7 +84,7 @@ export function requireFeature(code: string) {
         );
       }
 
-      const codes = await ambilKodeFiturJabatan(employee.position_id);
+      const codes = await getPositionFeatureCodes(employee.position_id);
 
       if (!codes.includes(code)) {
         throw Forbidden(

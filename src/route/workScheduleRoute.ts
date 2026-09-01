@@ -19,7 +19,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 const router = Router();
 
 const loggedIn = [authenticate];
-const bolehAturJadwal = [authenticate, requireFeature("organization.schedule")];
+const canManageSchedule = [authenticate, requireFeature("organization.schedule")];
 
 router.get("/work-schedules/me", ...loggedIn, MyWorkScheduleController);
 
@@ -34,14 +34,14 @@ router.get(
 
 router.post(
   "/work-schedules",
-  ...bolehAturJadwal,
+  ...canManageSchedule,
   validate(createWorkScheduleSchema),
   CreateWorkScheduleController,
 );
 
 router.patch(
   "/work-schedules/:id",
-  ...bolehAturJadwal,
+  ...canManageSchedule,
   validateParams(idParamSchema),
   validate(updateWorkScheduleSchema),
   UpdateWorkScheduleController,
@@ -49,7 +49,7 @@ router.patch(
 
 router.delete(
   "/work-schedules/:id",
-  ...bolehAturJadwal,
+  ...canManageSchedule,
   validateParams(idParamSchema),
   DeleteWorkScheduleController,
 );

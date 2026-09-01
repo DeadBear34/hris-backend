@@ -21,8 +21,8 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehLihatSemuaCuti = [authenticate, requireFeature("leave.view_all")];
-const bolehSesuaikanSaldo = [
+const canViewAllLeave = [authenticate, requireFeature("leave.view_all")];
+const canAdjustBalance = [
   authenticate,
   requireFeature("leave.adjust_balance"),
 ];
@@ -43,14 +43,14 @@ router.get(
 
 router.post(
   "/leave-balances/adjustments",
-  ...bolehSesuaikanSaldo,
+  ...canAdjustBalance,
   validate(adjustBalanceSchema),
   AdjustLeaveBalanceController,
 );
 
 router.get(
   "/leave-balances/:id",
-  ...bolehLihatSemuaCuti,
+  ...canViewAllLeave,
   validateParams(idParamSchema),
   validateQuery(balanceQuerySchema),
   EmployeeLeaveBalanceController,

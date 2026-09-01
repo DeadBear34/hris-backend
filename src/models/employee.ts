@@ -165,7 +165,7 @@ export async function createEmployee(
   return employee;
 }
 
-async function updateKolom(
+async function updateColumns(
   id: string,
   data: Record<string, unknown>,
   allowed: readonly string[],
@@ -204,14 +204,14 @@ export async function updateEmployee(
   id: string,
   data: UpdateEmployeeInput,
 ): Promise<Employee | null> {
-  return updateKolom(id, data, UPDATABLE_COLUMNS);
+  return updateColumns(id, data, UPDATABLE_COLUMNS);
 }
 
 export async function updateOwnProfile(
   id: string,
   data: UpdateOwnProfileInput,
 ): Promise<Employee | null> {
-  return updateKolom(id, { ...data }, OWN_PROFILE_COLUMNS);
+  return updateColumns(id, { ...data }, OWN_PROFILE_COLUMNS);
 }
 
 export async function softDeleteEmployee(
@@ -378,14 +378,20 @@ export async function updatePhotoPath(
 }
 
 // Membuat banyak karyawan sekaligus dalam satu query
+// user_id wajib terisi: karyawan yang dibuat admin selalu punya akun, dan tipe
+// yang mengizinkan null membuka jalan bagi baris karyawan yatim
 export async function createEmployees(
   db: Executor,
-  daftar: { user_id: string | null; data: CreateEmployeeInput }[],
+  rows: { user_id: string; data: CreateEmployeeInput }[],
 ): Promise<Employee[]> {
-  if (daftar.length === 0) return [];
+  if (rows.length === 0) return [];
 
-  const kolom = <T>(ambil: (baris: (typeof daftar)[number]) => T) =>
-    daftar.map(ambil);
+  if (rows.some((row) => !row.user_id)) {
+    throw new Error("Karyawan tidak boleh disimpan tanpa akun");
+  }
+
+  const column = <T>(read: (row: (typeof rows)[number]) => T) =>
+    rows.map(read);
 
   const result = await db.query<Employee>(
     `INSERT INTO employees
@@ -404,21 +410,21 @@ export async function createEmployees(
             join_date)
      RETURNING *`,
     [
-      kolom((b) => b.user_id),
-      kolom((b) => b.data.full_name),
-      kolom((b) => b.data.phone),
-      kolom((b) => b.data.gender),
-      kolom((b) => b.data.birth_date ?? null),
-      kolom((b) => b.data.address ?? null),
-      kolom((b) => b.data.department_id ?? null),
-      kolom((b) => b.data.position_id ?? null),
-      kolom((b) => b.data.manager_id ?? null),
-      kolom((b) => b.data.employment_status ?? null),
-      kolom((b) => b.data.join_date ?? null),
+      column((b) => b.user_id),
+      column((b) => b.data.full_name),
+      column((b) => b.data.phone),
+      column((b) => b.data.gender),
+      column((b) => b.data.birth_date ?? null),
+      column((b) => b.data.address ?? null),
+      column((b) => b.data.department_id ?? null),
+      column((b) => b.data.position_id ?? null),
+      column((b) => b.data.manager_id ?? null),
+      column((b) => b.data.employment_status ?? null),
+      column((b) => b.data.join_date ?? null),
     ],
   );
 
-  if (result.rows.length !== daftar.length) {
+  if (result.rows.length !== rows.length) {
     throw new Error("Gagal menyimpan sebagian data karyawan");
   }
 

@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { z } from "zod";
 
-const kosongJadiUndefined = (nilai: unknown) =>
-  typeof nilai === "string" && nilai.trim() === "" ? undefined : nilai;
+const blankToUndefined = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? undefined : value;
 
 export const envSchema = z.object({
   NODE_ENV: z
@@ -15,45 +15,45 @@ export const envSchema = z.object({
   JWT_SECRET: z.string().min(32, "JWT_SECRET minimal 32 karakter"),
   JWT_EXPIRES_IN: z.string().default("24h"),
   RESEND_API_KEY: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().min(1).optional(),
   ),
 
   MAIL_DRIVER: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.enum(["log", "resend"]).optional(),
   ),
   MAIL_FROM: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().default("HRIS <onboarding@resend.dev>"),
   ),
   APP_URL: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().default("http://localhost:5173"),
   ),
 
-  SUPABASE_URL: z.preprocess(kosongJadiUndefined, z.string().min(1).optional()),
+  SUPABASE_URL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
   SUPABASE_SERVICE_ROLE_KEY: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().min(1).optional(),
   ),
   TIMEZONE: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().default("Asia/Jakarta"),
   ),
 
   CRON_SECRET: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().min(16, "CRON_SECRET minimal 16 karakter").optional(),
   ),
 
   SUPABASE_STORAGE_BUCKET: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().default("leave-attachments"),
   ),
 
   SUPABASE_PHOTO_BUCKET: z.preprocess(
-    kosongJadiUndefined,
+    blankToUndefined,
     z.string().default("employee-photos"),
   ),
 });

@@ -803,3 +803,30 @@ describe("isDescendantOf", () => {
     expect(sql).toContain("deleted_at IS NULL");
   });
 });
+
+describe("createEmployees menolak karyawan tanpa akun", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("melempar galat bila ada user_id yang kosong", async () => {
+    await expect(
+      employeeModel.createEmployees({ query: mockQuery } as never, [
+        { user_id: "", data: { full_name: "A", phone: "+62811", gender: "male" } },
+      ] as never),
+    ).rejects.toThrow("tidak boleh disimpan tanpa akun");
+
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("melempar galat bila baris yang tersimpan tidak sebanyak yang dikirim", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: "e1" }] } as never);
+
+    await expect(
+      employeeModel.createEmployees({ query: mockQuery } as never, [
+        { user_id: "u1", data: { full_name: "A", phone: "+62811", gender: "male" } },
+        { user_id: "u2", data: { full_name: "B", phone: "+62811", gender: "male" } },
+      ] as never),
+    ).rejects.toThrow("Gagal menyimpan sebagian data karyawan");
+  });
+});

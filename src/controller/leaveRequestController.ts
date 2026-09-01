@@ -21,7 +21,7 @@ import {
   isPastDate,
 } from "../helpers/workdays.js";
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
-import { punyaFitur } from "../middlewares/feature.js";
+import { hasFeature } from "../middlewares/feature.js";
 import {
   BadRequest,
   Conflict,
@@ -30,15 +30,15 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 
-const KODE_CUTI_SAKIT = "SICK";
+const SICK_LEAVE_CODE = "SICK";
 
-interface Pemohon {
+interface Requester {
   employee: Employee;
-  bolehSetujuiSemua: boolean;
-  bolehLihatSemua: boolean;
+  canApproveAll: boolean;
+  canViewAll: boolean;
 }
 
-async function ambilPemohon(req: Request, res: Response): Promise<Pemohon> {
+async function getRequester(req: Request, res: Response): Promise<Requester> {
   if (!req.user)
     throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
@@ -54,60 +54,60 @@ async function ambilPemohon(req: Request, res: Response): Promise<Pemohon> {
 
   return {
     employee,
-    bolehSetujuiSemua: await punyaFitur(req, res, "leave.approve_all"),
-    bolehLihatSemua: await punyaFitur(req, res, "leave.view_all"),
+    canApproveAll: await hasFeature(req, res, "leave.approve_all"),
+    canViewAll: await hasFeature(req, res, "leave.view_all"),
   };
 }
 
-function tentukanPenyetuju(employee: Employee): string | null {
+function resolveApprover(employee: Employee): string | null {
   return employee.manager_id ?? null;
 }
 
-function bolehMelihat(request: LeaveRequest, pemohon: Pemohon): boolean {
+function canView(request: LeaveRequest, requester: Requester): boolean {
   return (
-    pemohon.bolehLihatSemua ||
-    request.employee_id === pemohon.employee.id ||
-    request.approver_id === pemohon.employee.id
+    requester.canViewAll ||
+    request.employee_id === requester.employee.id ||
+    request.approver_id === requester.employee.id
   );
 }
 
-function bolehMemutuskan(request: LeaveRequest, pemohon: Pemohon): boolean {
+function canDecide(request: LeaveRequest, requester: Requester): boolean {
   return (
-    pemohon.bolehSetujuiSemua || request.approver_id === pemohon.employee.id
+    requester.canApproveAll || request.approver_id === requester.employee.id
   );
 }
 
-function periodeDari(tanggal: string): number {
-  return Number(tanggal.slice(0, 4));
+function periodYearOf(date: string): number {
+  return Number(date.slice(0, 4));
 }
 
 function meta(total: number, page: number, limit: number) {
   return { page, limit, total, total_pages: Math.ceil(total / limit) };
 }
 
-async function hitungHariKerja(
+async function countWorkdaysFor(
   start_date: string,
   end_date: string,
 ): Promise<number> {
-  const libur = await holidayModel.findDatesBetween(start_date, end_date);
+  const holidays = await holidayModel.findDatesBetween(start_date, end_date);
 
-  return countWorkdays(start_date, end_date, libur);
+  return countWorkdays(start_date, end_date, holidays);
 }
 
 function validasiTanggal(
   leaveType: LeaveType,
   start_date: string,
-  totalHari: number,
+  totalDays: number,
 ): void {
-  if (totalHari <= 0) {
+  if (totalDays <= 0) {
     throw BadRequest(
       "Rentang tanggal tersebut tidak memuat satu pun hari kerja",
     );
   }
 
-  const bolehMundur = leaveType.code === KODE_CUTI_SAKIT;
+  const canGoBack = leaveType.code === SICK_LEAVE_CODE;
 
-  if (!bolehMundur && isPastDate(start_date)) {
+  if (!canGoBack && isPastDate(start_date)) {
     throw BadRequest(
       "Pengajuan untuk tanggal yang sudah lewat hanya diperbolehkan untuk cuti sakit",
     );
@@ -115,14 +115,14 @@ function validasiTanggal(
 
   if (
     leaveType.max_days_per_request !== null &&
-    totalHari > leaveType.max_days_per_request
+    totalDays > leaveType.max_days_per_request
   ) {
     throw BadRequest(
-      `Jenis cuti ini maksimal ${leaveType.max_days_per_request} hari kerja per pengajuan, sedangkan pengajuanmu ${totalHari} hari`,
+      `Jenis cuti ini maksimal ${leaveType.max_days_per_request} hari kerja per pengajuan, sedangkan pengajuanmu ${totalDays} hari`,
     );
   }
 
-  if (!bolehMundur && leaveType.min_notice_days > 0) {
+  if (!canGoBack && leaveType.min_notice_days > 0) {
     const jarak = daysFromToday(start_date);
 
     if (jarak < leaveType.min_notice_days) {
@@ -147,7 +147,7 @@ function validasiGender(leaveType: LeaveType, employee: Employee): void {
 async function validasiSaldo(
   leaveType: LeaveType,
   employee: Employee,
-  totalHari: number,
+  totalDays: number,
   periode: number,
 ): Promise<void> {
   if (!leaveType.deducts_balance) return;
@@ -158,23 +158,23 @@ async function validasiSaldo(
     periode,
   );
 
-  if (saldo < totalHari) {
+  if (saldo < totalDays) {
     throw BadRequest(
-      `Saldo ${leaveType.name} tidak mencukupi. Tersisa ${saldo} hari, sedangkan pengajuanmu ${totalHari} hari`,
-      { balance: saldo, requested: totalHari },
+      `Saldo ${leaveType.name} tidak mencukupi. Tersisa ${saldo} hari, sedangkan pengajuanmu ${totalDays} hari`,
+      { balance: saldo, requested: totalDays },
     );
   }
 }
 
-export function lampiranDiwajibkan(
+export function attachmentRequired(
   leaveType: LeaveType,
-  totalHari: number,
+  totalDays: number,
 ): boolean {
   if (!leaveType.requires_attachment) return false;
 
   if (leaveType.attachment_required_after === null) return true;
 
-  return totalHari > leaveType.attachment_required_after;
+  return totalDays > leaveType.attachment_required_after;
 }
 
 export async function ListMyLeaveRequestController(
@@ -183,12 +183,12 @@ export async function ListMyLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const query = res.locals.query as ListLeaveRequestParams;
 
     const { rows, total } = await leaveRequestModel.listRequests({
       ...query,
-      employee_id: pemohon.employee.id,
+      employee_id: requester.employee.id,
     });
 
     res.json({
@@ -207,13 +207,13 @@ export async function ListApprovalLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const query = res.locals.query as ListLeaveRequestParams;
 
     const { rows, total } = await leaveRequestModel.listRequests({
       ...query,
-      approver_id: pemohon.employee.id,
-      include_unassigned: pemohon.bolehSetujuiSemua,
+      approver_id: requester.employee.id,
+      include_unassigned: requester.canApproveAll,
     });
 
     res.json({
@@ -252,13 +252,13 @@ export async function DetailLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
 
     const request = await leaveRequestModel.findDetailById(id);
     if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    if (!bolehMelihat(request, pemohon)) {
+    if (!canView(request, requester)) {
       throw Forbidden("Kamu tidak punya akses ke pengajuan cuti ini");
     }
 
@@ -276,7 +276,7 @@ export async function CreateLeaveRequestController(
   next: NextFunction,
 ) {
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const { leave_type_id, start_date, end_date, reason } = req.body as {
       leave_type_id: string;
       start_date: string;
@@ -290,15 +290,15 @@ export async function CreateLeaveRequestController(
       throw BadRequest("Jenis cuti tersebut sedang tidak aktif");
     }
 
-    const totalHari = await hitungHariKerja(start_date, end_date);
-    const periode = periodeDari(start_date);
+    const totalDays = await countWorkdaysFor(start_date, end_date);
+    const periode = periodYearOf(start_date);
 
-    validasiGender(leaveType, pemohon.employee);
-    validasiTanggal(leaveType, start_date, totalHari);
-    await validasiSaldo(leaveType, pemohon.employee, totalHari, periode);
+    validasiGender(leaveType, requester.employee);
+    validasiTanggal(leaveType, start_date, totalDays);
+    await validasiSaldo(leaveType, requester.employee, totalDays, periode);
 
     const bentrok = await leaveRequestModel.findOverlapping(
-      pemohon.employee.id,
+      requester.employee.id,
       start_date,
       end_date,
     );
@@ -317,25 +317,25 @@ export async function CreateLeaveRequestController(
       await client.query("BEGIN");
 
       request = await leaveRequestModel.createRequest(client, {
-        employee_id: pemohon.employee.id,
+        employee_id: requester.employee.id,
         leave_type_id,
         start_date,
         end_date,
-        total_days: totalHari,
+        total_days: totalDays,
         reason: reason ?? null,
-        approver_id: tentukanPenyetuju(pemohon.employee),
+        approver_id: resolveApprover(requester.employee),
       });
 
       if (leaveType.deducts_balance) {
         await balanceModel.createTransaction(client, {
-          employee_id: pemohon.employee.id,
+          employee_id: requester.employee.id,
           leave_type_id,
           period_year: periode,
-          amount: -totalHari,
+          amount: -totalDays,
           type: "hold",
           leave_request_id: request.id,
           note: "Penahanan saldo untuk pengajuan cuti",
-          created_by: pemohon.employee.id,
+          created_by: requester.employee.id,
         });
       }
 
@@ -352,7 +352,7 @@ export async function CreateLeaveRequestController(
       message: "Pengajuan cuti berhasil dibuat dan menunggu persetujuan",
       data: {
         ...request,
-        attachment_required: lampiranDiwajibkan(leaveType, totalHari),
+        attachment_required: attachmentRequired(leaveType, totalDays),
       },
     });
   } catch (err) {
@@ -360,7 +360,7 @@ export async function CreateLeaveRequestController(
   }
 }
 
-async function tandaiHariCuti(
+async function markLeaveDays(
   db: Executor,
   request: LeaveRequest,
 ): Promise<number> {
@@ -375,7 +375,7 @@ async function tandaiHariCuti(
     request.end_date,
   );
 
-  const tanggalKerja = workScheduleModel.tanggalKerjaDalamRentang(
+  const workingDates = workScheduleModel.workingDatesInRange(
     schedule,
     request.start_date,
     request.end_date,
@@ -385,7 +385,7 @@ async function tandaiHariCuti(
   return attendanceModel.upsertLeaveDays(
     db,
     request.employee_id,
-    tanggalKerja,
+    workingDates,
     request.id,
   );
 }
@@ -398,14 +398,14 @@ export async function ApproveLeaveRequestController(
   const client = await pool.connect();
 
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
     const { decision_note } = req.body as { decision_note?: string };
 
     const existing = await leaveRequestModel.findById(id);
     if (!existing) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    if (!bolehMemutuskan(existing, pemohon)) {
+    if (!canDecide(existing, requester)) {
       throw Forbidden("Kamu bukan penyetuju pengajuan cuti ini");
     }
 
@@ -418,10 +418,10 @@ export async function ApproveLeaveRequestController(
     const leaveType = await leaveTypeModel.findById(existing.leave_type_id);
     if (!leaveType) throw BadRequest("Jenis cuti tidak ditemukan");
 
-    if (lampiranDiwajibkan(leaveType, existing.total_days)) {
-      const jumlah = await attachmentModel.countByRequest(id);
+    if (attachmentRequired(leaveType, existing.total_days)) {
+      const count = await attachmentModel.countByRequest(id);
 
-      if (jumlah === 0) {
+      if (count === 0) {
         throw BadRequest(
           `Pengajuan ${leaveType.name} selama ${existing.total_days} hari wajib melampirkan bukti sebelum dapat disetujui`,
         );
@@ -433,7 +433,7 @@ export async function ApproveLeaveRequestController(
     const request = await leaveRequestModel.approveRequest(
       client,
       id,
-      pemohon.employee.id,
+      requester.employee.id,
       decision_note ?? null,
     );
 
@@ -445,7 +445,7 @@ export async function ApproveLeaveRequestController(
       await balanceModel.convertHoldToDeduction(client, id);
     }
 
-    await tandaiHariCuti(client, request);
+    await markLeaveDays(client, request);
 
     await client.query("COMMIT");
 
@@ -470,14 +470,14 @@ export async function RejectLeaveRequestController(
   const client = await pool.connect();
 
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
     const { decision_note } = req.body as { decision_note?: string };
 
     const existing = await leaveRequestModel.findById(id);
     if (!existing) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    if (!bolehMemutuskan(existing, pemohon)) {
+    if (!canDecide(existing, requester)) {
       throw Forbidden("Kamu bukan penyetuju pengajuan cuti ini");
     }
 
@@ -494,7 +494,7 @@ export async function RejectLeaveRequestController(
     const request = await leaveRequestModel.rejectRequest(
       client,
       id,
-      pemohon.employee.id,
+      requester.employee.id,
       decision_note ?? null,
     );
 
@@ -506,12 +506,12 @@ export async function RejectLeaveRequestController(
       await balanceModel.createTransaction(client, {
         employee_id: existing.employee_id,
         leave_type_id: existing.leave_type_id,
-        period_year: periodeDari(existing.start_date),
+        period_year: periodYearOf(existing.start_date),
         amount: existing.total_days,
         type: "refund",
         leave_request_id: id,
         note: "Pengembalian saldo karena pengajuan ditolak",
-        created_by: pemohon.employee.id,
+        created_by: requester.employee.id,
       });
     }
 
@@ -538,13 +538,13 @@ export async function CancelLeaveRequestController(
   const client = await pool.connect();
 
   try {
-    const pemohon = await ambilPemohon(req, res);
+    const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
 
     const existing = await leaveRequestModel.findById(id);
     if (!existing) throw NotFound("Pengajuan cuti tidak ditemukan");
 
-    if (existing.employee_id !== pemohon.employee.id) {
+    if (existing.employee_id !== requester.employee.id) {
       throw Forbidden("Kamu hanya dapat membatalkan pengajuan cuti sendiri");
     }
 
@@ -567,7 +567,7 @@ export async function CancelLeaveRequestController(
     const request = await leaveRequestModel.cancelRequest(
       client,
       id,
-      pemohon.employee.id,
+      requester.employee.id,
     );
 
     if (!request) {
@@ -578,12 +578,12 @@ export async function CancelLeaveRequestController(
       await balanceModel.createTransaction(client, {
         employee_id: existing.employee_id,
         leave_type_id: existing.leave_type_id,
-        period_year: periodeDari(existing.start_date),
+        period_year: periodYearOf(existing.start_date),
         amount: existing.total_days,
         type: "refund",
         leave_request_id: id,
         note: "Pengembalian saldo karena pengajuan dibatalkan",
-        created_by: pemohon.employee.id,
+        created_by: requester.employee.id,
       });
     }
 

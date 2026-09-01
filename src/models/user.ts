@@ -216,9 +216,9 @@ export async function insertUsersByAdmin(
        AS baris(email, password, role)
      RETURNING ${SAFE_COLUMNS}`,
     [
-      daftar.map((baris) => baris.email),
-      daftar.map((baris) => baris.password),
-      daftar.map((baris) => baris.role),
+      daftar.map((row) => row.email),
+      daftar.map((row) => row.password),
+      daftar.map((row) => row.role),
       approved_by,
     ],
   );
@@ -239,5 +239,5 @@ export async function findExistingEmails(emails: string[]): Promise<string[]> {
     [emails],
   );
 
-  return result.rows.map((baris) => baris.email);
+  return result.rows.map((row) => row.email);
 }

@@ -3,7 +3,7 @@ import { env } from "../config/env.js";
 import * as userModel from "../models/user.js";
 import * as employeeModel from "../models/employee.js";
 import { sendMail } from "../helpers/mailer.js";
-import { kirimEmailTanpaMenggagalkan } from "../helpers/notification.js";
+import { sendMailWithoutFailing } from "../helpers/notification.js";
 import { accountApprovedEmail } from "../helpers/emailTemplate.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 
@@ -42,17 +42,17 @@ export async function ApproveUserController(
     const user = await userModel.approveUser(id, req.user.id);
 
     const employee = await employeeModel.findByUserId(id);
-    const isi = accountApprovedEmail(
+    const body = accountApprovedEmail(
       `${env.APP_URL}/login`,
       employee?.full_name ?? null,
     );
 
-    await kirimEmailTanpaMenggagalkan(
+    await sendMailWithoutFailing(
       () =>
         sendMail({
           to: existing.email,
-          subject: isi.subject,
-          html: isi.html,
+          subject: body.subject,
+          html: body.html,
         }),
       "Gagal mengirim email persetujuan akun",
       { email: existing.email },

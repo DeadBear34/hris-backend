@@ -275,18 +275,18 @@ describe("countEmployees", () => {
   it("menghitung karyawan pada departemen tersebut", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "7" }] } as never);
 
-    const jumlah = await departmentModel.countEmployees(DEPARTMENT_ID);
+    const count = await departmentModel.countEmployees(DEPARTMENT_ID);
 
-    expect(jumlah).toBe(7);
-    expect(typeof jumlah).toBe("number");
+    expect(count).toBe(7);
+    expect(typeof count).toBe("number");
   });
 
   it("mengembalikan nol jika hasil hitungan kosong", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const jumlah = await departmentModel.countEmployees(DEPARTMENT_ID);
+    const count = await departmentModel.countEmployees(DEPARTMENT_ID);
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
   });
 
   it("tidak menghitung karyawan yang sudah dihapus", async () => {

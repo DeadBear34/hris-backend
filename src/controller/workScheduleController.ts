@@ -3,7 +3,7 @@ import * as workScheduleModel from "../models/workSchedule.js";
 import * as departmentModel from "../models/department.js";
 import * as employeeModel from "../models/employee.js";
 import type { WorkScheduleInput } from "../models/workSchedule.js";
-import { menitDariJam } from "../helpers/timezone.js";
+import { minutesFromClockTime } from "../helpers/timezone.js";
 import {
   BadRequest,
   Conflict,
@@ -11,38 +11,38 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 
-const BAWAAN = {
+const SCHEDULE_DEFAULTS = {
   start_time: "08:00",
   end_time: "18:00",
   late_tolerance_minutes: 5,
   absent_cutoff_time: "18:00",
 } as const;
 
-function pastikanJamMasukAkal(jam: {
+function assertScheduleTimesMakeSense(hour: {
   start_time: string;
   end_time: string;
   late_tolerance_minutes: number;
   absent_cutoff_time: string;
 }): void {
-  if (jam.end_time <= jam.start_time) {
+  if (hour.end_time <= hour.start_time) {
     throw BadRequest(
-      `Jam pulang ${jam.end_time} harus lebih besar daripada jam masuk ${jam.start_time}`,
+      `Jam pulang ${hour.end_time} harus lebih besar daripada jam masuk ${hour.start_time}`,
     );
   }
 
-  const batasTerlambat =
-    menitDariJam(jam.start_time) + jam.late_tolerance_minutes;
-  const menitTutup = menitDariJam(jam.absent_cutoff_time);
+  const toleranceEnd =
+    minutesFromClockTime(hour.start_time) + hour.late_tolerance_minutes;
+  const cutoffMinutes = minutesFromClockTime(hour.absent_cutoff_time);
 
-  if (menitTutup <= batasTerlambat) {
+  if (cutoffMinutes <= toleranceEnd) {
     throw BadRequest(
-      `Batas absen ${jam.absent_cutoff_time} harus melewati akhir toleransi keterlambatan, yaitu ${jam.late_tolerance_minutes} menit setelah jam masuk ${jam.start_time}`,
+      `Batas absen ${hour.absent_cutoff_time} harus melewati akhir toleransi keterlambatan, yaitu ${hour.late_tolerance_minutes} menit setelah jam masuk ${hour.start_time}`,
     );
   }
 
-  if (menitTutup > menitDariJam(jam.end_time)) {
+  if (cutoffMinutes > minutesFromClockTime(hour.end_time)) {
     throw BadRequest(
-      `Batas absen ${jam.absent_cutoff_time} tidak boleh melewati jam pulang ${jam.end_time}`,
+      `Batas absen ${hour.absent_cutoff_time} tidak boleh melewati jam pulang ${hour.end_time}`,
     );
   }
 }
@@ -139,12 +139,12 @@ export async function CreateWorkScheduleController(
       }
     }
 
-    pastikanJamMasukAkal({
-      start_time: data.start_time ?? BAWAAN.start_time,
-      end_time: data.end_time ?? BAWAAN.end_time,
+    assertScheduleTimesMakeSense({
+      start_time: data.start_time ?? SCHEDULE_DEFAULTS.start_time,
+      end_time: data.end_time ?? SCHEDULE_DEFAULTS.end_time,
       late_tolerance_minutes:
-        data.late_tolerance_minutes ?? BAWAAN.late_tolerance_minutes,
-      absent_cutoff_time: data.absent_cutoff_time ?? BAWAAN.absent_cutoff_time,
+        data.late_tolerance_minutes ?? SCHEDULE_DEFAULTS.late_tolerance_minutes,
+      absent_cutoff_time: data.absent_cutoff_time ?? SCHEDULE_DEFAULTS.absent_cutoff_time,
     });
 
     const schedule = await workScheduleModel.createSchedule(data);
@@ -196,7 +196,7 @@ export async function UpdateWorkScheduleController(
       }
     }
 
-    pastikanJamMasukAkal({
+    assertScheduleTimesMakeSense({
       start_time: data.start_time ?? existing.start_time,
       end_time: data.end_time ?? existing.end_time,
       late_tolerance_minutes:

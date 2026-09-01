@@ -1,59 +1,59 @@
 import {
-  jamLokal,
-  keWaktuLokal,
-  selisihMenit,
-  tanggalHariIni,
+  clockTimeOf,
+  toLocalTime,
+  minutesBetween,
+  todayInOfficeZone,
 } from "./timezone.js";
 
-export const TOLERANSI_JAM_PERANGKAT_MENIT = 2;
+export const DEVICE_CLOCK_SKEW_MINUTES = 2;
 
-export const BATAS_SINKRONISASI_MENIT = 6 * 60;
+export const MAX_SYNC_DELAY_MINUTES = 6 * 60;
 
-export const BATAS_AWAL_SEBELUM_MASUK_MENIT = 2 * 60;
+export const MAX_EARLY_MINUTES = 2 * 60;
 
-export function alasanWaktuOfflineDitolak(
-  waktuOffline: Date,
-  waktuServer: Date,
-  menitMasuk: number,
+export function rejectionReasonForOfflineTime(
+  offlineTime: Date,
+  serverTime: Date,
+  startMinutes: number,
 ): string | null {
-  if (Number.isNaN(waktuOffline.getTime())) {
+  if (Number.isNaN(offlineTime.getTime())) {
     return "Waktu absen offline tidak dapat dibaca";
   }
 
-  const jedaMenit = selisihMenit(waktuOffline, waktuServer);
+  const delayMinutes = minutesBetween(offlineTime, serverTime);
 
-  if (jedaMenit < -TOLERANSI_JAM_PERANGKAT_MENIT) {
+  if (delayMinutes < -DEVICE_CLOCK_SKEW_MINUTES) {
     return "Waktu absen offline berada di masa depan, periksa pengaturan jam pada perangkatmu";
   }
 
-  if (jedaMenit > BATAS_SINKRONISASI_MENIT) {
-    const jam = BATAS_SINKRONISASI_MENIT / 60;
+  if (delayMinutes > MAX_SYNC_DELAY_MINUTES) {
+    const hour = MAX_SYNC_DELAY_MINUTES / 60;
 
-    return `Absen offline hanya dapat dikirim paling lambat ${jam} jam setelah waktu absennya, hubungi atasanmu untuk mengoreksi absensi ini`;
+    return `Absen offline hanya dapat dikirim paling lambat ${hour} jam setelah waktu absennya, hubungi atasanmu untuk mengoreksi absensi ini`;
   }
 
-  if (tanggalHariIni(waktuOffline) !== tanggalHariIni(waktuServer)) {
+  if (todayInOfficeZone(offlineTime) !== todayInOfficeZone(serverTime)) {
     return "Absen offline hanya dapat dikirim pada hari yang sama, hubungi atasanmu untuk mengoreksi absensi hari sebelumnya";
   }
 
-  const lokal = keWaktuLokal(waktuOffline);
-  const batasPalingAwal = menitMasuk - BATAS_AWAL_SEBELUM_MASUK_MENIT;
+  const local = toLocalTime(offlineTime);
+  const earliestAllowed = startMinutes - MAX_EARLY_MINUTES;
 
-  if (lokal.menitSejakTengahMalam < batasPalingAwal) {
-    const jam = BATAS_AWAL_SEBELUM_MASUK_MENIT / 60;
+  if (local.minutesSinceMidnight < earliestAllowed) {
+    const hour = MAX_EARLY_MINUTES / 60;
 
-    return `Waktu absen offline terlalu jauh sebelum jam masuk, paling awal ${jam} jam sebelumnya`;
+    return `Waktu absen offline terlalu jauh sebelum jam masuk, paling awal ${hour} jam sebelumnya`;
   }
 
   return null;
 }
 
-export function susunCatatanOffline(
-  waktuOffline: Date,
-  waktuServer: Date,
-  catatan: string | null,
+export function buildOfflineNote(
+  offlineTime: Date,
+  serverTime: Date,
+  noteField: string | null,
 ): string {
-  const penanda = `[Absen offline pukul ${jamLokal(waktuOffline)}, diterima server ${jamLokal(waktuServer)}]`;
+  const markers = `[Absen offline pukul ${clockTimeOf(offlineTime)}, diterima server ${clockTimeOf(serverTime)}]`;
 
-  return catatan ? `${penanda} ${catatan}` : penanda;
+  return noteField ? `${markers} ${noteField}` : markers;
 }

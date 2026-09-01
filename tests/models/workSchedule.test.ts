@@ -110,27 +110,27 @@ describe("urutan penentuan jadwal karyawan", () => {
       rows: [{ employee_id: EMPLOYEE_ID, ...jadwalUmum }],
     } as never);
 
-    const hasil = await workScheduleModel.resolveForAllActive();
+    const result = await workScheduleModel.resolveForAllActive();
 
-    expect(hasil[0]?.employee_id).toBe(EMPLOYEE_ID);
-    expect(hasil[0]?.schedule.name).toBe("Jadwal Kerja Umum");
-    expect(hasil[0]?.schedule).not.toHaveProperty("employee_id");
+    expect(result[0]?.employee_id).toBe(EMPLOYEE_ID);
+    expect(result[0]?.schedule.name).toBe("Jadwal Kerja Umum");
+    expect(result[0]?.schedule).not.toHaveProperty("employee_id");
   });
 });
 
 describe("adalahHariKerja", () => {
   it("mengikuti kolom hari kerja pada jadwal", () => {
-    expect(workScheduleModel.adalahHariKerja(jadwalUmum, "monday")).toBe(true);
-    expect(workScheduleModel.adalahHariKerja(jadwalUmum, "saturday")).toBe(
+    expect(workScheduleModel.isWorkingDay(jadwalUmum, "monday")).toBe(true);
+    expect(workScheduleModel.isWorkingDay(jadwalUmum, "saturday")).toBe(
       false,
     );
-    expect(workScheduleModel.adalahHariKerja(jadwalUmum, "sunday")).toBe(false);
+    expect(workScheduleModel.isWorkingDay(jadwalUmum, "sunday")).toBe(false);
   });
 
   it("menghormati jadwal yang menetapkan Sabtu sebagai hari kerja", () => {
     const jadwalSabtu = { ...jadwalUmum, works_saturday: true };
 
-    expect(workScheduleModel.adalahHariKerja(jadwalSabtu, "saturday")).toBe(
+    expect(workScheduleModel.isWorkingDay(jadwalSabtu, "saturday")).toBe(
       true,
     );
   });
@@ -139,13 +139,13 @@ describe("adalahHariKerja", () => {
 describe("tanggalKerjaDalamRentang", () => {
   it("membuang akhir pekan menurut jadwal", () => {
     // 2026-03-09 Senin sampai 2026-03-15 Minggu
-    const hasil = workScheduleModel.tanggalKerjaDalamRentang(
+    const result = workScheduleModel.workingDatesInRange(
       jadwalUmum,
       "2026-03-09",
       "2026-03-15",
     );
 
-    expect(hasil).toEqual([
+    expect(result).toEqual([
       "2026-03-09",
       "2026-03-10",
       "2026-03-11",
@@ -155,37 +155,37 @@ describe("tanggalKerjaDalamRentang", () => {
   });
 
   it("membuang hari libur yang jatuh pada hari kerja", () => {
-    const hasil = workScheduleModel.tanggalKerjaDalamRentang(
+    const result = workScheduleModel.workingDatesInRange(
       jadwalUmum,
       "2026-03-09",
       "2026-03-13",
       ["2026-03-11"],
     );
 
-    expect(hasil).not.toContain("2026-03-11");
-    expect(hasil).toHaveLength(4);
+    expect(result).not.toContain("2026-03-11");
+    expect(result).toHaveLength(4);
   });
 
   it("menyertakan Sabtu bagi jadwal yang bekerja pada hari Sabtu", () => {
     const jadwalSabtu = { ...jadwalUmum, works_saturday: true };
 
-    const hasil = workScheduleModel.tanggalKerjaDalamRentang(
+    const result = workScheduleModel.workingDatesInRange(
       jadwalSabtu,
       "2026-03-13",
       "2026-03-15",
     );
 
-    expect(hasil).toEqual(["2026-03-13", "2026-03-14"]);
+    expect(result).toEqual(["2026-03-13", "2026-03-14"]);
   });
 
   it("menghasilkan daftar kosong bila seluruh rentang bukan hari kerja", () => {
-    const hasil = workScheduleModel.tanggalKerjaDalamRentang(
+    const result = workScheduleModel.workingDatesInRange(
       jadwalUmum,
       "2026-03-14",
       "2026-03-15",
     );
 
-    expect(hasil).toEqual([]);
+    expect(result).toEqual([]);
   });
 });
 
@@ -193,9 +193,9 @@ describe("countEmployees", () => {
   it("menghitung karyawan yang menunjuk jadwal ini", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "7" }] } as never);
 
-    const jumlah = await workScheduleModel.countEmployees(SCHEDULE_ID);
+    const count = await workScheduleModel.countEmployees(SCHEDULE_ID);
 
-    expect(jumlah).toBe(7);
+    expect(count).toBe(7);
   });
 
   it("mengabaikan karyawan yang sudah dihapus", async () => {

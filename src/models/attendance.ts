@@ -98,7 +98,7 @@ export interface MonthlyReportRow {
   total_work_minutes: number;
 }
 
-const KOLOM_NAMA = [
+const COLUMN_NAMES = [
   "id",
   "employee_id",
   "attendance_date",
@@ -117,18 +117,18 @@ const KOLOM_NAMA = [
   "updated_at",
 ] as const;
 
-function daftarKolom(prefiks = ""): string {
-  const awalan = prefiks ? `${prefiks}.` : "";
+function columnList(prefix = ""): string {
+  const dot = prefix ? `${prefix}.` : "";
 
-  return KOLOM_NAMA.map((kolom) =>
-    kolom === "attendance_date"
-      ? `${awalan}attendance_date::text AS attendance_date`
-      : `${awalan}${kolom}`,
+  return COLUMN_NAMES.map((column) =>
+    column === "attendance_date"
+      ? `${dot}attendance_date::text AS attendance_date`
+      : `${dot}${column}`,
   ).join(", ");
 }
 
-const KOLOM = daftarKolom();
-const KOLOM_ABSENSI = daftarKolom("a");
+const COLUMNS = columnList();
+const ATTENDANCE_COLUMNS = columnList("a");
 
 export async function findByEmployeeAndDate(
   employee_id: string,
@@ -136,7 +136,7 @@ export async function findByEmployeeAndDate(
   db: Executor = pool,
 ): Promise<Attendance | null> {
   const result = await db.query<Attendance>(
-    `SELECT ${KOLOM} FROM attendances
+    `SELECT ${COLUMNS} FROM attendances
      WHERE employee_id = $1::uuid AND attendance_date = $2::date`,
     [employee_id, attendance_date],
   );
@@ -146,7 +146,7 @@ export async function findByEmployeeAndDate(
 
 export async function findById(id: string): Promise<Attendance | null> {
   const result = await pool.query<Attendance>(
-    `SELECT ${KOLOM} FROM attendances WHERE id = $1::uuid`,
+    `SELECT ${COLUMNS} FROM attendances WHERE id = $1::uuid`,
     [id],
   );
 
@@ -163,7 +163,7 @@ export async function createCheckIn(
         check_in_source, status, late_minutes, note)
      VALUES ($1::uuid, $2::date, $3::timestamptz, $4::timestamptz,
              $5::attendance_source, $6::attendance_status, $7::int, $8)
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       data.employee_id,
       data.attendance_date,
@@ -200,14 +200,14 @@ export async function setCheckOut(
          work_minutes = $5::int,
          updated_at = now()
      WHERE id = $1::uuid AND check_out_at IS NULL AND check_in_at IS NOT NULL
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [id, check_out_at, check_out_recorded_at, check_out_source, work_minutes],
   );
 
   return result.rows[0] ?? null;
 }
 
-function susunFilter(params: ListAttendanceParams, values: unknown[]): string {
+function buildFilter(params: ListAttendanceParams, values: unknown[]): string {
   const conditions: string[] = ["e.deleted_at IS NULL"];
 
   if (params.employee_id) {
@@ -254,7 +254,7 @@ export async function listAttendances(
   params: ListAttendanceParams,
 ): Promise<{ rows: AttendanceDetail[]; total: number }> {
   const values: unknown[] = [];
-  const where = susunFilter(params, values);
+  const where = buildFilter(params, values);
 
   const from = `FROM attendances a
      JOIN employees e ON e.id = a.employee_id
@@ -271,7 +271,7 @@ export async function listAttendances(
   values.push(params.limit, offset);
 
   const dataResult = await pool.query<AttendanceDetail>(
-    `SELECT ${KOLOM_ABSENSI},
+    `SELECT ${ATTENDANCE_COLUMNS},
             e.full_name AS employee_name, e.employee_number,
             d.name AS department_name, p.name AS position_name
      ${from} ${where}
@@ -303,16 +303,16 @@ export async function summaryFor(
     [employee_id, start_date, end_date],
   );
 
-  const baris = result.rows[0] ?? {};
+  const row = result.rows[0] ?? {};
 
   return {
-    present: Number(baris.present ?? 0),
-    late: Number(baris.late ?? 0),
-    absent: Number(baris.absent ?? 0),
-    leave: Number(baris.leave ?? 0),
-    holiday: Number(baris.holiday ?? 0),
-    total_late_minutes: Number(baris.total_late_minutes ?? 0),
-    total_work_minutes: Number(baris.total_work_minutes ?? 0),
+    present: Number(row.present ?? 0),
+    late: Number(row.late ?? 0),
+    absent: Number(row.absent ?? 0),
+    leave: Number(row.leave ?? 0),
+    holiday: Number(row.holiday ?? 0),
+    total_late_minutes: Number(row.total_late_minutes ?? 0),
+    total_work_minutes: Number(row.total_work_minutes ?? 0),
   };
 }
 
@@ -395,7 +395,7 @@ export async function correctAttendance(
          note = $11,
          updated_at = now()
      WHERE id = $1::uuid
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       id,
       data.status,
@@ -489,7 +489,7 @@ export async function findApprovedLeaveOn(
   return result.rows;
 }
 
-export interface BarisPenanda {
+export interface MarkerRow {
   employee_id: string;
   status: Extract<AttendanceStatus, "absent" | "leave" | "holiday">;
   leave_request_id?: string | null;
@@ -499,7 +499,7 @@ export interface BarisPenanda {
 export async function insertMarkers(
   db: Executor,
   attendance_date: IsoDate,
-  rows: BarisPenanda[],
+  rows: MarkerRow[],
 ): Promise<number> {
   if (rows.length === 0) return 0;
 
@@ -566,9 +566,9 @@ export async function listOfflineSync(
 
   // Jeda dihitung dari selisih waktu tekan dan waktu terima, keduanya kolom
   // tersendiri, sehingga koreksi manual pada catatan tidak menghapus buktinya.
-  const jedaMasuk = `(EXTRACT(EPOCH FROM (a.check_in_recorded_at - a.check_in_at)) / 60)::int`;
-  const jedaPulang = `(EXTRACT(EPOCH FROM (a.check_out_recorded_at - a.check_out_at)) / 60)::int`;
-  const jedaTerlama = `GREATEST(COALESCE(${jedaMasuk}, 0), COALESCE(${jedaPulang}, 0))`;
+  const checkInDelay = `(EXTRACT(EPOCH FROM (a.check_in_recorded_at - a.check_in_at)) / 60)::int`;
+  const checkOutDelay = `(EXTRACT(EPOCH FROM (a.check_out_recorded_at - a.check_out_at)) / 60)::int`;
+  const longestDelay = `GREATEST(COALESCE(${checkInDelay}, 0), COALESCE(${checkOutDelay}, 0))`;
 
   const countResult = await pool.query<{ count: string }>(
     `SELECT COUNT(*) ${from} ${where}`,
@@ -580,14 +580,14 @@ export async function listOfflineSync(
   values.push(params.limit, offset);
 
   const dataResult = await pool.query<OfflineLogRow>(
-    `SELECT ${KOLOM_ABSENSI},
+    `SELECT ${ATTENDANCE_COLUMNS},
             e.full_name AS employee_name, e.employee_number,
             d.name AS department_name, p.name AS position_name,
-            ${jedaMasuk} AS check_in_delay_minutes,
-            ${jedaPulang} AS check_out_delay_minutes,
-            ${jedaTerlama} AS max_delay_minutes
+            ${checkInDelay} AS check_in_delay_minutes,
+            ${checkOutDelay} AS check_out_delay_minutes,
+            ${longestDelay} AS max_delay_minutes
      ${from} ${where}
-     ORDER BY ${jedaTerlama} DESC, a.attendance_date DESC
+     ORDER BY ${longestDelay} DESC, a.attendance_date DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
   );

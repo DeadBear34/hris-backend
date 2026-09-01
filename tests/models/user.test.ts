@@ -40,13 +40,13 @@ describe("insertUser", () => {
       rows: [fakeUser],
     } as never);
 
-    const waktu = new Date();
+    const at = new Date();
     await userModel.insertUser(
       fakeDb as never,
       "ismail@awan.io",
       "hash-argon2",
       "employee",
-      waktu,
+      at,
     );
 
     const [, values] = (fakeDb.query as jest.Mock).mock.calls[0] as [
@@ -58,7 +58,7 @@ describe("insertUser", () => {
       "ismail@awan.io",
       "hash-argon2",
       "employee",
-      waktu,
+      at,
     ]);
   });
 
@@ -163,13 +163,13 @@ describe("insertUserByAdmin", () => {
       sql.indexOf("VALUES"),
     );
 
-    for (const kolom of [
+    for (const column of [
       "email_verified_at",
       "approved_at",
       "is_active",
       "must_change_password",
     ]) {
-      expect(kolomDiisi).toContain(kolom);
+      expect(kolomDiisi).toContain(column);
     }
   });
 
@@ -187,11 +187,11 @@ describe("insertUserByAdmin", () => {
     );
 
     const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
-    const nilai = sql.slice(sql.indexOf("VALUES"), sql.indexOf("RETURNING"));
+    const value = sql.slice(sql.indexOf("VALUES"), sql.indexOf("RETURNING"));
 
     // email_verified_at dan approved_at diisi now(), is_active diisi true
-    expect(nilai.match(/now\(\)/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(nilai).toContain("true");
+    expect(value.match(/now\(\)/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(value).toContain("true");
   });
 
   it("mencatat siapa yang membuat akun", async () => {
@@ -459,14 +459,14 @@ describe("findSessionInfo", () => {
   });
 
   it("mengembalikan waktu perubahan password terakhir", async () => {
-    const waktu = new Date();
+    const at = new Date();
     mockQuery.mockResolvedValue({
-      rows: [{ id: fakeUser.id, password_changed_at: waktu }],
+      rows: [{ id: fakeUser.id, password_changed_at: at }],
     } as never);
 
     const sesi = await userModel.findSessionInfo(fakeUser.id);
 
-    expect(sesi?.password_changed_at).toBe(waktu);
+    expect(sesi?.password_changed_at).toBe(at);
   });
 });
 

@@ -47,9 +47,9 @@ describe("expiresInMinutes", () => {
   });
 
   it("menghitung selisih sesuai jumlah menit", () => {
-    const selisih = expiresInMinutes(15).getTime() - Date.now();
+    const diffMinutes = expiresInMinutes(15).getTime() - Date.now();
 
-    expect(selisih).toBeGreaterThan(14 * 60_000);
-    expect(selisih).toBeLessThanOrEqual(15 * 60_000);
+    expect(diffMinutes).toBeGreaterThan(14 * 60_000);
+    expect(diffMinutes).toBeLessThanOrEqual(15 * 60_000);
   });
 });

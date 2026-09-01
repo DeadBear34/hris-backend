@@ -218,10 +218,10 @@ describe("POST /api/v1/auth/register menerbitkan kode verifikasi", () => {
       { expires_at: Date },
     ];
 
-    const selisih = data.expires_at.getTime() - Date.now();
+    const diffMinutes = data.expires_at.getTime() - Date.now();
 
-    expect(selisih).toBeGreaterThan(9 * 60_000);
-    expect(selisih).toBeLessThanOrEqual(10 * 60_000);
+    expect(diffMinutes).toBeGreaterThan(9 * 60_000);
+    expect(diffMinutes).toBeLessThanOrEqual(10 * 60_000);
   });
 
   it("mencatat alamat ip dan user agent peminta", async () => {
@@ -546,26 +546,26 @@ describe("POST /api/v1/auth/verify-email", () => {
   });
 
   it("memberi pesan yang sama untuk semua jenis kegagalan", async () => {
-    const keadaan = [
+    const state = [
       null,
       fakeToken({ consumed_at: new Date() }),
       fakeToken({ expires_at: new Date(Date.now() - 1000) }),
       fakeToken({ attempts: 5 }),
     ];
 
-    const pesan = new Set<string>();
+    const message = new Set<string>();
 
-    for (const token of keadaan) {
+    for (const token of state) {
       (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
 
       const res = await request(app)
         .post("/api/v1/auth/verify-email")
         .send({ email: EMAIL, code: KODE });
 
-      pesan.add(res.body.message);
+      message.add(res.body.message);
     }
 
-    expect(pesan.size).toBe(1);
+    expect(message.size).toBe(1);
   });
 
   it("tidak menandai ulang email yang sudah terverifikasi", async () => {
@@ -779,13 +779,13 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
     });
     const nonaktif = await login();
 
-    const pesan = new Set([
+    const message = new Set([
       belumVerifikasi.body.message,
       belumDisetujui.body.message,
       nonaktif.body.message,
     ]);
 
-    expect(pesan.size).toBe(3);
+    expect(message.size).toBe(3);
   });
 
   it("memeriksa status hanya setelah password terbukti benar", async () => {

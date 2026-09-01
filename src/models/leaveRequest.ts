@@ -55,13 +55,13 @@ export interface ListLeaveRequestParams {
   limit: number;
 }
 
-const KOLOM = `lr.id, lr.employee_id, lr.leave_type_id,
+const COLUMNS = `lr.id, lr.employee_id, lr.leave_type_id,
   lr.start_date::text AS start_date, lr.end_date::text AS end_date,
   lr.total_days::float8 AS total_days, lr.reason, lr.status,
   lr.approver_id, lr.decided_by, lr.decided_at, lr.decision_note,
   lr.cancelled_at, lr.cancelled_by, lr.created_at, lr.updated_at`;
 
-const KOLOM_DETAIL = `${KOLOM},
+const DETAIL_COLUMNS = `${COLUMNS},
   e.full_name AS employee_name, e.employee_number,
   lt.code AS leave_type_code, lt.name AS leave_type_name,
   a.full_name AS approver_name, d.full_name AS decided_by_name`;
@@ -126,7 +126,7 @@ export async function listRequests(
   values.push(params.limit, offset);
 
   const dataResult = await pool.query<LeaveRequestDetail>(
-    `SELECT ${KOLOM_DETAIL} ${JOIN_DETAIL} ${where}
+    `SELECT ${DETAIL_COLUMNS} ${JOIN_DETAIL} ${where}
      ORDER BY lr.created_at DESC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
@@ -137,7 +137,7 @@ export async function listRequests(
 
 export async function findById(id: string): Promise<LeaveRequest | null> {
   const result = await pool.query<LeaveRequest>(
-    `SELECT ${KOLOM} FROM leave_requests lr WHERE lr.id = $1::uuid`,
+    `SELECT ${COLUMNS} FROM leave_requests lr WHERE lr.id = $1::uuid`,
     [id],
   );
 
@@ -148,7 +148,7 @@ export async function findDetailById(
   id: string,
 ): Promise<LeaveRequestDetail | null> {
   const result = await pool.query<LeaveRequestDetail>(
-    `SELECT ${KOLOM_DETAIL} ${JOIN_DETAIL} WHERE lr.id = $1::uuid`,
+    `SELECT ${DETAIL_COLUMNS} ${JOIN_DETAIL} WHERE lr.id = $1::uuid`,
     [id],
   );
 
@@ -161,7 +161,7 @@ export async function findOverlapping(
   end_date: string,
 ): Promise<LeaveRequest | null> {
   const result = await pool.query<LeaveRequest>(
-    `SELECT ${KOLOM} FROM leave_requests lr
+    `SELECT ${COLUMNS} FROM leave_requests lr
      WHERE lr.employee_id = $1::uuid
        AND lr.status IN ('pending', 'approved')
        AND lr.start_date <= $3::date
@@ -185,7 +185,7 @@ export async function createRequest(
           reason, approver_id)
        VALUES ($1::uuid, $2::uuid, $3::date, $4::date, $5::numeric,
                $6, $7::uuid)
-       RETURNING ${KOLOM.replaceAll("lr.", "")}`,
+       RETURNING ${COLUMNS.replaceAll("lr.", "")}`,
       [
         data.employee_id,
         data.leave_type_id,
@@ -225,7 +225,7 @@ export async function approveRequest(
      SET status = 'approved'::leave_status, decided_by = $2::uuid,
          decided_at = now(), decision_note = $3, updated_at = now()
      WHERE id = $1::uuid AND status = 'pending'::leave_status
-     RETURNING ${KOLOM.replaceAll("lr.", "")}`,
+     RETURNING ${COLUMNS.replaceAll("lr.", "")}`,
     [id, decided_by, decision_note],
   );
 
@@ -243,7 +243,7 @@ export async function rejectRequest(
      SET status = 'rejected'::leave_status, decided_by = $2::uuid,
          decided_at = now(), decision_note = $3, updated_at = now()
      WHERE id = $1::uuid AND status = 'pending'::leave_status
-     RETURNING ${KOLOM.replaceAll("lr.", "")}`,
+     RETURNING ${COLUMNS.replaceAll("lr.", "")}`,
     [id, decided_by, decision_note],
   );
 
@@ -261,7 +261,7 @@ export async function cancelRequest(
          cancelled_at = now(), updated_at = now()
      WHERE id = $1::uuid
        AND status IN ('pending'::leave_status, 'approved'::leave_status)
-     RETURNING ${KOLOM.replaceAll("lr.", "")}`,
+     RETURNING ${COLUMNS.replaceAll("lr.", "")}`,
     [id, cancelled_by],
   );
 
@@ -270,16 +270,16 @@ export async function cancelRequest(
 
 export async function findApprovedCovering(
   employee_id: string,
-  tanggal: string,
+  date: string,
   db: Executor = pool,
 ): Promise<LeaveRequest | null> {
   const result = await db.query<LeaveRequest>(
-    `SELECT ${KOLOM.replaceAll("lr.", "")} FROM leave_requests
+    `SELECT ${COLUMNS.replaceAll("lr.", "")} FROM leave_requests
      WHERE employee_id = $1::uuid
        AND status = 'approved'::leave_status
        AND $2::date BETWEEN start_date AND end_date
      LIMIT 1`,
-    [employee_id, tanggal],
+    [employee_id, date],
   );
 
   return result.rows[0] ?? null;

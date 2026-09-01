@@ -13,7 +13,16 @@ import type {
 import type { UserRole } from "../models/user.js";
 import type { ZodError } from "zod";
 import { hashPassword } from "../helpers/password.js";
-import { createEmployeeSchema } from "../schema/employeeSchema.js";
+import {
+  createEmployeeSchema,
+  MAX_EMPLOYEES_PER_REQUEST,
+} from "../schema/employeeSchema.js";
+import {
+  recordActivity,
+  requestContext,
+  summarizeList,
+  type RequestContext,
+} from "../helpers/activityLog.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import {
   AppError,
@@ -24,23 +33,23 @@ import {
 } from "../helpers/appError.js";
 
 // Satu masalah pada satu kolom
-interface GalatKolom {
+interface FieldError {
   field: string;
   message: string;
 }
 
 // Memeriksa departemen, jabatan, dan manajer. Mengembalikan daftar masalah
 // beserta kolomnya, bukan melempar, agar bisa dilaporkan per baris
-async function periksaRelasi(
+async function checkRelations(
   data: Partial<CreateEmployeeInput>,
   currentId?: string,
-): Promise<GalatKolom[]> {
-  const galat: GalatKolom[] = [];
+): Promise<FieldError[]> {
+  const errors: FieldError[] = [];
 
   if (data.department_id) {
     const dept = await departmentModel.findById(data.department_id);
     if (!dept) {
-      galat.push({
+      errors.push({
         field: "department_id",
         message: "Departemen tidak ditemukan",
       });
@@ -50,13 +59,13 @@ async function periksaRelasi(
   if (data.position_id) {
     const pos = await positionModel.findById(data.position_id);
     if (!pos) {
-      galat.push({ field: "position_id", message: "Jabatan tidak ditemukan" });
+      errors.push({ field: "position_id", message: "Jabatan tidak ditemukan" });
     }
   }
 
   if (data.manager_id) {
     if (currentId && data.manager_id === currentId) {
-      galat.push({
+      errors.push({
         field: "manager_id",
         message: "Karyawan tidak bisa menjadi manajer dirinya sendiri",
       });
@@ -64,15 +73,15 @@ async function periksaRelasi(
       const manager = await employeeModel.findById(data.manager_id);
 
       if (!manager) {
-        galat.push({ field: "manager_id", message: "Manajer tidak ditemukan" });
+        errors.push({ field: "manager_id", message: "Manajer tidak ditemukan" });
       } else if (currentId) {
-        const siklus = await employeeModel.isDescendantOf(
+        const isCycle = await employeeModel.isDescendantOf(
           data.manager_id,
           currentId,
         );
 
-        if (siklus) {
-          galat.push({
+        if (isCycle) {
+          errors.push({
             field: "manager_id",
             message:
               "Manajer yang dipilih merupakan bawahan dari karyawan ini, sehingga akan membentuk struktur melingkar",
@@ -82,21 +91,21 @@ async function periksaRelasi(
     }
   }
 
-  return galat;
+  return errors;
 }
 
 // Pembungkus untuk jalur yang cukup berhenti di masalah pertama
-async function validasiRelasi(
+async function assertRelationsExist(
   data: Partial<CreateEmployeeInput>,
   currentId?: string,
 ) {
-  const galat = await periksaRelasi(data, currentId);
+  const errors = await checkRelations(data, currentId);
 
-  if (galat[0]) throw BadRequest(galat[0].message);
+  if (errors[0]) throw BadRequest(errors[0].message);
 }
 
-function denganFotoUrl<T extends { photo_path: string | null }>(baris: T) {
-  return { ...baris, photo_url: photoUrlFor(baris.photo_path) };
+function withPhotoUrl<T extends { photo_path: string | null }>(row: T) {
+  return { ...row, photo_url: photoUrlFor(row.photo_path) };
 }
 
 export async function ListEmployeeController(
@@ -110,7 +119,7 @@ export async function ListEmployeeController(
 
     res.json({
       success: true,
-      data: rows.map(denganFotoUrl),
+      data: rows.map(withPhotoUrl),
       meta: {
         page: query.page,
         limit: query.limit,
@@ -134,46 +143,46 @@ export async function DetailEmployeeController(
     const employee = await employeeModel.findDetailById(id);
     if (!employee) throw NotFound("Karyawan tidak ditemukan");
 
-    res.json({ success: true, data: denganFotoUrl(employee) });
+    res.json({ success: true, data: withPhotoUrl(employee) });
   } catch (err) {
     next(err);
   }
 }
 
 // Data satu karyawan beserta akunnya
-type KaryawanBaru = CreateEmployeeInput & {
+type NewEmployee = CreateEmployeeInput & {
   email: string;
   password: string;
   role?: UserRole;
 };
 
 // Satu baris yang gagal, lengkap dengan kolom mana saja yang bermasalah
-interface BarisGagal {
+interface FailedRow {
   index: number;
   email: string;
   message: string;
-  errors: GalatKolom[];
+  errors: FieldError[];
   // dipakai untuk menjawab 409 kalau kirimannya satu karyawan
-  duplikat: boolean;
+  isDuplicate: boolean;
 }
 
-function jadikanBarisGagal(
+function toFailedRow(
   index: number,
   email: string,
-  errors: GalatKolom[],
-  duplikat = false,
-): BarisGagal {
+  errors: FieldError[],
+  isDuplicate = false,
+): FailedRow {
   return {
     index,
     email,
     message: errors.map((e) => e.message).join("; "),
     errors,
-    duplikat,
+    isDuplicate,
   };
 }
 
 // Mengubah galat zod jadi daftar kolom bermasalah
-function galatDariZod(error: ZodError): GalatKolom[] {
+function fieldErrorsFromZod(error: ZodError): FieldError[] {
   return error.issues.map((issue) => ({
     field: issue.path.join("."),
     message: issue.message,
@@ -181,49 +190,101 @@ function galatDariZod(error: ZodError): GalatKolom[] {
 }
 
 // Ambil email buat penanda baris, walau barisnya sendiri belum tentu valid
-function ambilEmail(baris: unknown): string {
-  const nilai = (baris as { email?: unknown } | null)?.email;
+function readEmail(row: unknown): string {
+  const value = (row as { email?: unknown } | null)?.email;
 
-  return typeof nilai === "string" ? nilai : "";
+  return typeof value === "string" ? value : "";
 }
 
 // Memeriksa isi satu baris terhadap data yang sudah ada di database
-async function periksaIsiBaris(
-  baris: KaryawanBaru,
+async function checkRowAgainstDatabase(
+  row: NewEmployee,
   index: number,
-  emailSebelumnya: Map<string, number>,
-  emailTerpakai: Set<string>,
-  cacheRelasi: Map<string, Promise<GalatKolom[]>>,
-): Promise<GalatKolom[]> {
-  const kembar = emailSebelumnya.get(baris.email);
-  if (kembar !== undefined) {
+  seenEmails: Map<string, number>,
+  takenEmails: Set<string>,
+  relationCache: Map<string, Promise<FieldError[]>>,
+): Promise<FieldError[]> {
+  const twinIndex = seenEmails.get(row.email);
+  if (twinIndex !== undefined) {
     return [
       {
         field: "email",
-        message: `Email sama dengan baris ke-${kembar + 1} pada permintaan ini`,
+        message: `Email sama dengan baris ke-${twinIndex + 1} pada permintaan ini`,
       },
     ];
   }
-  emailSebelumnya.set(baris.email, index);
+  seenEmails.set(row.email, index);
 
-  if (emailTerpakai.has(baris.email)) {
+  if (takenEmails.has(row.email)) {
     return [{ field: "email", message: "Email sudah terdaftar" }];
   }
 
   // Satu CSV biasanya menunjuk departemen dan jabatan yang itu-itu saja,
   // jadi hasil pemeriksaannya dipakai ulang antar baris
-  const kunci = [baris.department_id, baris.position_id, baris.manager_id].join("|");
+  const key = [row.department_id, row.position_id, row.manager_id].join("|");
 
-  const tersimpan = cacheRelasi.get(kunci);
-  if (tersimpan) return tersimpan;
+  const cached = relationCache.get(key);
+  if (cached) return cached;
 
-  const proses = periksaRelasi(baris);
-  cacheRelasi.set(kunci, proses);
+  const pending = checkRelations(row);
+  relationCache.set(key, pending);
 
-  return proses;
+  return pending;
 }
 
-// Menambah karyawan satu objek atau banyak dalam array lewat satu endpoint
+// Kiriman berbentuk objek berkunci nomor, misalnya { "0": {...}, "1": {...} }.
+// Dibedakan dari satu karyawan karena seluruh kuncinya berupa angka
+function isIndexedObject(payload: unknown): payload is Record<string, unknown> {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return false;
+  }
+
+  const keys = Object.keys(payload);
+
+  return keys.length > 0 && keys.every((key) => /^\d+$/.test(key));
+}
+
+// Mengurutkan kiriman berkunci nomor menjadi array.
+//
+// Urutan ditentukan di sini, bukan diserahkan pada urutan kunci objek, karena
+// JavaScript hanya mengurutkan kunci bilangan bulat murni. Kunci seperti "01"
+// akan mengikuti urutan kiriman dan membuat nomor karyawan tertukar.
+//
+// Kuncinya wajib 0 sampai n-1 tanpa bolong. Kunci ganda pada JSON membuat satu
+// baris hilang saat diurai, dan lubang pada urutan itulah bekas yang tersisa
+// untuk menangkapnya
+function indexedObjectToRows(payload: Record<string, unknown>): unknown[] {
+  const entries = Object.entries(payload)
+    .map(([key, value]) => ({ key: Number(key), value }))
+    .sort((a, b) => a.key - b.key);
+
+  const missing: number[] = [];
+  const seen = new Set<number>();
+
+  for (const [position, entry] of entries.entries()) {
+    if (seen.has(entry.key)) {
+      throw BadRequest(
+        `Kunci ${entry.key} muncul lebih dari sekali pada kiriman`,
+      );
+    }
+    seen.add(entry.key);
+
+    if (entry.key !== position) missing.push(position);
+  }
+
+  if (missing.length > 0) {
+    const diterima = entries.map((entry) => entry.key);
+
+    throw BadRequest(
+      `Kunci karyawan harus berurutan dari 0 sampai ${entries.length - 1} tanpa ada yang terlewat. Yang hilang: ${missing.join(", ")}. Yang diterima: ${diterima.join(", ")}`,
+      { expected: entries.length, missing, received: diterima },
+    );
+  }
+
+  return entries.map((entry) => entry.value);
+}
+
+// Menambah karyawan satu objek, array, atau objek berkunci nomor
 export async function CreateEmployeeController(
   req: Request,
   res: Response,
@@ -231,83 +292,145 @@ export async function CreateEmployeeController(
 ) {
   const client = await pool.connect();
 
+  // Disimpan di luar try supaya blok catch bisa memakainya juga
+  let logOccurredAt: Date | null = null;
+  let logContext: RequestContext | null = null;
+
   try {
     if (!req.user)
       throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
-    // Cek dulu bentuk kiriman array berarti itu banyak kalo objek berarti satu
-    const kiriman = req.body as unknown;
-    const banyak = Array.isArray(kiriman);
-    const mentah: unknown[] = banyak ? kiriman : [kiriman];
+    // Waktu peristiwa diambil di sini, bukan saat log ditulis, supaya yang
+    // tercatat adalah kapan permintaannya mulai diproses
+    const occurredAt = new Date();
+    const context = requestContext(req);
 
-    const gagal: BarisGagal[] = [];
-    const daftar: KaryawanBaru[] = [];
+    logOccurredAt = occurredAt;
+    logContext = context;
+
+    // Cek bentuk kiriman: array atau objek berkunci nomor berarti banyak,
+    // objek biasa berarti satu karyawan
+    const payload = req.body as unknown;
+    const indexed = isIndexedObject(payload);
+    const isMany = Array.isArray(payload) || indexed;
+
+    const rawRows: unknown[] = indexed
+      ? indexedObjectToRows(payload)
+      : Array.isArray(payload)
+        ? payload
+        : [payload];
+
+    if (rawRows.length > MAX_EMPLOYEES_PER_REQUEST) {
+      throw BadRequest(
+        `Maksimal ${MAX_EMPLOYEES_PER_REQUEST} karyawan dalam satu permintaan`,
+      );
+    }
+
+    const failed: FailedRow[] = [];
+    const rows: NewEmployee[] = [];
 
     // Tahap 1: cek bentuk tiap baris, yaitu kolom kosong dan data tidak sesuai
-    for (const [index, baris] of mentah.entries()) {
-      const hasil = createEmployeeSchema.safeParse(baris);
+    for (const [index, row] of rawRows.entries()) {
+      const parsed = createEmployeeSchema.safeParse(row);
 
-      if (hasil.success) {
-        daftar.push(hasil.data as KaryawanBaru);
+      if (parsed.success) {
+        rows.push(parsed.data as NewEmployee);
         continue;
       }
 
       // Kiriman satu objek dilempar apa adanya biar jawabannya tetap
       // VALIDATION_ERROR seperti sebelumnya
-      if (!banyak) throw hasil.error;
+      if (!isMany) throw parsed.error;
 
-      gagal.push(jadikanBarisGagal(index, ambilEmail(baris), galatDariZod(hasil.error)));
+      failed.push(
+        toFailedRow(index, readEmail(row), fieldErrorsFromZod(parsed.error)),
+      );
     }
 
     // Tahap 2: cek isinya ke database, cuma untuk baris yang bentuknya benar.
     // Semua email dicek sekali jalan, bukan satu query per baris
-    const emailTerpakai = new Set(
-      await userModel.findExistingEmails(daftar.map((baris) => baris.email)),
+    const takenEmails = new Set(
+      await userModel.findExistingEmails(rows.map((row) => row.email)),
     );
-    const cacheRelasi = new Map<string, Promise<GalatKolom[]>>();
-    const emailSebelumnya = new Map<string, number>();
-    let urutanValid = 0;
+    const relationCache = new Map<string, Promise<FieldError[]>>();
+    const seenEmails = new Map<string, number>();
+    let validIndex = 0;
 
-    for (const [index, baris] of mentah.entries()) {
-      if (gagal.some((g) => g.index === index)) continue;
+    for (const [index, row] of rawRows.entries()) {
+      if (failed.some((g) => g.index === index)) continue;
 
-      const data = daftar[urutanValid]!;
-      urutanValid += 1;
+      const data = rows[validIndex]!;
+      validIndex += 1;
 
-      const galat = await periksaIsiBaris(
+      const errors = await checkRowAgainstDatabase(
         data,
         index,
-        emailSebelumnya,
-        emailTerpakai,
-        cacheRelasi,
+        seenEmails,
+        takenEmails,
+        relationCache,
       );
 
-      if (galat.length > 0) {
-        const duplikat = galat.some((g) => g.field === "email");
-        gagal.push(jadikanBarisGagal(index, data.email, galat, duplikat));
+      if (errors.length > 0) {
+        const isDuplicate = errors.some((g) => g.field === "email");
+        failed.push(toFailedRow(index, data.email, errors, isDuplicate));
       }
     }
 
-    if (gagal.length > 0) {
-      gagal.sort((a, b) => a.index - b.index);
+    if (failed.length > 0) {
+      failed.sort((a, b) => a.index - b.index);
 
-      const pertama = gagal[0]!;
+      const first = failed[0]!;
 
       // Kiriman satu objek tidak punya daftar baris untuk dilaporkan,
-      if (!banyak) {
-        throw pertama.duplikat
-          ? Conflict(pertama.message)
-          : BadRequest(pertama.message);
+      if (!isMany) {
+        recordActivity({
+          action: "employee.create",
+          status: "failed",
+          context,
+          entity: "employee",
+          summary: `Penambahan karyawan ditolak: ${first.message}`,
+          occurred_at: occurredAt,
+          metadata: {
+            email: first.email,
+            fields: first.errors.map((e) => e.field),
+          },
+        });
+
+        throw first.isDuplicate
+          ? Conflict(first.message)
+          : BadRequest(first.message);
       }
+
+      recordActivity({
+        action: isMany ? "employee.create_bulk" : "employee.create",
+        status: "failed",
+        context,
+        entity: "employee",
+        summary: `Penambahan karyawan ditolak, ${failed.length} dari ${rawRows.length} baris bermasalah`,
+        occurred_at: occurredAt,
+        metadata: {
+          total: rawRows.length,
+          valid: rawRows.length - failed.length,
+          invalid: failed.length,
+          // password tidak pernah ikut dicatat
+          failed_rows: summarizeList(
+            failed.map((row) => ({
+              index: row.index,
+              email: row.email,
+              fields: row.errors.map((e) => e.field),
+            })),
+          ),
+        },
+      });
 
       // Semua baris gagal di laporkan sekaligus dan tidak ada yang disimpan
       throw BadRequest(
-        `${gagal.length} dari ${mentah.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
+        `${failed.length} dari ${rawRows.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
         {
-          total: mentah.length,
-          valid: mentah.length - gagal.length,
-          invalid: gagal.length,
-          failed_rows: gagal.map(({ duplikat: _duplikat, ...baris }) => baris),
+          total: rawRows.length,
+          valid: rawRows.length - failed.length,
+          invalid: failed.length,
+          failed_rows: failed.map(({ isDuplicate: _isDuplicate, ...row }) => row),
         },
       );
     }
@@ -315,16 +438,16 @@ export async function CreateEmployeeController(
     // Hashing di kerjakan sebelum transaksi dibuka karena argon2 lambat.
     // Password yang sama cukup dihitung sekali, dan impor massal hampir
     // selalu pakai satu password awal untuk semua orang
-    const cacheHash = new Map<string, Promise<string>>();
+    const hashCache = new Map<string, Promise<string>>();
     const hashed = await Promise.all(
-      daftar.map((baris) => {
-        const tersimpan = cacheHash.get(baris.password);
-        if (tersimpan) return tersimpan;
+      rows.map((row) => {
+        const cached = hashCache.get(row.password);
+        if (cached) return cached;
 
-        const proses = hashPassword(baris.password);
-        cacheHash.set(baris.password, proses);
+        const pending = hashPassword(row.password);
+        hashCache.set(row.password, pending);
 
-        return proses;
+        return pending;
       }),
     );
 
@@ -332,50 +455,104 @@ export async function CreateEmployeeController(
 
     // Satu query untuk semua akun, satu lagi untuk semua karyawan. Kalau
     // ditulis satu per satu, 250 baris jadi 500 perjalanan ke database
-    const akun = await userModel.insertUsersByAdmin(
+    const accounts = await userModel.insertUsersByAdmin(
       client,
-      daftar.map((baris, index) => ({
-        email: baris.email,
+      rows.map((row, index) => ({
+        email: row.email,
         password: hashed[index]!,
-        role: baris.role ?? "employee",
+        role: row.role ?? "employee",
       })),
       req.user.id,
     );
 
-    const karyawan = await employeeModel.createEmployees(
-      client,
-      daftar.map((baris, index) => {
-        const { email: _email, password: _password, role: _role, ...data } = baris;
+    // Jumlah akun wajib sama dengan jumlah baris, kalau tidak ada karyawan yang
+    // akan tersimpan tanpa akun
+    if (accounts.length !== rows.length) {
+      throw new Error(
+        `Jumlah akun yang dibuat (${accounts.length}) tidak cocok dengan jumlah karyawan (${rows.length})`,
+      );
+    }
 
-        return { user_id: akun[index]!.id, data };
+    const employees = await employeeModel.createEmployees(
+      client,
+      rows.map((row, index) => {
+        const { email: _email, password: _password, role: _role, ...data } = row;
+
+        return { user_id: accounts[index]!.id, data };
       }),
     );
 
     await client.query("COMMIT");
 
-    const dibuat = karyawan.map((employee, index) => ({
+    const created = employees.map((employee, index) => ({
+      // index disertakan supaya frontend dapat mencocokkan tiap hasil kembali
+      // ke nomor kiriman tanpa mengandalkan urutan
+      index,
       employee,
       account: {
-        id: akun[index]!.id,
-        email: akun[index]!.email,
-        role: akun[index]!.role,
-        must_change_password: akun[index]!.must_change_password,
+        id: accounts[index]!.id,
+        email: accounts[index]!.email,
+        role: accounts[index]!.role,
+        must_change_password: accounts[index]!.must_change_password,
       },
     }));
 
-    const pesan = banyak
-      ? `${dibuat.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`
+    const message = isMany
+      ? `${created.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`
       : "Karyawan berhasil ditambahkan. Sampaikan password awal kepada karyawan dan minta menggantinya saat login pertama.";
+
+    recordActivity({
+      action: isMany ? "employee.create_bulk" : "employee.create",
+      status: "success",
+      context,
+      entity: "employee",
+      entity_id: isMany ? null : (created[0]?.employee.id ?? null),
+      summary: isMany
+        ? `${created.length} karyawan ditambahkan`
+        : `Karyawan ${created[0]?.employee.full_name ?? ""} ditambahkan`,
+      occurred_at: occurredAt,
+      metadata: {
+        created: created.length,
+        // password dan hash-nya tidak pernah ikut dicatat
+        employees: summarizeList(
+          created.map((entry) => ({
+            id: entry.employee.id,
+            employee_number: entry.employee.employee_number,
+            full_name: entry.employee.full_name,
+            email: entry.account.email,
+            role: entry.account.role,
+          })),
+        ),
+      },
+    });
 
     // Bentuk respons mengikuti bentuk kiriman
     res.status(201).json({
       success: true,
-      message: pesan,
-      data: banyak ? dibuat : dibuat[0],
-      ...(banyak ? { meta: { created: dibuat.length } } : {}),
+      message: message,
+      data: isMany ? created : created[0],
+      ...(isMany ? { meta: { created: created.length } } : {}),
     });
   } catch (err) {
     await client.query("ROLLBACK");
+
+    // Kegagalan yang sudah dilaporkan ke pengguna sudah punya catatannya
+    // sendiri. Yang ditangkap di sini adalah kegagalan tak terduga, dan
+    // justru itu yang paling perlu tercatat
+    if (!(err instanceof AppError)) {
+      recordActivity({
+        action: "employee.create",
+        status: "failed",
+        context: logContext ?? requestContext(req),
+        entity: "employee",
+        summary: "Penambahan karyawan gagal karena galat tak terduga",
+        occurred_at: logOccurredAt ?? new Date(),
+        metadata: {
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+
     next(err);
   } finally {
     client.release();
@@ -394,7 +571,7 @@ export async function UpdateEmployeeController(
     const existing = await employeeModel.findById(id);
     if (!existing) throw NotFound("Karyawan tidak ditemukan");
 
-    await validasiRelasi(data, id);
+    await assertRelationsExist(data, id);
 
     const employee = await employeeModel.updateEmployee(id, data);
 
@@ -417,12 +594,12 @@ export async function DeleteEmployeeController(
     const existing = await employeeModel.findById(id);
     if (!existing) throw NotFound("Karyawan tidak ditemukan");
 
-    const bawahan = await employeeModel.findSubordinates(id);
+    const subordinates = await employeeModel.findSubordinates(id);
 
-    if (bawahan.length > 0) {
+    if (subordinates.length > 0) {
       throw BadRequest(
-        `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${bawahan.length} karyawan. Pindahkan mereka ke manajer lain terlebih dahulu.`,
-        { subordinates: bawahan },
+        `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${subordinates.length} karyawan. Pindahkan mereka ke manajer lain terlebih dahulu.`,
+        { subordinates: subordinates },
       );
     }
 

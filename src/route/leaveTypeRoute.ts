@@ -21,7 +21,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehKelolaJenisCuti = [
+const canManageLeaveTypes = [
   authenticate,
   requireFeature("leave.manage_type"),
 ];
@@ -37,14 +37,14 @@ router.get(
 
 router.post(
   "/leave-types",
-  ...bolehKelolaJenisCuti,
+  ...canManageLeaveTypes,
   validate(createLeaveTypeSchema),
   CreateLeaveTypeController,
 );
 
 router.patch(
   "/leave-types/:id",
-  ...bolehKelolaJenisCuti,
+  ...canManageLeaveTypes,
   validateParams(idParamSchema),
   validate(updateLeaveTypeSchema),
   UpdateLeaveTypeController,
@@ -52,7 +52,7 @@ router.patch(
 
 router.delete(
   "/leave-types/:id",
-  ...bolehKelolaJenisCuti,
+  ...canManageLeaveTypes,
   validateParams(idParamSchema),
   DeleteLeaveTypeController,
 );

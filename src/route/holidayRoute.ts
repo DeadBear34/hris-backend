@@ -22,7 +22,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehKelolaHariLibur = [
+const canManageHolidays = [
   authenticate,
   requireFeature("organization.holiday"),
 ];
@@ -43,14 +43,14 @@ router.get(
 
 router.post(
   "/holidays",
-  ...bolehKelolaHariLibur,
+  ...canManageHolidays,
   validate(createHolidaySchema),
   CreateHolidayController,
 );
 
 router.patch(
   "/holidays/:id",
-  ...bolehKelolaHariLibur,
+  ...canManageHolidays,
   validateParams(idParamSchema),
   validate(updateHolidaySchema),
   UpdateHolidayController,
@@ -58,7 +58,7 @@ router.patch(
 
 router.delete(
   "/holidays/:id",
-  ...bolehKelolaHariLibur,
+  ...canManageHolidays,
   validateParams(idParamSchema),
   DeleteHolidayController,
 );

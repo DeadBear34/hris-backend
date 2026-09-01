@@ -274,17 +274,17 @@ describe("countEmployees", () => {
   it("menghitung karyawan yang memakai jabatan tersebut", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "3" }] } as never);
 
-    const jumlah = await positionModel.countEmployees(POSITION_ID);
+    const count = await positionModel.countEmployees(POSITION_ID);
 
-    expect(jumlah).toBe(3);
+    expect(count).toBe(3);
   });
 
   it("mengembalikan nol jika hasil hitungan kosong", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const jumlah = await positionModel.countEmployees(POSITION_ID);
+    const count = await positionModel.countEmployees(POSITION_ID);
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
   });
 
   it("menyaring berdasarkan position_id", async () => {

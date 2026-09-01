@@ -27,21 +27,21 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehLihatKaryawan = [authenticate, requireFeature("employee.view_all")];
-const bolehTambahKaryawan = [authenticate, requireFeature("employee.create")];
-const bolehUbahKaryawan = [authenticate, requireFeature("employee.update")];
-const bolehHapusKaryawan = [authenticate, requireFeature("employee.delete")];
+const canViewEmployees = [authenticate, requireFeature("employee.view_all")];
+const canCreateEmployees = [authenticate, requireFeature("employee.create")];
+const canUpdateEmployees = [authenticate, requireFeature("employee.update")];
+const canDeleteEmployees = [authenticate, requireFeature("employee.delete")];
 
 router.get(
   "/employees",
-  ...bolehLihatKaryawan,
+  ...canViewEmployees,
   validateQuery(listEmployeeQuerySchema),
   ListEmployeeController,
 );
 
 router.post(
   "/employees",
-  ...bolehTambahKaryawan,
+  ...canCreateEmployees,
   validate(createEmployeePayloadSchema),
   CreateEmployeeController,
 );
@@ -49,14 +49,14 @@ router.post(
 
 router.get(
   "/employees/:id",
-  ...bolehLihatKaryawan,
+  ...canViewEmployees,
   validateParams(idParamSchema),
   DetailEmployeeController,
 );
 
 router.patch(
   "/employees/:id",
-  ...bolehUbahKaryawan,
+  ...canUpdateEmployees,
   validateParams(idParamSchema),
   validate(updateEmployeeSchema),
   UpdateEmployeeController,
@@ -64,14 +64,14 @@ router.patch(
 
 router.delete(
   "/employees/:id",
-  ...bolehHapusKaryawan,
+  ...canDeleteEmployees,
   validateParams(idParamSchema),
   DeleteEmployeeController,
 );
 
 router.post(
   "/employees/:id/photo",
-  ...bolehUbahKaryawan,
+  ...canUpdateEmployees,
   validateParams(idParamSchema),
   uploadSingleImage("photo"),
   UploadEmployeePhotoController,
@@ -79,7 +79,7 @@ router.post(
 
 router.delete(
   "/employees/:id/photo",
-  ...bolehUbahKaryawan,
+  ...canUpdateEmployees,
   validateParams(idParamSchema),
   DeleteEmployeePhotoController,
 );

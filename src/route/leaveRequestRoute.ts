@@ -31,7 +31,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const bolehLihatSemuaCuti = [authenticate, requireFeature("leave.view_all")];
+const canViewAllLeave = [authenticate, requireFeature("leave.view_all")];
 
 router.get(
   "/leave-requests/me",
@@ -49,7 +49,7 @@ router.get(
 
 router.get(
   "/leave-requests",
-  ...bolehLihatSemuaCuti,
+  ...canViewAllLeave,
   validateQuery(listLeaveRequestQuerySchema),
   ListAllLeaveRequestController,
 );

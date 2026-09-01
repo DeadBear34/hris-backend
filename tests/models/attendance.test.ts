@@ -54,7 +54,7 @@ describe("pembacaan absensi", () => {
   it("mencari berdasarkan karyawan dan tanggal sekaligus", async () => {
     mockQuery.mockResolvedValue({ rows: [fakeAttendance] } as never);
 
-    const hasil = await attendanceModel.findByEmployeeAndDate(
+    const result = await attendanceModel.findByEmployeeAndDate(
       EMPLOYEE_ID,
       "2026-03-10",
     );
@@ -65,18 +65,18 @@ describe("pembacaan absensi", () => {
       "employee_id = $1::uuid AND attendance_date = $2::date",
     );
     expect(values).toEqual([EMPLOYEE_ID, "2026-03-10"]);
-    expect(hasil?.status).toBe("present");
+    expect(result?.status).toBe("present");
   });
 
   it("mengembalikan null bila belum ada absensi pada tanggal itu", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const hasil = await attendanceModel.findByEmployeeAndDate(
+    const result = await attendanceModel.findByEmployeeAndDate(
       EMPLOYEE_ID,
       "2026-03-10",
     );
 
-    expect(hasil).toBeNull();
+    expect(result).toBeNull();
   });
 });
 
@@ -84,14 +84,14 @@ describe("pencatatan absen masuk dan pulang", () => {
   it("menyimpan status dan keterlambatan apa adanya", async () => {
     mockQuery.mockResolvedValue({ rows: [fakeAttendance] } as never);
 
-    const waktu = new Date("2026-03-10T01:30:00Z");
+    const at = new Date("2026-03-10T01:30:00Z");
 
     const diterima = new Date("2026-03-10T01:31:00Z");
 
     await attendanceModel.createCheckIn({
       employee_id: EMPLOYEE_ID,
       attendance_date: "2026-03-10",
-      check_in_at: waktu,
+      check_in_at: at,
       check_in_recorded_at: diterima,
       check_in_source: "offline_sync",
       status: "late",
@@ -103,7 +103,7 @@ describe("pencatatan absen masuk dan pulang", () => {
     expect(values).toEqual([
       EMPLOYEE_ID,
       "2026-03-10",
-      waktu,
+      at,
       diterima,
       "offline_sync",
       "late",
@@ -149,7 +149,7 @@ describe("pencatatan absen masuk dan pulang", () => {
   it("mengembalikan null bila jam pulang sudah terisi lebih dulu", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const hasil = await attendanceModel.setCheckOut(
+    const result = await attendanceModel.setCheckOut(
       ATTENDANCE_ID,
       new Date(),
       new Date(),
@@ -157,7 +157,7 @@ describe("pencatatan absen masuk dan pulang", () => {
       540,
     );
 
-    expect(hasil).toBeNull();
+    expect(result).toBeNull();
   });
 });
 
@@ -356,14 +356,14 @@ describe("rekap kehadiran", () => {
 
 describe("penandaan hari cuti", () => {
   it("tidak menjalankan query untuk daftar tanggal kosong", async () => {
-    const jumlah = await attendanceModel.upsertLeaveDays(
+    const count = await attendanceModel.upsertLeaveDays(
       mockDb as never,
       EMPLOYEE_ID,
       [],
       LEAVE_REQUEST_ID,
     );
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -391,7 +391,7 @@ describe("penandaan hari cuti", () => {
   it("menghapus penanda cuti tanpa menyentuh kehadiran nyata", async () => {
     mockQuery.mockResolvedValue({ rowCount: 2 } as never);
 
-    const jumlah = await attendanceModel.deleteLeaveDays(
+    const count = await attendanceModel.deleteLeaveDays(
       mockDb as never,
       LEAVE_REQUEST_ID,
     );
@@ -399,19 +399,19 @@ describe("penandaan hari cuti", () => {
     const [sql] = panggilan();
 
     expect(sql).toContain("status = 'leave'::attendance_status");
-    expect(jumlah).toBe(2);
+    expect(count).toBe(2);
   });
 });
 
 describe("penanda job penutup hari", () => {
   it("tidak menjalankan query ketika tidak ada yang perlu ditandai", async () => {
-    const jumlah = await attendanceModel.insertMarkers(
+    const count = await attendanceModel.insertMarkers(
       mockDb as never,
       "2026-03-10",
       [],
     );
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -453,7 +453,7 @@ describe("penanda job penutup hari", () => {
   it("mengembalikan jumlah baris yang benar benar dibuat", async () => {
     mockQuery.mockResolvedValue({ rowCount: 1 } as never);
 
-    const jumlah = await attendanceModel.insertMarkers(
+    const count = await attendanceModel.insertMarkers(
       mockDb as never,
       "2026-03-10",
       [
@@ -462,7 +462,7 @@ describe("penanda job penutup hari", () => {
       ],
     );
 
-    expect(jumlah).toBe(1);
+    expect(count).toBe(1);
   });
 });
 

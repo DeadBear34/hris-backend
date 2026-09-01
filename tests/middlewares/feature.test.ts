@@ -23,9 +23,9 @@ jest.unstable_mockModule("../../src/models/feature.js", () => ({
 
 const employeeModel = await import("../../src/models/employee.js");
 const featureModel = await import("../../src/models/feature.js");
-const { requireFeature, punyaFitur, ambilKodeFiturPengguna } =
+const { requireFeature, hasFeature, getUserFeatureCodes } =
   await import("../../src/middlewares/feature.js");
-const { batalkanCacheFitur } =
+const { invalidateFeatureCache } =
   await import("../../src/helpers/featureCache.js");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -58,7 +58,7 @@ let next: NextFunction;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  batalkanCacheFitur();
+  invalidateFeatureCache();
   next = jest.fn() as unknown as NextFunction;
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
@@ -204,7 +204,7 @@ describe("cache fitur per jabatan", () => {
       next,
     );
 
-    batalkanCacheFitur(POSITION_ID);
+    invalidateFeatureCache(POSITION_ID);
 
     await requireFeature("employee.view_all")(
       siapkanReq("employee"),
@@ -226,7 +226,7 @@ describe("cache fitur per jabatan", () => {
     (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
       "employee.delete",
     ] as never);
-    batalkanCacheFitur(POSITION_ID);
+    invalidateFeatureCache(POSITION_ID);
 
     const next2 = jest.fn() as unknown as NextFunction;
     await requireFeature("employee.delete")(
@@ -241,33 +241,33 @@ describe("cache fitur per jabatan", () => {
 
 describe("punyaFitur", () => {
   it("selalu true untuk admin", async () => {
-    const hasil = await punyaFitur(
+    const result = await hasFeature(
       siapkanReq("admin"),
       siapkanRes(),
       "leave.approve_all",
     );
 
-    expect(hasil).toBe(true);
+    expect(result).toBe(true);
   });
 
   it("true bila jabatannya memiliki fitur", async () => {
-    const hasil = await punyaFitur(
+    const result = await hasFeature(
       siapkanReq("employee"),
       siapkanRes(),
       "employee.view_all",
     );
 
-    expect(hasil).toBe(true);
+    expect(result).toBe(true);
   });
 
   it("false bila jabatannya tidak memiliki fitur", async () => {
-    const hasil = await punyaFitur(
+    const result = await hasFeature(
       siapkanReq("employee"),
       siapkanRes(),
       "leave.approve_all",
     );
 
-    expect(hasil).toBe(false);
+    expect(result).toBe(false);
   });
 
   it("false bila karyawan belum punya jabatan", async () => {
@@ -276,19 +276,19 @@ describe("punyaFitur", () => {
       position_id: null,
     } as never);
 
-    const hasil = await punyaFitur(
+    const result = await hasFeature(
       siapkanReq("employee"),
       siapkanRes(),
       "employee.view_all",
     );
 
-    expect(hasil).toBe(false);
+    expect(result).toBe(false);
   });
 });
 
 describe("ambilKodeFiturPengguna", () => {
   it("mengembalikan seluruh kode untuk admin", async () => {
-    const codes = await ambilKodeFiturPengguna(
+    const codes = await getUserFeatureCodes(
       siapkanReq("admin"),
       siapkanRes(),
     );
@@ -298,7 +298,7 @@ describe("ambilKodeFiturPengguna", () => {
   });
 
   it("mengembalikan fitur jabatan untuk karyawan", async () => {
-    const codes = await ambilKodeFiturPengguna(
+    const codes = await getUserFeatureCodes(
       siapkanReq("employee"),
       siapkanRes(),
     );
@@ -312,7 +312,7 @@ describe("ambilKodeFiturPengguna", () => {
       position_id: null,
     } as never);
 
-    const codes = await ambilKodeFiturPengguna(
+    const codes = await getUserFeatureCodes(
       siapkanReq("employee"),
       siapkanRes(),
     );
@@ -323,7 +323,7 @@ describe("ambilKodeFiturPengguna", () => {
   it("mengembalikan daftar kosong untuk akun tanpa data karyawan", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue(null as never);
 
-    const codes = await ambilKodeFiturPengguna(
+    const codes = await getUserFeatureCodes(
       siapkanReq("employee"),
       siapkanRes(),
     );

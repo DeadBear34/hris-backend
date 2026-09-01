@@ -12,8 +12,8 @@ import type {
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { sendMail } from "../helpers/mailer.js";
 import {
-  kirimEmailTanpaMenggagalkan,
-  cetakCadanganKeLog,
+  sendMailWithoutFailing,
+  logFallback,
 } from "../helpers/notification.js";
 import {
   verificationCodeEmail,
@@ -29,25 +29,25 @@ import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
 
 const KODE_BERLAKU_MENIT = 10;
 const TAUTAN_BERLAKU_MENIT = 15;
-const MAKS_PERCOBAAN = 5;
-const JEDA_KIRIM_ULANG_DETIK = 60;
+const MAX_ATTEMPTS = 5;
+const RESEND_COOLDOWN_SECONDS = 60;
 
-const PESAN_KODE_TIDAK_VALID =
+const MESSAGE_INVALID_CODE =
   "Kode verifikasi tidak valid atau sudah kedaluwarsa";
-const PESAN_TAUTAN_TIDAK_VALID =
+const MESSAGE_INVALID_LINK =
   "Tautan reset password tidak valid atau sudah kedaluwarsa";
 
-const PESAN_KIRIM_ULANG =
+const MESSAGE_RESEND =
   "Kalau email tersebut terdaftar dan belum diverifikasi, kode verifikasi baru sudah kami kirim.";
-const PESAN_LUPA_PASSWORD =
+const MESSAGE_FORGOT_PASSWORD =
   "Kalau email tersebut terdaftar, tautan untuk mengatur ulang password sudah kami kirim.";
 
-interface KonteksPermintaan {
+interface RequestMeta {
   ip_address: string | null;
   user_agent: string | null;
 }
 
-function konteksPermintaan(req: Request): KonteksPermintaan {
+function requestMeta(req: Request): RequestMeta {
   return {
     ip_address: req.ip ?? null,
     user_agent: req.headers["user-agent"] ?? null,
@@ -56,7 +56,7 @@ function konteksPermintaan(req: Request): KonteksPermintaan {
 
 async function terbitkanKodeVerifikasi(
   email: string,
-  konteks: KonteksPermintaan,
+  konteks: RequestMeta,
 ): Promise<string> {
   await tokenModel.invalidateActive(email, "email_verification");
 
@@ -73,29 +73,29 @@ async function terbitkanKodeVerifikasi(
   return kode;
 }
 
-async function kirimKodeVerifikasi(
+async function sendVerificationCode(
   email: string,
   nama: string | null,
-  konteks: KonteksPermintaan,
+  konteks: RequestMeta,
 ): Promise<void> {
   const kode = await terbitkanKodeVerifikasi(email, konteks);
-  const isi = verificationCodeEmail(kode, KODE_BERLAKU_MENIT, nama);
+  const body = verificationCodeEmail(kode, KODE_BERLAKU_MENIT, nama);
 
-  const terkirim = await kirimEmailTanpaMenggagalkan(
-    () => sendMail({ to: email, subject: isi.subject, html: isi.html }),
+  const terkirim = await sendMailWithoutFailing(
+    () => sendMail({ to: email, subject: body.subject, html: body.html }),
     "Gagal mengirim email verifikasi",
     { email },
   );
 
   if (!terkirim) {
-    cetakCadanganKeLog(
+    logFallback(
       "Email gagal dikirim, kode verifikasi dicetak di sini agar pengembangan dapat dilanjutkan",
       { email, kode_verifikasi: kode },
     );
   }
 }
 
-async function naikkanPercobaan(token: VerificationToken): Promise<void> {
+async function increaseAttempts(token: VerificationToken): Promise<void> {
   if (!token.consumed_at) {
     await tokenModel.incrementAttempts(token.id);
   }
@@ -104,34 +104,34 @@ async function naikkanPercobaan(token: VerificationToken): Promise<void> {
 async function verifikasiToken(
   email: string,
   purpose: TokenPurpose,
-  nilai: string,
+  value: string,
   pesanGagal: string,
 ): Promise<VerificationToken> {
   const token = await tokenModel.findLatest(email, purpose);
 
   if (!token) {
     logger.warn(
-      { email, purpose, alasan: "token belum pernah diterbitkan" },
+      { email, purpose, reason: "token belum pernah diterbitkan" },
       "Verifikasi token ditolak",
     );
     throw BadRequest(pesanGagal);
   }
 
-  let alasan: string | null = null;
+  let reason: string | null = null;
 
   if (token.consumed_at) {
-    alasan = "token sudah digunakan";
+    reason = "token sudah digunakan";
   } else if (token.expires_at.getTime() <= Date.now()) {
-    alasan = "token sudah kedaluwarsa";
-  } else if (token.attempts >= MAKS_PERCOBAAN) {
-    alasan = "percobaan melebihi batas";
-  } else if (!(await verifyPassword(token.token_hash, nilai))) {
-    alasan = "nilai token tidak cocok";
+    reason = "token sudah kedaluwarsa";
+  } else if (token.attempts >= MAX_ATTEMPTS) {
+    reason = "percobaan melebihi batas";
+  } else if (!(await verifyPassword(token.token_hash, value))) {
+    reason = "nilai token tidak cocok";
   }
 
-  if (alasan) {
-    await naikkanPercobaan(token);
-    logger.warn({ email, purpose, alasan }, "Verifikasi token ditolak");
+  if (reason) {
+    await increaseAttempts(token);
+    logger.warn({ email, purpose, alasan: reason }, "Verifikasi token ditolak");
     throw BadRequest(pesanGagal);
   }
 
@@ -152,7 +152,7 @@ export async function RegisterController(
       if (existing.email_verified_at) {
         throw Conflict("Email sudah terdaftar");
       }
-      await kirimKodeVerifikasi(email, full_name, konteksPermintaan(req));
+      await sendVerificationCode(email, full_name, requestMeta(req));
 
       res.json({
         success: true,
@@ -196,7 +196,7 @@ export async function RegisterController(
       client.release();
     }
 
-    await kirimKodeVerifikasi(email, full_name, konteksPermintaan(req));
+    await sendVerificationCode(email, full_name, requestMeta(req));
 
     res.status(201).json({
       success: true,
@@ -234,11 +234,11 @@ export async function VerifyEmailController(
       email,
       "email_verification",
       code,
-      PESAN_KODE_TIDAK_VALID,
+      MESSAGE_INVALID_CODE,
     );
 
     const user = await userModel.findByEmail(email);
-    if (!user) throw BadRequest(PESAN_KODE_TIDAK_VALID);
+    if (!user) throw BadRequest(MESSAGE_INVALID_CODE);
 
     await tokenModel.markConsumed(token.id);
 
@@ -268,12 +268,12 @@ export async function ResendVerificationController(
     const terakhir = await tokenModel.findLatest(email, "email_verification");
 
     if (terakhir) {
-      const jedaBerlalu = Date.now() - terakhir.created_at.getTime();
-      const sisa = JEDA_KIRIM_ULANG_DETIK * 1000 - jedaBerlalu;
+      const cooldownElapsed = Date.now() - terakhir.created_at.getTime();
+      const remainder = RESEND_COOLDOWN_SECONDS * 1000 - cooldownElapsed;
 
-      if (sisa > 0) {
+      if (remainder > 0) {
         throw TooManyRequests(
-          `Mohon tunggu ${Math.ceil(sisa / 1000)} detik sebelum meminta kode verifikasi baru`,
+          `Mohon tunggu ${Math.ceil(remainder / 1000)} detik sebelum meminta kode verifikasi baru`,
         );
       }
     }
@@ -282,14 +282,14 @@ export async function ResendVerificationController(
 
     if (user && !user.email_verified_at) {
       const employee = await employeeModel.findByUserId(user.id);
-      await kirimKodeVerifikasi(
+      await sendVerificationCode(
         email,
         employee?.full_name ?? null,
-        konteksPermintaan(req),
+        requestMeta(req),
       );
     }
 
-    res.json({ success: true, message: PESAN_KIRIM_ULANG });
+    res.json({ success: true, message: MESSAGE_RESEND });
   } catch (err) {
     next(err);
   }
@@ -308,39 +308,39 @@ export async function ForgotPasswordController(
     if (user?.is_active) {
       await tokenModel.invalidateActive(email, "password_reset");
 
-      const nilai = generateResetToken();
+      const value = generateResetToken();
 
       await tokenModel.createToken({
         email,
         purpose: "password_reset",
-        token_hash: await hashPassword(nilai),
+        token_hash: await hashPassword(value),
         expires_at: expiresInMinutes(TAUTAN_BERLAKU_MENIT),
-        ...konteksPermintaan(req),
+        ...requestMeta(req),
       });
 
-      const tautan = `${env.APP_URL}/reset-password?token=${nilai}&email=${encodeURIComponent(email)}`;
+      const tautan = `${env.APP_URL}/reset-password?token=${value}&email=${encodeURIComponent(email)}`;
       const employee = await employeeModel.findByUserId(user.id);
-      const isi = passwordResetEmail(
+      const body = passwordResetEmail(
         tautan,
         TAUTAN_BERLAKU_MENIT,
         employee?.full_name ?? null,
       );
 
-      const terkirim = await kirimEmailTanpaMenggagalkan(
-        () => sendMail({ to: email, subject: isi.subject, html: isi.html }),
+      const terkirim = await sendMailWithoutFailing(
+        () => sendMail({ to: email, subject: body.subject, html: body.html }),
         "Gagal mengirim email reset password",
         { email },
       );
 
       if (!terkirim) {
-        cetakCadanganKeLog(
+        logFallback(
           "Email gagal dikirim, tautan reset password dicetak di sini agar pengembangan dapat dilanjutkan",
           { email, tautan_reset: tautan },
         );
       }
     }
 
-    res.json({ success: true, message: PESAN_LUPA_PASSWORD });
+    res.json({ success: true, message: MESSAGE_FORGOT_PASSWORD });
   } catch (err) {
     next(err);
   }
@@ -354,7 +354,7 @@ export async function ResetPasswordController(
   try {
     const {
       email,
-      token: nilai,
+      token: value,
       password,
     } = req.body as {
       email: string;
@@ -365,12 +365,12 @@ export async function ResetPasswordController(
     const token = await verifikasiToken(
       email,
       "password_reset",
-      nilai,
-      PESAN_TAUTAN_TIDAK_VALID,
+      value,
+      MESSAGE_INVALID_LINK,
     );
 
     const user = await userModel.findByEmail(email);
-    if (!user) throw BadRequest(PESAN_TAUTAN_TIDAK_VALID);
+    if (!user) throw BadRequest(MESSAGE_INVALID_LINK);
 
     const hashed = await hashPassword(password);
 
@@ -378,10 +378,10 @@ export async function ResetPasswordController(
     await tokenModel.markConsumed(token.id);
 
     const employee = await employeeModel.findByUserId(user.id);
-    const isi = passwordResetSuccessEmail(employee?.full_name ?? null);
+    const body = passwordResetSuccessEmail(employee?.full_name ?? null);
 
-    await kirimEmailTanpaMenggagalkan(
-      () => sendMail({ to: email, subject: isi.subject, html: isi.html }),
+    await sendMailWithoutFailing(
+      () => sendMail({ to: email, subject: body.subject, html: body.html }),
       "Gagal mengirim email pemberitahuan reset password",
       { email },
     );

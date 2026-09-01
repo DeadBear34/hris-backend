@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-const jam = z
+const hour = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Format jam harus HH:MM");
 
-const hariKerja = {
+const isWorkday = {
   works_monday: z.boolean().optional(),
   works_tuesday: z.boolean().optional(),
   works_wednesday: z.boolean().optional(),
@@ -14,7 +14,7 @@ const hariKerja = {
   works_sunday: z.boolean().optional(),
 };
 
-const dasarJadwal = z.object({
+const scheduleBase = z.object({
   name: z
     .string({ message: "Nama jadwal wajib diisi" })
     .trim()
@@ -23,8 +23,8 @@ const dasarJadwal = z.object({
 
   department_id: z.uuid("ID departemen tidak valid").nullish(),
 
-  start_time: jam.optional(),
-  end_time: jam.optional(),
+  start_time: hour.optional(),
+  end_time: hour.optional(),
 
   late_tolerance_minutes: z
     .number()
@@ -33,27 +33,27 @@ const dasarJadwal = z.object({
     .max(240, "Toleransi keterlambatan maksimal 240 menit")
     .optional(),
 
-  absent_cutoff_time: jam.optional(),
+  absent_cutoff_time: hour.optional(),
 
-  ...hariKerja,
+  ...isWorkday,
   is_active: z.boolean().optional(),
 });
 
-const jamPulangSetelahJamMasuk = (data: {
+const endAfterStart = (data: {
   start_time?: string | undefined;
   end_time?: string | undefined;
 }) => !data.start_time || !data.end_time || data.end_time > data.start_time;
 
-const pesanJamPulang = {
+const endAfterStartMessage = {
   message: "Jam pulang harus lebih besar daripada jam masuk",
   path: ["end_time"],
 };
 
-export const createWorkScheduleSchema = dasarJadwal.refine(
-  jamPulangSetelahJamMasuk,
-  pesanJamPulang,
+export const createWorkScheduleSchema = scheduleBase.refine(
+  endAfterStart,
+  endAfterStartMessage,
 );
 
-export const updateWorkScheduleSchema = dasarJadwal
+export const updateWorkScheduleSchema = scheduleBase
   .partial()
-  .refine(jamPulangSetelahJamMasuk, pesanJamPulang);
+  .refine(endAfterStart, endAfterStartMessage);

@@ -70,12 +70,12 @@ export async function UpdateDepartmentController(
     }
 
     if (data.is_active === false && existing.is_active) {
-      const jumlah = await departmentModel.countEmployees(id);
+      const count = await departmentModel.countEmployees(id);
 
-      if (jumlah > 0) {
+      if (count > 0) {
         throw BadRequest(
-          `Departemen tidak dapat dinonaktifkan karena masih memiliki ${jumlah} karyawan`,
-          { employee_count: jumlah },
+          `Departemen tidak dapat dinonaktifkan karena masih memiliki ${count} karyawan`,
+          { employee_count: count },
         );
       }
     }
@@ -99,11 +99,11 @@ export async function DeleteDepartmentController(
     const existing = await departmentModel.findById(id);
     if (!existing) throw NotFound("Departemen tidak ditemukan");
 
-    const jumlah = await departmentModel.countEmployees(id);
-    if (jumlah > 0) {
+    const count = await departmentModel.countEmployees(id);
+    if (count > 0) {
       throw BadRequest(
-        `Departemen tidak dapat dihapus karena masih memiliki ${jumlah} karyawan. Pindahkan karyawan ke departemen lain terlebih dahulu.`,
-        { employee_count: jumlah },
+        `Departemen tidak dapat dihapus karena masih memiliki ${count} karyawan. Pindahkan karyawan ke departemen lain terlebih dahulu.`,
+        { employee_count: count },
       );
     }
 

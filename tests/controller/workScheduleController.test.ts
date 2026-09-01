@@ -25,10 +25,10 @@ jest.unstable_mockModule("../../src/models/feature.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/helpers/featureCache.js", () => ({
-  ambilDariCache: jest.fn(() => undefined),
-  simpanKeCache: jest.fn(),
-  batalkanCacheFitur: jest.fn(),
-  ukuranCacheFitur: jest.fn(() => 0),
+  readFromCache: jest.fn(() => undefined),
+  writeToCache: jest.fn(),
+  invalidateFeatureCache: jest.fn(),
+  featureCacheSize: jest.fn(() => 0),
 }));
 
 jest.unstable_mockModule("../../src/models/department.js", () => ({
@@ -46,8 +46,8 @@ jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
   updateSchedule: jest.fn(),
   softDeleteSchedule: jest.fn(),
   countEmployees: jest.fn(),
-  adalahHariKerja: jest.fn(() => true),
-  tanggalKerjaDalamRentang: jest.fn(() => []),
+  isWorkingDay: jest.fn(() => true),
+  workingDatesInRange: jest.fn(() => []),
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({

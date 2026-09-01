@@ -12,7 +12,7 @@ import {
 } from "../helpers/storage.js";
 import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
 
-async function karyawanSendiri(req: Request): Promise<Employee> {
+async function requesterEmployee(req: Request): Promise<Employee> {
   if (!req.user) {
     throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
   }
@@ -28,7 +28,7 @@ async function karyawanSendiri(req: Request): Promise<Employee> {
   return employee;
 }
 
-async function karyawanTujuan(id: string): Promise<Employee> {
+async function targetEmployee(id: string): Promise<Employee> {
   const employee = await employeeModel.findById(id);
 
   if (!employee) throw NotFound("Karyawan tidak ditemukan");
@@ -36,7 +36,7 @@ async function karyawanTujuan(id: string): Promise<Employee> {
   return employee;
 }
 
-function pastikanPenyimpananSiap(): void {
+function assertStorageReady(): void {
   if (!isStorageConfigured()) {
     throw BadRequest(
       "Penyimpanan foto profil belum dikonfigurasi, hubungi administrator",
@@ -44,7 +44,7 @@ function pastikanPenyimpananSiap(): void {
   }
 }
 
-async function buangFotoLama(storagePath: string | null): Promise<void> {
+async function discardOldPhoto(storagePath: string | null): Promise<void> {
   if (!storagePath) return;
 
   try {
@@ -57,11 +57,11 @@ async function buangFotoLama(storagePath: string | null): Promise<void> {
   }
 }
 
-async function gantiFoto(
+async function replacePhoto(
   employee: Employee,
   berkas: Express.Multer.File | undefined,
 ) {
-  pastikanPenyimpananSiap();
+  assertStorageReady();
 
   if (!berkas) {
     throw BadRequest("Foto profil wajib diunggah pada field 'photo'");
@@ -83,34 +83,34 @@ async function gantiFoto(
 
   await uploadPhoto(storagePath, berkas.buffer, mime);
 
-  const diperbarui = await employeeModel.updatePhotoPath(
+  const updated = await employeeModel.updatePhotoPath(
     employee.id,
     storagePath,
   );
 
-  if (!diperbarui) {
-    await buangFotoLama(storagePath);
+  if (!updated) {
+    await discardOldPhoto(storagePath);
     throw NotFound("Karyawan tidak ditemukan");
   }
 
-  await buangFotoLama(employee.photo_path);
+  await discardOldPhoto(employee.photo_path);
 
   return {
-    employee_id: diperbarui.id,
-    photo_path: diperbarui.photo_path,
-    photo_url: photoUrlFor(diperbarui.photo_path),
+    employee_id: updated.id,
+    photo_path: updated.photo_path,
+    photo_url: photoUrlFor(updated.photo_path),
   };
 }
 
-async function hapusFoto(employee: Employee) {
+async function removePhoto(employee: Employee) {
   if (!employee.photo_path) {
     throw BadRequest("Karyawan ini belum memiliki foto profil");
   }
 
-  pastikanPenyimpananSiap();
+  assertStorageReady();
 
   await employeeModel.updatePhotoPath(employee.id, null);
-  await buangFotoLama(employee.photo_path);
+  await discardOldPhoto(employee.photo_path);
 }
 
 export async function UploadOwnPhotoController(
@@ -119,8 +119,8 @@ export async function UploadOwnPhotoController(
   next: NextFunction,
 ) {
   try {
-    const employee = await karyawanSendiri(req);
-    const data = await gantiFoto(employee, req.file);
+    const employee = await requesterEmployee(req);
+    const data = await replacePhoto(employee, req.file);
 
     res.json({
       success: true,
@@ -138,8 +138,8 @@ export async function DeleteOwnPhotoController(
   next: NextFunction,
 ) {
   try {
-    const employee = await karyawanSendiri(req);
-    await hapusFoto(employee);
+    const employee = await requesterEmployee(req);
+    await removePhoto(employee);
 
     res.json({ success: true, message: "Foto profil berhasil dihapus" });
   } catch (err) {
@@ -154,8 +154,8 @@ export async function UploadEmployeePhotoController(
 ) {
   try {
     const { id } = res.locals.params as { id: string };
-    const employee = await karyawanTujuan(id);
-    const data = await gantiFoto(employee, req.file);
+    const employee = await targetEmployee(id);
+    const data = await replacePhoto(employee, req.file);
 
     res.json({
       success: true,
@@ -174,8 +174,8 @@ export async function DeleteEmployeePhotoController(
 ) {
   try {
     const { id } = res.locals.params as { id: string };
-    const employee = await karyawanTujuan(id);
-    await hapusFoto(employee);
+    const employee = await targetEmployee(id);
+    await removePhoto(employee);
 
     res.json({
       success: true,

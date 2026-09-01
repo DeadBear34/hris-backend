@@ -10,7 +10,7 @@ export interface MailInput {
 
 let resend: Resend | null = null;
 
-function ambilResend(): Resend {
+function getResend(): Resend {
   if (!env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY belum diatur, email tidak dapat dikirim");
   }
@@ -49,7 +49,7 @@ export async function sendMail(mail: MailInput): Promise<void> {
       return;
 
     case "resend": {
-      const { error } = await ambilResend().emails.send({
+      const { error } = await getResend().emails.send({
         from: env.MAIL_FROM,
         to: mail.to,
         subject: mail.subject,

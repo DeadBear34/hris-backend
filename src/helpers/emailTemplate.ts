@@ -6,10 +6,10 @@ export interface EmailContent {
 const WARNA_UTAMA = "#0f172a";
 const WARNA_REDUP = "#64748b";
 
-function bungkus(judul: string, isi: string): string {
+function bungkus(judul: string, body: string): string {
   return `<div style="font-family: Arial, Helvetica, sans-serif; color: ${WARNA_UTAMA}; line-height: 1.6; max-width: 560px;">
   <h2 style="margin-bottom: 16px;">${judul}</h2>
-  ${isi}
+  ${body}
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
   <p style="color: ${WARNA_REDUP}; font-size: 13px;">
     Email ini dikirim otomatis oleh sistem HRIS Awanio. Mohon tidak membalas email ini.

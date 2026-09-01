@@ -32,7 +32,7 @@ const COLUMN_CAST: Record<string, string> = {
   holiday_date: "::date",
 };
 
-const KOLOM = `id, holiday_date::text AS holiday_date, name,
+const COLUMNS = `id, holiday_date::text AS holiday_date, name,
   is_collective_leave, created_at, updated_at`;
 
 export async function listHolidays(
@@ -60,7 +60,7 @@ export async function listHolidays(
   values.push(params.limit, offset);
 
   const dataResult = await pool.query<Holiday>(
-    `SELECT ${KOLOM} FROM holidays ${where}
+    `SELECT ${COLUMNS} FROM holidays ${where}
      ORDER BY holiday_date ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
@@ -85,17 +85,17 @@ export async function findDatesBetween(
 
 export async function findById(id: string): Promise<Holiday | null> {
   const result = await pool.query<Holiday>(
-    `SELECT ${KOLOM} FROM holidays WHERE id = $1::uuid`,
+    `SELECT ${COLUMNS} FROM holidays WHERE id = $1::uuid`,
     [id],
   );
 
   return result.rows[0] ?? null;
 }
 
-export async function findByDate(tanggal: string): Promise<Holiday | null> {
+export async function findByDate(date: string): Promise<Holiday | null> {
   const result = await pool.query<Holiday>(
-    `SELECT ${KOLOM} FROM holidays WHERE holiday_date = $1::date`,
-    [tanggal],
+    `SELECT ${COLUMNS} FROM holidays WHERE holiday_date = $1::date`,
+    [date],
   );
 
   return result.rows[0] ?? null;
@@ -108,7 +108,7 @@ export async function createHoliday(
   const result = await db.query<Holiday>(
     `INSERT INTO holidays (holiday_date, name, is_collective_leave)
      VALUES ($1::date, $2, COALESCE($3::boolean, false))
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [data.holiday_date, data.name, data.is_collective_leave ?? null],
   );
 
@@ -146,7 +146,7 @@ export async function updateHoliday(
   const result = await pool.query<Holiday>(
     `UPDATE holidays SET ${fields.join(", ")}
      WHERE id = $${values.length}::uuid
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     values,
   );
 
@@ -155,7 +155,7 @@ export async function updateHoliday(
 
 export async function deleteHoliday(id: string): Promise<Holiday | null> {
   const result = await pool.query<Holiday>(
-    `DELETE FROM holidays WHERE id = $1::uuid RETURNING ${KOLOM}`,
+    `DELETE FROM holidays WHERE id = $1::uuid RETURNING ${COLUMNS}`,
     [id],
   );
 

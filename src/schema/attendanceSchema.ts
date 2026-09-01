@@ -1,28 +1,28 @@
 import { z } from "zod";
 
-const statusAbsensi = z.enum(
+const attendanceStatusEnum = z.enum(
   ["present", "late", "absent", "leave", "holiday"],
   { message: "Status absensi tidak dikenal" },
 );
 
-const catatan = z
+const noteField = z
   .string()
   .trim()
   .max(500, "Catatan maksimal 500 karakter")
   .optional();
 
-const waktuOffline = z.iso
+const offlineTime = z.iso
   .datetime({ offset: true, message: "Waktu absen offline tidak valid" })
   .optional();
 
 export const checkInSchema = z.object({
-  note: catatan,
-  offline_time: waktuOffline,
+  note: noteField,
+  offline_time: offlineTime,
 });
 
 export const checkOutSchema = z.object({
-  note: catatan,
-  offline_time: waktuOffline,
+  note: noteField,
+  offline_time: offlineTime,
 });
 
 export const historyQuerySchema = z.object({
@@ -38,7 +38,7 @@ export const historyQuerySchema = z.object({
     .min(2000, "Tahun tidak valid")
     .max(2200, "Tahun tidak valid")
     .optional(),
-  status: statusAbsensi.optional(),
+  status: attendanceStatusEnum.optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(31),
 });
@@ -49,7 +49,7 @@ export const listAttendanceQuerySchema = z
     end_date: z.iso.date("Tanggal akhir tidak valid").optional(),
     department_id: z.uuid("ID departemen tidak valid").optional(),
     employee_id: z.uuid("ID karyawan tidak valid").optional(),
-    status: statusAbsensi.optional(),
+    status: attendanceStatusEnum.optional(),
     search: z.string().trim().min(1).max(150).optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -81,7 +81,7 @@ export const reportQuerySchema = z.object({
 
 export const correctAttendanceSchema = z
   .object({
-    status: statusAbsensi,
+    status: attendanceStatusEnum,
     check_in_at: z.iso.datetime({ offset: true }).nullish(),
     check_out_at: z.iso.datetime({ offset: true }).nullish(),
     reason: z
@@ -152,7 +152,7 @@ export const eventLogQuerySchema = z
       .optional(),
     only_rejected: z
       .enum(["true", "false"])
-      .transform((nilai) => nilai === "true")
+      .transform((value) => value === "true")
       .optional(),
     start_date: z.iso.date("Tanggal awal tidak valid").optional(),
     end_date: z.iso.date("Tanggal akhir tidak valid").optional(),

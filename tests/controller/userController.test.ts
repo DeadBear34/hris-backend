@@ -246,10 +246,10 @@ describe("POST /api/v1/auth/register", () => {
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
-    const [, , , , waktu] = (userModel.insertUser as jest.Mock).mock
+    const [, , , , at] = (userModel.insertUser as jest.Mock).mock
       .calls[0] as [unknown, string, string, string, Date];
 
-    expect(waktu).toBeInstanceOf(Date);
+    expect(at).toBeInstanceOf(Date);
   });
 
   it("menyimpan email dalam huruf kecil", async () => {

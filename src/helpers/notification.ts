@@ -1,7 +1,7 @@
 import { logger } from "../config/logger.js";
 import { isSecretLoggingAllowed } from "./mailer.js";
 
-export async function kirimEmailTanpaMenggagalkan(
+export async function sendMailWithoutFailing(
   kirim: () => Promise<void>,
   pesanGagal: string,
   konteks: Record<string, unknown>,
@@ -15,11 +15,11 @@ export async function kirimEmailTanpaMenggagalkan(
   }
 }
 
-export function cetakCadanganKeLog(
-  pesan: string,
+export function logFallback(
+  message: string,
   data: Record<string, unknown>,
 ): void {
   if (!isSecretLoggingAllowed()) return;
 
-  logger.warn(data, pesan);
+  logger.warn(data, message);
 }

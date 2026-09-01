@@ -48,7 +48,7 @@ const positionModel = await import("../../src/models/position.js");
 const featureModel = await import("../../src/models/feature.js");
 const userModel = await import("../../src/models/user.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
-const { batalkanCacheFitur, ambilDariCache } =
+const { invalidateFeatureCache, readFromCache } =
   await import("../../src/helpers/featureCache.js");
 const { app } = await import("../../src/app.js");
 
@@ -94,7 +94,7 @@ const fakeFeatureLeave = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  batalkanCacheFitur();
+  invalidateFeatureCache();
   mockClient.query.mockResolvedValue({ rows: [] } as never);
   (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
@@ -339,7 +339,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
 
     await ganti(["employee.view_all"]);
 
-    expect(ambilDariCache(POSITION_ID)).toBeNull();
+    expect(readFromCache(POSITION_ID)).toBeNull();
   });
 
   it("tidak membatalkan cache bila penggantian gagal", async () => {

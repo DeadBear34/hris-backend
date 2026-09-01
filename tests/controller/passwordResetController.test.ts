@@ -215,10 +215,10 @@ describe("POST /api/v1/auth/forgot-password", () => {
       { expires_at: Date },
     ];
 
-    const selisih = data.expires_at.getTime() - Date.now();
+    const diffMinutes = data.expires_at.getTime() - Date.now();
 
-    expect(selisih).toBeGreaterThan(14 * 60_000);
-    expect(selisih).toBeLessThanOrEqual(15 * 60_000);
+    expect(diffMinutes).toBeGreaterThan(14 * 60_000);
+    expect(diffMinutes).toBeLessThanOrEqual(15 * 60_000);
   });
 
   it("membatalkan token reset aktif sebelumnya", async () => {
@@ -431,21 +431,21 @@ describe("POST /api/v1/auth/reset-password", () => {
   it("menyimpan password baru dalam bentuk hash argon2", async () => {
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
-    const [id, tersimpan] = (userModel.updatePassword as jest.Mock).mock
+    const [id, stored] = (userModel.updatePassword as jest.Mock).mock
       .calls[0] as [string, string];
 
     expect(id).toBe(USER_ID);
-    expect(tersimpan).not.toBe(PASSWORD_BARU);
-    expect(tersimpan).toContain("$argon2id$");
+    expect(stored).not.toBe(PASSWORD_BARU);
+    expect(stored).toContain("$argon2id$");
   });
 
   it("menyimpan hash yang benar-benar cocok dengan password baru", async () => {
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
-    const [, tersimpan] = (userModel.updatePassword as jest.Mock).mock
+    const [, stored] = (userModel.updatePassword as jest.Mock).mock
       .calls[0] as [string, string];
 
-    await expect(verifyPassword(tersimpan, PASSWORD_BARU)).resolves.toBe(true);
+    await expect(verifyPassword(stored, PASSWORD_BARU)).resolves.toBe(true);
   });
 
   it("menandai token sebagai sudah terpakai", async () => {
@@ -553,26 +553,26 @@ describe("POST /api/v1/auth/reset-password", () => {
   });
 
   it("memberi pesan yang sama untuk semua jenis kegagalan token", async () => {
-    const keadaan = [
+    const state = [
       null,
       fakeToken({ consumed_at: new Date() }),
       fakeToken({ expires_at: new Date(Date.now() - 1000) }),
       fakeToken({ attempts: 5 }),
     ];
 
-    const pesan = new Set<string>();
+    const message = new Set<string>();
 
-    for (const token of keadaan) {
+    for (const token of state) {
       (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
 
       const res = await request(app)
         .post("/api/v1/auth/reset-password")
         .send(resetBody);
 
-      pesan.add(res.body.message);
+      message.add(res.body.message);
     }
 
-    expect(pesan.size).toBe(1);
+    expect(message.size).toBe(1);
   });
 
   it("hanya memakai token dengan purpose password_reset", async () => {

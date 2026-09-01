@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { todayInOfficeZone } from "../helpers/timezone.js";
 
 // Sel kosong pada CSV terbaca sebagai string kosong, bukan tidak ada. Tanpa ini
 // satu kolom opsional yang dibiarkan kosong akan menggagalkan seluruh barisnya
@@ -14,14 +15,34 @@ export const MIN_WORKING_AGE = 15;
 export const MAX_AGE = 100;
 export const MAX_JOIN_DATE_DAYS_AHEAD = 365;
 
-const HARI_MS = 24 * 60 * 60 * 1000;
+// Usia dihitung secara kalender, bukan dengan membagi selisih milidetik.
+// Pembagian dengan rata-rata panjang tahun meleset di batasnya: seseorang yang
+// tepat berulang tahun ke-100 hari ini bisa terhitung 100,002 tahun hanya
+// karena Date.now() membawa jam saat ini sedangkan tanggal lahir dihitung dari
+// tengah malam. Cara ini juga sama persis dengan perhitungan di frontend.
+function ageFrom(birthDate: string): number {
+  const [birthYear, birthMonth, birthDay] = birthDate.split("-").map(Number);
+  const [nowYear, nowMonth, nowDay] = todayInOfficeZone().split("-").map(Number);
 
-function yearsSince(date: string): number {
-  return (Date.now() - new Date(`${date}T00:00:00Z`).getTime()) / (365.25 * HARI_MS);
+  if (!birthYear || !birthMonth || !birthDay) return 0;
+
+  let age = nowYear! - birthYear;
+
+  if (nowMonth! < birthMonth || (nowMonth === birthMonth && nowDay! < birthDay)) {
+    age -= 1;
+  }
+
+  return age;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Selisih hari kalender terhadap hari ini menurut zona waktu kantor
 function daysUntil(date: string): number {
-  return (new Date(`${date}T00:00:00Z`).getTime() - Date.now()) / HARI_MS;
+  const target = new Date(`${date}T00:00:00Z`).getTime();
+  const today = new Date(`${todayInOfficeZone()}T00:00:00Z`).getTime();
+
+  return Math.round((target - today) / DAY_MS);
 }
 
 export const listEmployeeQuerySchema = z.object({
@@ -57,10 +78,10 @@ const employeeDataSchema = z.object({
   birth_date: optionalField(
     z.iso
       .date("Tanggal lahir tidak valid")
-      .refine((value) => yearsSince(value) >= MIN_WORKING_AGE, {
+      .refine((value) => ageFrom(value) >= MIN_WORKING_AGE, {
         message: `Usia karyawan minimal ${MIN_WORKING_AGE} tahun`,
       })
-      .refine((value) => yearsSince(value) <= MAX_AGE, {
+      .refine((value) => ageFrom(value) <= MAX_AGE, {
         message: "Tanggal lahir terlalu jauh ke belakang, periksa kembali",
       }),
   ),

@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { logger } from "../config/logger.js";
+import { insertLog } from "../models/activityLog.js";
 
 // Kode aksi yang dicatat. Ditulis <entitas>.<kegiatan> supaya nanti mudah
 // disaring per entitas maupun per kegiatan di tabel log
@@ -14,9 +15,12 @@ export interface ActivityLogEntry {
   action: ActivityAction;
   status: ActivityStatus;
 
-  // pelaku
+  // pelaku. Email dan nama disalin di sini supaya catatan tetap terbaca
+  // walau akunnya kelak dihapus
   actor_user_id: string | null;
   actor_employee_id: string | null;
+  actor_email: string | null;
+  actor_name: string | null;
 
   // sasaran, terisi kalau aksinya menyentuh satu baris tertentu
   entity: string;
@@ -42,6 +46,7 @@ export interface ActivityLogEntry {
 
 export interface RequestContext {
   actor_user_id: string | null;
+  actor_email: string | null;
   ip_address: string | null;
   user_agent: string | null;
 }
@@ -49,6 +54,7 @@ export interface RequestContext {
 export function requestContext(req: Request): RequestContext {
   return {
     actor_user_id: req.user?.id ?? null,
+    actor_email: req.user?.email ?? null,
     ip_address: req.ip ?? null,
     user_agent: req.headers["user-agent"] ?? null,
   };
@@ -63,6 +69,7 @@ export interface RecordActivityInput {
   actor_employee_id?: string | null;
   summary: string;
   metadata?: Record<string, unknown>;
+  actor_name?: string | null;
 
   // waktu permintaan mulai diproses, bukan waktu pemanggilan fungsi ini
   occurred_at: Date;
@@ -94,6 +101,8 @@ export function buildActivityLog(
     status: input.status,
     actor_user_id: input.context.actor_user_id,
     actor_employee_id: input.actor_employee_id ?? null,
+    actor_email: input.context.actor_email,
+    actor_name: input.actor_name ?? null,
     entity: input.entity,
     entity_id: input.entity_id ?? null,
     summary: input.summary,
@@ -110,12 +119,23 @@ export function buildActivityLog(
 
 // Mencatat satu aktivitas. Untuk saat ini hanya ke log aplikasi; ketika tabel
 // log sudah ada, penyimpanannya ditambahkan di sini saja
+// Menyimpan catatan ke tabel activity_logs tanpa ditunggu, supaya kegagalan
+// mencatat tidak pernah menggagalkan permintaan yang sudah berhasil maupun
+// memperlambat responsnya
+function persistActivity(entry: ActivityLogEntry): void {
+  void insertLog(entry).catch((err) => {
+    logger.error({ err, action: entry.action }, "Gagal menyimpan log aktivitas");
+  });
+}
+
 export function recordActivity(input: RecordActivityInput): ActivityLogEntry {
   const entry = buildActivityLog(input);
 
-  const tulis = entry.status === "failed" ? logger.warn : logger.info;
+  const write = entry.status === "failed" ? logger.warn : logger.info;
 
-  tulis.call(logger, { activity: entry }, entry.summary);
+  write.call(logger, { activity: entry }, entry.summary);
+
+  persistActivity(entry);
 
   return entry;
 }

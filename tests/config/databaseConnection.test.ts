@@ -12,8 +12,22 @@ class FakePool {
   }
 }
 
+const catatTypeParser = jest.fn();
+
+// Pendaftaran parser terjadi sekali saat modul dimuat, jadi panggilannya
+// direkam di sini sebelum beforeEach mana pun sempat membersihkan mock
+const panggilanTypeParser: unknown[][] = [];
+
 jest.unstable_mockModule("pg", () => ({
-  default: { Pool: FakePool },
+  default: {
+    Pool: FakePool,
+    types: {
+      setTypeParser: (...args: unknown[]) => {
+        panggilanTypeParser.push(args);
+        catatTypeParser(...args);
+      },
+    },
+  },
 }));
 
 const { pool, testConnection } =
@@ -61,5 +75,20 @@ describe("testConnection", () => {
     mockQuery.mockRejectedValue(new Error("connection refused") as never);
 
     await expect(testConnection()).rejects.toThrow("connection refused");
+  });
+});
+
+describe("penanganan kolom bertipe date", () => {
+  it("mendaftarkan parser agar tanggal dikembalikan apa adanya", () => {
+    expect(panggilanTypeParser).toHaveLength(1);
+
+    const [oid, parser] = panggilanTypeParser[0] as [
+      number,
+      (nilai: string) => string,
+    ];
+
+    // 1082 adalah OID tipe date pada PostgreSQL
+    expect(oid).toBe(1082);
+    expect(parser("1995-03-15")).toBe("1995-03-15");
   });
 });

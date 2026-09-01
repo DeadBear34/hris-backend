@@ -13,15 +13,15 @@ export interface Employee {
   full_name: string;
   phone: string;
   gender: EmployeeGender;
-  birth_date: Date | null;
+  birth_date: string | null;
   address: string | null;
   photo_path: string | null;
   department_id: string | null;
   position_id: string | null;
   manager_id: string | null;
   employment_status: EmploymentStatus;
-  join_date: Date;
-  resign_date: Date | null;
+  join_date: string;
+  resign_date: string | null;
   is_active: boolean;
   deleted_at: Date | null;
   created_at: Date;

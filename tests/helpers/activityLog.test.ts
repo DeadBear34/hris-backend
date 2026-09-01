@@ -7,6 +7,12 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
   logger: { info: mockInfo, warn: mockWarn, error: jest.fn() },
 }));
 
+jest.unstable_mockModule("../../src/models/activityLog.js", () => ({
+  insertLog: jest.fn(() => Promise.resolve()),
+  listLogs: jest.fn(),
+}));
+
+const logModel = await import("../../src/models/activityLog.js");
 const { buildActivityLog, recordActivity, requestContext, summarizeList } =
   await import("../../src/helpers/activityLog.js");
 
@@ -14,6 +20,7 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 
 const context = {
   actor_user_id: USER_ID,
+  actor_email: "admin@awan.io",
   ip_address: "203.0.113.9",
   user_agent: "Mozilla/5.0",
 };
@@ -25,7 +32,7 @@ beforeEach(() => {
 describe("requestContext", () => {
   it("mengambil pelaku, alamat ip, dan user agent dari permintaan", () => {
     const result = requestContext({
-      user: { id: USER_ID },
+      user: { id: USER_ID, email: "admin@awan.io" },
       ip: "203.0.113.9",
       headers: { "user-agent": "Mozilla/5.0" },
     } as never);
@@ -38,6 +45,7 @@ describe("requestContext", () => {
 
     expect(result).toEqual({
       actor_user_id: null,
+      actor_email: null,
       ip_address: null,
       user_agent: null,
     });
@@ -98,7 +106,9 @@ describe("buildActivityLog", () => {
     expect(Object.keys(entry).sort()).toEqual(
       [
         "action",
+        "actor_email",
         "actor_employee_id",
+        "actor_name",
         "actor_user_id",
         "created_at",
         "duration_ms",
@@ -267,5 +277,86 @@ describe("durasi tidak pernah negatif", () => {
     });
 
     expect(entry.duration_ms).toBe(0);
+  });
+});
+
+describe("penyimpanan ke tabel activity_logs", () => {
+  it("catatan yang berhasil ikut disimpan ke database", async () => {
+    recordActivity({
+      action: "employee.create",
+      status: "success",
+      context,
+      entity: "employee",
+      summary: "Karyawan ditambahkan",
+      occurred_at: new Date(),
+    });
+
+    expect(logModel.insertLog).toHaveBeenCalledTimes(1);
+
+    const [entry] = (logModel.insertLog as jest.Mock).mock.calls[0] as [
+      { action: string; actor_email: string | null },
+    ];
+
+    expect(entry.action).toBe("employee.create");
+    expect(entry.actor_email).toBe("admin@awan.io");
+  });
+
+  it("catatan kegagalan juga disimpan", () => {
+    recordActivity({
+      action: "employee.create",
+      status: "failed",
+      context,
+      entity: "employee",
+      summary: "Penambahan ditolak",
+      occurred_at: new Date(),
+    });
+
+    expect(logModel.insertLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("gagal menyimpan ke database tidak menggagalkan pemanggilnya", async () => {
+    (logModel.insertLog as jest.Mock).mockRejectedValue(
+      new Error("tabel terkunci") as never,
+    );
+
+    expect(() =>
+      recordActivity({
+        action: "employee.create",
+        status: "success",
+        context,
+        entity: "employee",
+        summary: "tetap jalan",
+        occurred_at: new Date(),
+      }),
+    ).not.toThrow();
+
+    // beri kesempatan promise penolakannya ditangani
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it("penyimpanan tidak ditunggu sehingga respons tidak melambat", () => {
+    let selesai = false;
+
+    (logModel.insertLog as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            selesai = true;
+            resolve(undefined);
+          }, 50);
+        }) as never,
+    );
+
+    recordActivity({
+      action: "employee.create",
+      status: "success",
+      context,
+      entity: "employee",
+      summary: "tanpa menunggu",
+      occurred_at: new Date(),
+    });
+
+    // pemanggil sudah lanjut walau penyimpanannya belum selesai
+    expect(selesai).toBe(false);
   });
 });

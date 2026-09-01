@@ -690,3 +690,49 @@ describe("kewajaran tanggal", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("usia dihitung secara kalender", () => {
+  const dasar = {
+    email: "batas@awan.io",
+    password: "12345678",
+    full_name: "Uji Batas",
+    phone: "+628110000001",
+    gender: "male",
+  };
+
+  function tanggalUsia(tahun: number, geserHari = 0): string {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - tahun);
+    d.setDate(d.getDate() + geserHari);
+
+    return d.toISOString().slice(0, 10);
+  }
+
+  function diterima(birth_date: string): boolean {
+    return createEmployeeSchema.safeParse({ ...dasar, birth_date }).success;
+  }
+
+  it("menerima yang tepat berulang tahun ke-15 hari ini", () => {
+    expect(diterima(tanggalUsia(15))).toBe(true);
+  });
+
+  it("menolak yang baru berusia 15 besok", () => {
+    expect(diterima(tanggalUsia(15, 1))).toBe(false);
+  });
+
+  it("menerima yang tepat berusia 100 tahun", () => {
+    // pembagian selisih milidetik sempat menolak kasus ini karena Date.now()
+    // membawa jam saat ini sedangkan tanggal lahir dihitung dari tengah malam
+    expect(diterima(tanggalUsia(100))).toBe(true);
+  });
+
+  it("menolak yang sudah lewat 101 tahun", () => {
+    expect(diterima(tanggalUsia(101, -1))).toBe(false);
+  });
+
+  it("hasilnya tidak bergantung pada jam saat pengujian dijalankan", () => {
+    // usia kalender hanya melihat bagian tanggal, bukan jam
+    expect(diterima(tanggalUsia(30))).toBe(true);
+    expect(diterima(tanggalUsia(16))).toBe(true);
+  });
+});

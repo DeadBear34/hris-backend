@@ -11,6 +11,7 @@ import {
   uploadPhoto,
 } from "../helpers/storage.js";
 import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 async function requesterEmployee(req: Request): Promise<Employee> {
   if (!req.user) {
@@ -154,8 +155,16 @@ export async function UploadEmployeePhotoController(
 ) {
   try {
     const { id } = res.locals.params as { id: string };
+    const activity = startActivity(req);
     const employee = await targetEmployee(id);
     const data = await replacePhoto(employee, req.file);
+
+    activity.success({
+      action: "employee.photo_upload",
+      entity: "employee",
+      entity_id: employee.id,
+      summary: `Foto profil ${employee.full_name} diperbarui`,
+    });
 
     res.json({
       success: true,
@@ -174,8 +183,16 @@ export async function DeleteEmployeePhotoController(
 ) {
   try {
     const { id } = res.locals.params as { id: string };
+    const activity = startActivity(req);
     const employee = await targetEmployee(id);
     await removePhoto(employee);
+
+    activity.success({
+      action: "employee.photo_delete",
+      entity: "employee",
+      entity_id: employee.id,
+      summary: `Foto profil ${employee.full_name} dihapus`,
+    });
 
     res.json({
       success: true,

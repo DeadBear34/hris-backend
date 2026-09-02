@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import * as positionModel from "../models/position.js";
 import type { PositionInput } from "../models/position.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 export async function ListPositionController(
   _req: Request,
@@ -39,12 +40,20 @@ export async function CreatePositionController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const data = req.body as PositionInput;
 
     const existing = await positionModel.findByCode(data.code);
     if (existing) throw Conflict("Kode jabatan sudah digunakan");
 
     const position = await positionModel.createPosition(data);
+
+    activity.success({
+      action: "position.create",
+      entity: "position",
+      entity_id: position.id,
+      summary: `Jabatan ${position.name} dibuat`,
+    });
 
     res.status(201).json({ success: true, data: position });
   } catch (err) {
@@ -58,6 +67,7 @@ export async function UpdatePositionController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const data = req.body as Partial<PositionInput>;
 
@@ -82,6 +92,14 @@ export async function UpdatePositionController(
 
     const position = await positionModel.updatePosition(id, data);
 
+    activity.success({
+      action: "position.update",
+      entity: "position",
+      entity_id: id,
+      summary: `Jabatan ${existing.name} diubah`,
+      metadata: { fields: Object.keys(data) },
+    });
+
     res.json({ success: true, data: position });
   } catch (err) {
     next(err);
@@ -89,11 +107,12 @@ export async function UpdatePositionController(
 }
 
 export async function DeletePositionController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await positionModel.findById(id);
@@ -108,6 +127,13 @@ export async function DeletePositionController(
     }
 
     await positionModel.softDeletePosition(id);
+
+    activity.success({
+      action: "position.delete",
+      entity: "position",
+      entity_id: id,
+      summary: `Jabatan ${existing.name} dihapus`,
+    });
 
     res.json({ success: true, message: "Jabatan berhasil dihapus" });
   } catch (err) {

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { pool } from "../config/databaseConnection.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
+import { startActivity } from "../helpers/activityLog.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as eventModel from "../models/attendanceEvent.js";
 import * as workScheduleModel from "../models/workSchedule.js";
@@ -612,6 +613,7 @@ export async function CorrectAttendanceController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const pengoreksi = await getRequesterEmployee(req, res);
     const { id } = res.locals.params as { id: string };
 
@@ -685,6 +687,19 @@ export async function CorrectAttendanceController(
       note: buildCorrectionNote(pengoreksi, data.reason, correctedAt),
     });
 
+    activity.success({
+      action: "attendance.correct",
+      entity: "attendance",
+      entity_id: id,
+      summary: `Absensi ${existing.attendance_date} dikoreksi menjadi ${statusLabel(data.status)}`,
+      metadata: {
+        employee_id: existing.employee_id,
+        from_status: existing.status,
+        to_status: data.status,
+        reason: data.reason,
+      },
+    });
+
     res.json({
       success: true,
       message: `Absensi tanggal ${existing.attendance_date} berhasil dikoreksi menjadi ${statusLabel(data.status)}`,
@@ -701,6 +716,7 @@ export async function CloseDayController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const dikirim = req.header(CRON_HEADER);
 
     if (!env.CRON_SECRET) {
@@ -790,6 +806,22 @@ export async function CloseDayController(
 
     const countByStatus = (status: string) =>
       markers.filter((row) => row.status === status).length;
+
+    activity.success({
+      action: "attendance.close_day",
+      entity: "attendance",
+      summary: `Penutupan hari ${date}: ${stored} baris dibuat, ${skipped} dilewati`,
+      metadata: {
+        date,
+        created: stored,
+        skipped,
+        marked: {
+          holiday: countByStatus("holiday"),
+          leave: countByStatus("leave"),
+          absent: countByStatus("absent"),
+        },
+      },
+    });
 
     res.json({
       success: true,

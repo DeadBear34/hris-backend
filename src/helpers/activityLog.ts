@@ -2,21 +2,46 @@ import type { Request } from "express";
 import { logger } from "../config/logger.js";
 import { insertLog } from "../models/activityLog.js";
 
-// Kode aksi yang dicatat. Ditulis <entitas>.<kegiatan> supaya nanti mudah
-// disaring per entitas maupun per kegiatan di tabel log
-export type ActivityAction = "employee.create" | "employee.create_bulk";
+// Ditulis <entitas>.<kegiatan> agar mudah disaring
+export type ActivityAction =
+  | "employee.create"
+  | "employee.create_bulk"
+  | "employee.update"
+  | "employee.delete"
+  | "employee.photo_upload"
+  | "employee.photo_delete"
+  | "user.approve"
+  | "user.set_active"
+  | "department.create"
+  | "department.update"
+  | "department.delete"
+  | "position.create"
+  | "position.update"
+  | "position.delete"
+  | "position.features_replace"
+  | "holiday.create"
+  | "holiday.update"
+  | "holiday.delete"
+  | "leave_type.create"
+  | "leave_type.update"
+  | "leave_type.delete"
+  | "leave.approve"
+  | "leave.reject"
+  | "leave.balance_adjust"
+  | "schedule.create"
+  | "schedule.update"
+  | "schedule.delete"
+  | "attendance.correct"
+  | "attendance.close_day";
 
 export type ActivityStatus = "success" | "failed";
 
-// Bentuk satu catatan aktivitas. Sengaja disusun seperti baris tabel supaya
-// ketika tabel log dibuat, isian ini tinggal disimpan apa adanya tanpa
-// mengubah pemanggilnya
+// Bentuknya mengikuti kolom tabel activity_logs
 export interface ActivityLogEntry {
   action: ActivityAction;
   status: ActivityStatus;
 
-  // pelaku. Email dan nama disalin di sini supaya catatan tetap terbaca
-  // walau akunnya kelak dihapus
+  // email dan nama disalin agar tetap terbaca kalau akunnya dihapus
   actor_user_id: string | null;
   actor_employee_id: string | null;
   actor_email: string | null;
@@ -75,9 +100,8 @@ export interface RecordActivityInput {
   occurred_at: Date;
 }
 
-// Rincian per baris dipotong supaya satu catatan tidak membengkak. Impor 500
-// karyawan menghasilkan 51 KB kalau seluruhnya ikut, padahal yang berguna saat
-// menelusuri hanya beberapa contoh ditambah jumlah totalnya
+// Rincian dipotong agar satu catatan tidak membengkak. Impor 500 karyawan
+// menghasilkan 51 KB kalau seluruhnya ikut
 export const MAX_DETAIL_ITEMS = 20;
 
 export function summarizeList<T>(
@@ -111,17 +135,13 @@ export function buildActivityLog(
     user_agent: input.context.user_agent,
     occurred_at: input.occurred_at,
     created_at: createdAt,
-    // Math.max menjaga dari jam sistem yang mundur, misalnya karena
-    // penyelarasan NTP. Durasi negatif akan ditolak batasan tabel
+    // jaga-jaga kalau jam sistem mundur; durasi negatif ditolak tabel
     duration_ms: Math.max(0, createdAt.getTime() - input.occurred_at.getTime()),
   };
 }
 
-// Mencatat satu aktivitas. Untuk saat ini hanya ke log aplikasi; ketika tabel
-// log sudah ada, penyimpanannya ditambahkan di sini saja
-// Menyimpan catatan ke tabel activity_logs tanpa ditunggu, supaya kegagalan
-// mencatat tidak pernah menggagalkan permintaan yang sudah berhasil maupun
-// memperlambat responsnya
+// Disimpan tanpa ditunggu, supaya gagal mencatat tidak ikut menggagalkan
+// permintaan yang sudah berhasil
 function persistActivity(entry: ActivityLogEntry): void {
   void insertLog(entry).catch((err) => {
     logger.error({ err, action: entry.action }, "Gagal menyimpan log aktivitas");
@@ -138,4 +158,33 @@ export function recordActivity(input: RecordActivityInput): ActivityLogEntry {
   persistActivity(entry);
 
   return entry;
+}
+
+export interface ActivityRecorder {
+  success(input: ActionInput): void;
+  failed(input: ActionInput): void;
+}
+
+export interface ActionInput {
+  action: ActivityAction;
+  entity: string;
+  entity_id?: string | null;
+  summary: string;
+  metadata?: Record<string, unknown>;
+  actor_name?: string | null;
+}
+
+// Merekam waktu dan pelaku sekali di awal permintaan, supaya tiap titik
+// pencatatan cukup menyebut aksi dan sasarannya
+export function startActivity(req: Request): ActivityRecorder {
+  const occurred_at = new Date();
+  const context = requestContext(req);
+
+  const write = (status: ActivityStatus, input: ActionInput) =>
+    recordActivity({ ...input, status, context, occurred_at });
+
+  return {
+    success: (input) => write("success", input),
+    failed: (input) => write("failed", input),
+  };
 }

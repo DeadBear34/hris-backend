@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import * as departmentModel from "../models/department.js";
 import type { DepartmentInput } from "../models/department.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 export async function ListDepartmentController(
   _req: Request,
@@ -39,12 +40,20 @@ export async function CreateDepartmentController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const data = req.body as DepartmentInput;
 
     const existing = await departmentModel.findByCode(data.code);
     if (existing) throw Conflict("Kode departemen sudah digunakan");
 
     const department = await departmentModel.createDepartment(data);
+
+    activity.success({
+      action: "department.create",
+      entity: "department",
+      entity_id: department.id,
+      summary: `Departemen ${department.name} dibuat`,
+    });
 
     res.status(201).json({ success: true, data: department });
   } catch (err) {
@@ -58,6 +67,7 @@ export async function UpdateDepartmentController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const data = req.body as Partial<DepartmentInput>;
 
@@ -82,6 +92,14 @@ export async function UpdateDepartmentController(
 
     const department = await departmentModel.updateDepartment(id, data);
 
+    activity.success({
+      action: "department.update",
+      entity: "department",
+      entity_id: id,
+      summary: `Departemen ${existing.name} diubah`,
+      metadata: { fields: Object.keys(data) },
+    });
+
     res.json({ success: true, data: department });
   } catch (err) {
     next(err);
@@ -89,11 +107,12 @@ export async function UpdateDepartmentController(
 }
 
 export async function DeleteDepartmentController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await departmentModel.findById(id);
@@ -108,6 +127,13 @@ export async function DeleteDepartmentController(
     }
 
     await departmentModel.softDeleteDepartment(id);
+
+    activity.success({
+      action: "department.delete",
+      entity: "department",
+      entity_id: id,
+      summary: `Departemen ${existing.name} dihapus`,
+    });
 
     res.json({ success: true, message: "Departemen berhasil dihapus" });
   } catch (err) {

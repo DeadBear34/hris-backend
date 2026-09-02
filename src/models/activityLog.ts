@@ -6,6 +6,7 @@ export interface ActivityLogRow extends ActivityLogEntry {
   id: string;
 }
 
+// Penyaring untuk halaman riwayat aktivitas
 export interface ListActivityLogParams {
   action?: string;
   status?: "success" | "failed";
@@ -39,6 +40,7 @@ const COLUMN_NAMES = [
 
 const COLUMNS = COLUMN_NAMES.join(", ");
 
+// Menyimpan satu catatan. metadata dikirim sebagai jsonb
 export async function insertLog(
   entry: ActivityLogEntry,
   db: Executor = pool,
@@ -71,6 +73,7 @@ export async function insertLog(
   );
 }
 
+// Diurutkan dari waktu peristiwa, bukan waktu pencatatan
 export async function listLogs(
   params: ListActivityLogParams,
 ): Promise<{ rows: ActivityLogRow[]; total: number }> {
@@ -109,6 +112,7 @@ export async function listLogs(
 
   if (params.end_date) {
     values.push(params.end_date);
+    // + 1 supaya seluruh hari pada tanggal akhir ikut tercakup
     conditions.push(`occurred_at < $${values.length}::date + 1`);
   }
 

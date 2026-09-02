@@ -6,6 +6,7 @@ import type { Feature, FeatureCategory } from "../models/feature.js";
 import { invalidateFeatureCache } from "../helpers/featureCache.js";
 import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { BadRequest, NotFound } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 const CATEGORY_ORDER: FeatureCategory[] = [
   "employee",
@@ -85,6 +86,7 @@ export async function ReplacePositionFeatureController(
   const client = await pool.connect();
 
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const { codes } = req.body as { codes: string[] };
 
@@ -116,6 +118,14 @@ export async function ReplacePositionFeatureController(
     await client.query("COMMIT");
 
     invalidateFeatureCache(id);
+
+    activity.success({
+      action: "position.features_replace",
+      entity: "position",
+      entity_id: id,
+      summary: `Fitur jabatan ${position.name} diperbarui menjadi ${dikenal.length} fitur`,
+      metadata: { codes: dikenal.map((f) => f.code) },
+    });
 
     res.json({
       success: true,

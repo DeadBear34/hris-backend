@@ -22,6 +22,7 @@ import {
   requestContext,
   summarizeList,
   type RequestContext,
+  startActivity,
 } from "../helpers/activityLog.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import {
@@ -73,7 +74,10 @@ async function checkRelations(
       const manager = await employeeModel.findById(data.manager_id);
 
       if (!manager) {
-        errors.push({ field: "manager_id", message: "Manajer tidak ditemukan" });
+        errors.push({
+          field: "manager_id",
+          message: "Manajer tidak ditemukan",
+        });
       } else if (currentId) {
         const isCycle = await employeeModel.isDescendantOf(
           data.manager_id,
@@ -235,7 +239,11 @@ async function checkRowAgainstDatabase(
 // Kiriman berbentuk objek berkunci nomor, misalnya { "0": {...}, "1": {...} }.
 // Dibedakan dari satu karyawan karena seluruh kuncinya berupa angka
 function isIndexedObject(payload: unknown): payload is Record<string, unknown> {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
     return false;
   }
 
@@ -244,15 +252,8 @@ function isIndexedObject(payload: unknown): payload is Record<string, unknown> {
   return keys.length > 0 && keys.every((key) => /^\d+$/.test(key));
 }
 
-// Mengurutkan kiriman berkunci nomor menjadi array.
-//
-// Urutan ditentukan di sini, bukan diserahkan pada urutan kunci objek, karena
-// JavaScript hanya mengurutkan kunci bilangan bulat murni. Kunci seperti "01"
-// akan mengikuti urutan kiriman dan membuat nomor karyawan tertukar.
-//
-// Kuncinya wajib 0 sampai n-1 tanpa bolong. Kunci ganda pada JSON membuat satu
-// baris hilang saat diurai, dan lubang pada urutan itulah bekas yang tersisa
-// untuk menangkapnya
+// Diurutkan sendiri karena JavaScript hanya mengurutkan kunci bilangan bulat.
+// Kunci wajib 0 sampai n-1: lubang berarti ada baris hilang saat JSON diurai
 function indexedObjectToRows(payload: Record<string, unknown>): unknown[] {
   const entries = Object.entries(payload)
     .map(([key, value]) => ({ key: Number(key), value }))
@@ -300,16 +301,16 @@ export async function CreateEmployeeController(
     if (!req.user)
       throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
-    // Waktu peristiwa diambil di sini, bukan saat log ditulis, supaya yang
-    // tercatat adalah kapan permintaannya mulai diproses
+    // Diambil di sini, bukan saat log ditulis, supaya yang tercatat adalah
+    // kapan permintaannya mulai diproses
     const occurredAt = new Date();
     const context = requestContext(req);
 
     logOccurredAt = occurredAt;
     logContext = context;
 
-    // Cek bentuk kiriman: array atau objek berkunci nomor berarti banyak,
-    // objek biasa berarti satu karyawan
+    // Cek bentuk kiriman array atau objek kalo berkunci nomor berarti banyak,
+    // objek biasa itu berarti satu karyawan
     const payload = req.body as unknown;
     const indexed = isIndexedObject(payload);
     const isMany = Array.isArray(payload) || indexed;
@@ -383,6 +384,7 @@ export async function CreateEmployeeController(
 
       // Kiriman satu objek tidak punya daftar baris untuk dilaporkan,
       if (!isMany) {
+        // catat penolakan pada kiriman satu objek
         recordActivity({
           action: "employee.create",
           status: "failed",
@@ -401,6 +403,7 @@ export async function CreateEmployeeController(
           : BadRequest(first.message);
       }
 
+      // catat penolakan validasi pada kiriman banyak
       recordActivity({
         action: isMany ? "employee.create_bulk" : "employee.create",
         status: "failed",
@@ -430,14 +433,15 @@ export async function CreateEmployeeController(
           total: rawRows.length,
           valid: rawRows.length - failed.length,
           invalid: failed.length,
-          failed_rows: failed.map(({ isDuplicate: _isDuplicate, ...row }) => row),
+          failed_rows: failed.map(
+            ({ isDuplicate: _isDuplicate, ...row }) => row,
+          ),
         },
       );
     }
 
-    // Hashing di kerjakan sebelum transaksi dibuka karena argon2 lambat.
-    // Password yang sama cukup dihitung sekali, dan impor massal hampir
-    // selalu pakai satu password awal untuk semua orang
+    // Sebelum transaksi dibuka karena argon2 lambat. Password yang sama cukup
+    // dihitung sekali, dan impor massal biasanya memakai satu password awal
     const hashCache = new Map<string, Promise<string>>();
     const hashed = await Promise.all(
       rows.map((row) => {
@@ -476,7 +480,12 @@ export async function CreateEmployeeController(
     const employees = await employeeModel.createEmployees(
       client,
       rows.map((row, index) => {
-        const { email: _email, password: _password, role: _role, ...data } = row;
+        const {
+          email: _email,
+          password: _password,
+          role: _role,
+          ...data
+        } = row;
 
         return { user_id: accounts[index]!.id, data };
       }),
@@ -501,6 +510,7 @@ export async function CreateEmployeeController(
       ? `${created.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`
       : "Karyawan berhasil ditambahkan. Sampaikan password awal kepada karyawan dan minta menggantinya saat login pertama.";
 
+    // dicatat setelah COMMIT, jadi tidak pernah menyatakan berhasil lebih awal
     recordActivity({
       action: isMany ? "employee.create_bulk" : "employee.create",
       status: "success",
@@ -536,9 +546,8 @@ export async function CreateEmployeeController(
   } catch (err) {
     await client.query("ROLLBACK");
 
-    // Kegagalan yang sudah dilaporkan ke pengguna sudah punya catatannya
-    // sendiri. Yang ditangkap di sini adalah kegagalan tak terduga, dan
-    // justru itu yang paling perlu tercatat
+    // AppError sudah punya catatannya sendiri di atas. Yang ditangkap di sini
+    // kegagalan tak terduga, dan justru itu yang paling perlu tercatat
     if (!(err instanceof AppError)) {
       recordActivity({
         action: "employee.create",
@@ -565,6 +574,7 @@ export async function UpdateEmployeeController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const data = req.body as UpdateEmployeeInput;
 
@@ -575,6 +585,14 @@ export async function UpdateEmployeeController(
 
     const employee = await employeeModel.updateEmployee(id, data);
 
+    activity.success({
+      action: "employee.update",
+      entity: "employee",
+      entity_id: id,
+      summary: `Data karyawan ${existing.full_name} diubah`,
+      metadata: { fields: Object.keys(data) },
+    });
+
     res.json({ success: true, data: employee });
   } catch (err) {
     next(err);
@@ -582,13 +600,14 @@ export async function UpdateEmployeeController(
 }
 
 export async function DeleteEmployeeController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   const client = await pool.connect();
 
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await employeeModel.findById(id);
@@ -612,6 +631,14 @@ export async function DeleteEmployeeController(
     }
 
     await client.query("COMMIT");
+
+    activity.success({
+      action: "employee.delete",
+      entity: "employee",
+      entity_id: id,
+      summary: `Karyawan ${existing.full_name} dihapus`,
+      metadata: { employee_number: existing.employee_number },
+    });
 
     res.json({ success: true, message: "Karyawan berhasil dihapus" });
   } catch (err) {

@@ -6,6 +6,7 @@ import { sendMail } from "../helpers/mailer.js";
 import { sendMailWithoutFailing } from "../helpers/notification.js";
 import { accountApprovedEmail } from "../helpers/emailTemplate.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 export async function ListPendingUserController(
   _req: Request,
@@ -30,6 +31,7 @@ export async function ApproveUserController(
     if (!req.user)
       throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await userModel.findById(id);
@@ -58,6 +60,13 @@ export async function ApproveUserController(
       { email: existing.email },
     );
 
+    activity.success({
+      action: "user.approve",
+      entity: "user",
+      entity_id: id,
+      summary: `Pendaftaran ${existing.email} disetujui`,
+    });
+
     res.json({
       success: true,
       message: "Akun berhasil disetujui dan sekarang dapat digunakan",
@@ -83,6 +92,7 @@ export async function SetUserActiveController(
     if (!req.user)
       throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const { is_active } = req.body as { is_active: boolean };
 
@@ -100,6 +110,14 @@ export async function SetUserActiveController(
     }
 
     const user = await userModel.setUserActive(id, is_active);
+
+    activity.success({
+      action: "user.set_active",
+      entity: "user",
+      entity_id: id,
+      summary: `Akun ${existing.email} ${is_active ? "diaktifkan" : "dinonaktifkan"}`,
+      metadata: { is_active },
+    });
 
     res.json({
       success: true,

@@ -4,6 +4,7 @@ import * as departmentModel from "../models/department.js";
 import * as employeeModel from "../models/employee.js";
 import type { WorkScheduleInput } from "../models/workSchedule.js";
 import { minutesFromClockTime } from "../helpers/timezone.js";
+import { startActivity } from "../helpers/activityLog.js";
 import {
   BadRequest,
   Conflict,
@@ -114,6 +115,7 @@ export async function CreateWorkScheduleController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const data = req.body as WorkScheduleInput;
 
     if (data.department_id) {
@@ -149,6 +151,13 @@ export async function CreateWorkScheduleController(
 
     const schedule = await workScheduleModel.createSchedule(data);
 
+    activity.success({
+      action: "schedule.create",
+      entity: "work_schedule",
+      entity_id: schedule.id,
+      summary: `Jadwal kerja ${schedule.name} dibuat`,
+    });
+
     res.status(201).json({ success: true, data: schedule });
   } catch (err) {
     next(err);
@@ -161,6 +170,7 @@ export async function UpdateWorkScheduleController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const data = req.body as Partial<WorkScheduleInput>;
 
@@ -207,6 +217,14 @@ export async function UpdateWorkScheduleController(
 
     const schedule = await workScheduleModel.updateSchedule(id, data);
 
+    activity.success({
+      action: "schedule.update",
+      entity: "work_schedule",
+      entity_id: id,
+      summary: `Jadwal kerja ${existing.name} diubah`,
+      metadata: { fields: Object.keys(data) },
+    });
+
     res.json({ success: true, data: schedule });
   } catch (err) {
     next(err);
@@ -214,11 +232,12 @@ export async function UpdateWorkScheduleController(
 }
 
 export async function DeleteWorkScheduleController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await workScheduleModel.findById(id);
@@ -240,6 +259,13 @@ export async function DeleteWorkScheduleController(
     }
 
     await workScheduleModel.softDeleteSchedule(id);
+
+    activity.success({
+      action: "schedule.delete",
+      entity: "work_schedule",
+      entity_id: id,
+      summary: `Jadwal kerja ${existing.name} dihapus`,
+    });
 
     res.json({ success: true, message: "Jadwal kerja berhasil dihapus" });
   } catch (err) {

@@ -5,6 +5,7 @@ import * as leaveTypeModel from "../models/leaveType.js";
 import * as balanceModel from "../models/leaveBalance.js";
 import type { ListLedgerParams } from "../models/leaveBalance.js";
 import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 function tahunBerjalan(): number {
   return new Date().getUTCFullYear();
@@ -110,6 +111,7 @@ export async function AdjustLeaveBalanceController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     if (!req.user)
       throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
 
@@ -145,6 +147,14 @@ export async function AdjustLeaveBalanceController(
       leave_type_id,
       period_year,
     );
+
+    activity.success({
+      action: "leave.balance_adjust",
+      entity: "employee",
+      entity_id: employee_id,
+      summary: `Saldo ${leaveType.name} ${employee.full_name} disesuaikan ${amount > 0 ? "+" : ""}${amount} hari`,
+      metadata: { leave_type_id, period_year, amount, note: note ?? null },
+    });
 
     res.status(201).json({
       success: true,

@@ -22,6 +22,7 @@ import {
 } from "../helpers/workdays.js";
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
+import { startActivity } from "../helpers/activityLog.js";
 import {
   BadRequest,
   Conflict,
@@ -398,6 +399,7 @@ export async function ApproveLeaveRequestController(
   const client = await pool.connect();
 
   try {
+    const activity = startActivity(req);
     const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
     const { decision_note } = req.body as { decision_note?: string };
@@ -449,6 +451,14 @@ export async function ApproveLeaveRequestController(
 
     await client.query("COMMIT");
 
+    activity.success({
+      action: "leave.approve",
+      entity: "leave_request",
+      entity_id: id,
+      summary: `Pengajuan cuti ${existing.start_date} sampai ${existing.end_date} disetujui`,
+      metadata: { employee_id: existing.employee_id, total_days: existing.total_days },
+    });
+
     res.json({
       success: true,
       message: "Pengajuan cuti berhasil disetujui",
@@ -470,6 +480,7 @@ export async function RejectLeaveRequestController(
   const client = await pool.connect();
 
   try {
+    const activity = startActivity(req);
     const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
     const { decision_note } = req.body as { decision_note?: string };
@@ -516,6 +527,14 @@ export async function RejectLeaveRequestController(
     }
 
     await client.query("COMMIT");
+
+    activity.success({
+      action: "leave.reject",
+      entity: "leave_request",
+      entity_id: id,
+      summary: `Pengajuan cuti ${existing.start_date} sampai ${existing.end_date} ditolak`,
+      metadata: { employee_id: existing.employee_id },
+    });
 
     res.json({
       success: true,

@@ -569,6 +569,35 @@ baris dalam satu transaksi akan bernilai sama persis.
 `kind`, `source`, `only_rejected`, `start_date`, dan `end_date`. Setiap baris
 menyertakan `delay_seconds`, yaitu selisih antara penekanan dan penerimaan.
 
+## Log Aktivitas
+
+Setiap tindakan admin yang mengubah data orang lain, hak akses, atau
+kepemilikan tercatat di tabel `activity_logs`.
+
+| Entitas | Aksi yang dicatat |
+| ------- | ----------------- |
+| Karyawan | `create`, `create_bulk`, `update`, `delete`, `photo_upload`, `photo_delete` |
+| Akun | `user.approve`, `user.set_active` |
+| Organisasi | `department.*`, `position.*`, `schedule.*` masing-masing create, update, delete |
+| Hak akses | `position.features_replace` |
+| Hari libur dan jenis cuti | `holiday.*`, `leave_type.*` |
+| Cuti | `leave.approve`, `leave.reject`, `leave.balance_adjust` |
+| Absensi | `attendance.correct`, `attendance.close_day` |
+
+Yang dicatat: siapa pelakunya beserta emailnya, kapan peristiwanya terjadi,
+kapan catatannya ditulis, berapa lama prosesnya, alamat IP, perangkat, dan
+rincian per aksi pada kolom `metadata`.
+
+Tindakan atas diri sendiri tidak dicatat. Absen masuk dan pulang punya
+jejaknya sendiri di `attendance_events`, sedangkan mengubah profil sendiri
+tidak mengubah data orang lain sehingga tidak termasuk jejak audit.
+
+Penulisan log tidak pernah ditunggu. Kegagalan mencatat hanya menghasilkan
+peringatan di log aplikasi dan tidak membatalkan tindakan yang sudah berhasil.
+
+Belum ada endpoint untuk membacanya. Modelnya sudah menyediakan `listLogs`
+dengan penyaring aksi, status, entitas, pelaku, dan rentang tanggal.
+
 ## Aturan Absensi
 
 ### Zona waktu

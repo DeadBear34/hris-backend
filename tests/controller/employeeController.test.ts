@@ -75,6 +75,9 @@ const positionModel = await import("../../src/models/position.js");
 const { logger } = await import("../../src/config/logger.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
+const { MAX_EMPLOYEES_PER_REQUEST } = await import(
+  "../../src/schema/employeeSchema.js"
+);
 
 const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
@@ -1022,8 +1025,10 @@ describe("POST /api/v1/employees dengan array", () => {
     expect(res.status).toBe(400);
   });
 
-  it("menolak jumlah melebihi batas lima ratus", async () => {
-    const banyak = Array.from({ length: 501 }, (_, i) => row(i));
+  it("menolak jumlah melebihi batas per permintaan", async () => {
+    const banyak = Array.from({ length: MAX_EMPLOYEES_PER_REQUEST + 1 }, (_, i) =>
+      row(i),
+    );
 
     const res = await tambahMassal(banyak);
 
@@ -1402,13 +1407,15 @@ describe("laporan per baris pada impor massal", () => {
     expect(new Set(hashTersimpan).size).toBe(2);
   });
 
-  it("menerima jumlah baris di bawah batas baru", async () => {
-    const daftar = Array.from({ length: 250 }, (_, i) => utuh(i));
+  it("menerima jumlah baris tepat di batas", async () => {
+    const daftar = Array.from({ length: MAX_EMPLOYEES_PER_REQUEST }, (_, i) =>
+      utuh(i),
+    );
 
     const res = await kirim(daftar);
 
     expect(res.status).toBe(201);
-    expect(res.body.meta.created).toBe(250);
+    expect(res.body.meta.created).toBe(MAX_EMPLOYEES_PER_REQUEST);
   });
 });
 
@@ -1666,8 +1673,13 @@ describe("ukuran catatan dibatasi", () => {
     gender: "male",
   });
 
-  it("rincian dipotong dan menyebut jumlah sebenarnya", async () => {
-    const banyak = Array.from({ length: 60 }, (_, i) => row(i));
+  // Pemotongan sendiri diuji langsung di tests/helpers/activityLog.test.ts.
+  // Lewat endpoint sudah tidak bisa dipicu karena batas kiriman sama dengan
+  // batas rincian, jadi yang dijaga di sini justru catatannya tetap utuh
+  it("rincian tetap utuh pada kiriman sebesar batas", async () => {
+    const banyak = Array.from({ length: MAX_EMPLOYEES_PER_REQUEST }, (_, i) =>
+      row(i),
+    );
 
     (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
     (userModel.insertUsersByAdmin as jest.Mock).mockResolvedValue(
@@ -1701,11 +1713,10 @@ describe("ukuran catatan dibatasi", () => {
       employees: { total: number; sample: unknown[]; truncated: boolean };
     };
 
-    // jumlah sebenarnya tetap terbaca walau rinciannya dipotong
-    expect(meta.created).toBe(60);
-    expect(meta.employees.total).toBe(60);
-    expect(meta.employees.truncated).toBe(true);
-    expect(meta.employees.sample).toHaveLength(20);
+    expect(meta.created).toBe(MAX_EMPLOYEES_PER_REQUEST);
+    expect(meta.employees.total).toBe(MAX_EMPLOYEES_PER_REQUEST);
+    expect(meta.employees.truncated).toBe(false);
+    expect(meta.employees.sample).toHaveLength(MAX_EMPLOYEES_PER_REQUEST);
   });
 });
 

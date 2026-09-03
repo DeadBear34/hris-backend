@@ -330,7 +330,7 @@ export async function CreateEmployeeController(
     const failed: FailedRow[] = [];
     const rows: NewEmployee[] = [];
 
-    // Tahap 1: cek bentuk tiap baris, yaitu kolom kosong dan data tidak sesuai
+    // Tahap 1 cek bentuk tiap baris, yaitu kolom kosong dan data tidak sesuai
     for (const [index, row] of rawRows.entries()) {
       const parsed = createEmployeeSchema.safeParse(row);
 

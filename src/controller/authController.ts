@@ -6,6 +6,7 @@ import { createToken } from "../helpers/jwt.js";
 import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { photoUrlFor } from "../helpers/storage.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 function buildProfile(
   user: userModel.User,
@@ -51,33 +52,60 @@ export async function LoginController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const { email, password } = req.body;
+
+    // Password tidak pernah masuk metadata, hanya email dan sebab gagalnya
+    const tolak = (reason: string, message: string, user_id?: string) => {
+      activity.failed({
+        action: "auth.login",
+        entity: "user",
+        entity_id: user_id ?? null,
+        actor_user_id: user_id ?? null,
+        actor_email: email,
+        summary: `Login gagal untuk ${email}`,
+        metadata: { reason },
+      });
+
+      return Unauthorized(message);
+    };
 
     const user = await userModel.findByEmail(email);
 
     if (!user) {
-      throw Unauthorized("Email atau password salah");
+      throw tolak("email_tidak_terdaftar", "Email atau password salah");
     }
 
     const valid = await verifyPassword(user.password, password);
 
     if (!valid) {
-      throw Unauthorized("Email atau password salah");
+      throw tolak("password_salah", "Email atau password salah", user.id);
     }
 
     if (!user.email_verified_at) {
-      throw Unauthorized(
+      throw tolak(
+        "email_belum_diverifikasi",
         "Email belum diverifikasi. Silakan masukkan kode verifikasi yang kami kirim ke email kamu.",
+        user.id,
       );
     }
 
     if (!user.approved_at) {
-      throw Unauthorized("Akun kamu masih menunggu persetujuan admin");
+      throw tolak(
+        "belum_disetujui",
+        "Akun kamu masih menunggu persetujuan admin",
+        user.id,
+      );
     }
 
     if (!user.is_active) {
-      throw Unauthorized("Akun kamu dinonaktifkan, silakan hubungi admin");
+      throw tolak(
+        "akun_nonaktif",
+        "Akun kamu dinonaktifkan, silakan hubungi admin",
+        user.id,
+      );
     }
 
     const employee = await employeeModel.findByUserId(user.id);
@@ -89,6 +117,17 @@ export async function LoginController(
     });
 
     await userModel.updateLastLogin(user.id);
+
+    activity.success({
+      action: "auth.login",
+      entity: "user",
+      entity_id: user.id,
+      actor_user_id: user.id,
+      actor_email: user.email,
+      actor_name: employee?.full_name ?? null,
+      summary: `${employee?.full_name ?? user.email} berhasil login`,
+      metadata: { role: user.role },
+    });
 
     res.json({
       success: true,

@@ -154,7 +154,7 @@ export const updateEmployeeSchema = employeeDataSchema
   })
   .refine(datesMakeSense, datesMakeSenseMessage);
 
-export const MAX_EMPLOYEES_PER_REQUEST = 500;
+export const MAX_EMPLOYEES_PER_REQUEST = 20;
 
 // Gerbang bentuk saja: objek berarti satu karyawan, array berarti banyak.
 // Isi tiap baris diperiksa di controller agar galatnya dapat dilaporkan

@@ -26,6 +26,7 @@ import {
   expiresInMinutes,
 } from "../helpers/token.js";
 import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 const KODE_BERLAKU_MENIT = 10;
 const TAUTAN_BERLAKU_MENIT = 15;
@@ -143,6 +144,8 @@ export async function RegisterController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const { email, password, full_name, phone, gender } = req.body;
 
@@ -150,9 +153,31 @@ export async function RegisterController(
 
     if (existing) {
       if (existing.email_verified_at) {
+        activity.failed({
+          action: "auth.register",
+          entity: "user",
+          entity_id: existing.id,
+          actor_user_id: existing.id,
+          actor_email: email,
+          summary: `Pendaftaran ditolak, email ${email} sudah terdaftar`,
+          metadata: { reason: "email_sudah_terdaftar" },
+        });
+
         throw Conflict("Email sudah terdaftar");
       }
       await sendVerificationCode(email, full_name, requestMeta(req));
+
+      // Bukan akun baru, hanya kode verifikasi yang dikirim ulang
+      activity.success({
+        action: "auth.register",
+        entity: "user",
+        entity_id: existing.id,
+        actor_user_id: existing.id,
+        actor_email: email,
+        actor_name: full_name,
+        summary: `Kode verifikasi dikirim ulang ke ${email}`,
+        metadata: { reason: "belum_diverifikasi", resent: true },
+      });
 
       res.json({
         success: true,
@@ -197,6 +222,21 @@ export async function RegisterController(
     }
 
     await sendVerificationCode(email, full_name, requestMeta(req));
+
+    activity.success({
+      action: "auth.register",
+      entity: "user",
+      entity_id: user.id,
+      actor_user_id: user.id,
+      actor_email: user.email,
+      actor_name: employee.full_name,
+      summary: `${employee.full_name} mendaftar dengan email ${user.email}`,
+      metadata: {
+        employee_id: employee.id,
+        employee_number: employee.employee_number,
+        role: user.role,
+      },
+    });
 
     res.status(201).json({
       success: true,

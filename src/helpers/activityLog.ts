@@ -32,7 +32,9 @@ export type ActivityAction =
   | "schedule.update"
   | "schedule.delete"
   | "attendance.correct"
-  | "attendance.close_day";
+  | "attendance.close_day"
+  | "auth.login"
+  | "auth.register";
 
 export type ActivityStatus = "success" | "failed";
 
@@ -100,8 +102,8 @@ export interface RecordActivityInput {
   occurred_at: Date;
 }
 
-// Rincian dipotong agar satu catatan tidak membengkak. Impor 500 karyawan
-// menghasilkan 51 KB kalau seluruhnya ikut
+// Rincian dipotong agar satu catatan tidak membengkak. Sekarang sama dengan
+// batas per permintaan, jadi hanya jaring pengaman kalau batas itu dinaikkan
 export const MAX_DETAIL_ITEMS = 20;
 
 export function summarizeList<T>(
@@ -172,6 +174,11 @@ export interface ActionInput {
   summary: string;
   metadata?: Record<string, unknown>;
   actor_name?: string | null;
+
+  // Login dan register belum melewati authenticate, jadi req.user masih kosong.
+  // Pelakunya baru diketahui di tengah proses dan disebut lewat dua kolom ini
+  actor_user_id?: string | null;
+  actor_email?: string | null;
 }
 
 // Merekam waktu dan pelaku sekali di awal permintaan, supaya tiap titik
@@ -181,7 +188,17 @@ export function startActivity(req: Request): ActivityRecorder {
   const context = requestContext(req);
 
   const write = (status: ActivityStatus, input: ActionInput) =>
-    recordActivity({ ...input, status, context, occurred_at });
+    recordActivity({
+      ...input,
+      status,
+      occurred_at,
+      // ip dan user_agent tetap dari permintaan, pelakunya boleh ditimpa
+      context: {
+        ...context,
+        actor_user_id: input.actor_user_id ?? context.actor_user_id,
+        actor_email: input.actor_email ?? context.actor_email,
+      },
+    });
 
   return {
     success: (input) => write("success", input),

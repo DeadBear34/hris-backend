@@ -40,6 +40,23 @@ export interface EmployeeListItem {
   is_active: boolean;
 }
 
+// Halaman edit membutuhkan seluruh kolom yang bisa diubah, bukan hanya
+// yang tampil di daftar. Tanpa ini form edit terisi kosong lalu menimpa
+// data yang sebenarnya masih ada
+export interface EmployeeDetail extends EmployeeListItem {
+  user_id: string | null;
+  phone: string;
+  gender: EmployeeGender;
+  birth_date: string | null;
+  address: string | null;
+  employment_status: EmploymentStatus;
+  join_date: string;
+  resign_date: string | null;
+  department_id: string | null;
+  position_id: string | null;
+  manager_id: string | null;
+}
+
 export interface ListParams {
   search?: string;
   department_id?: string;
@@ -247,12 +264,18 @@ export async function findByUserId(user_id: string): Promise<Employee | null> {
 
 export async function findDetailById(
   id: string,
-): Promise<EmployeeListItem | null> {
-  const result = await pool.query<EmployeeListItem>(
+): Promise<EmployeeDetail | null> {
+  const result = await pool.query<EmployeeDetail>(
     `SELECT
        e.id, e.employee_number, e.full_name, u.email,
        p.name AS position_name, d.name AS department_name,
-       m.full_name AS manager_name, e.photo_path, e.is_active
+       m.full_name AS manager_name, e.photo_path, e.is_active,
+
+       -- kolom yang dapat diubah lewat halaman edit. Nama relasi di atas
+       -- untuk ditampilkan, id di bawah untuk dikirim balik saat menyimpan
+       e.user_id, e.phone, e.gender, e.birth_date, e.address,
+       e.employment_status, e.join_date, e.resign_date,
+       e.department_id, e.position_id, e.manager_id
      FROM employees e
      LEFT JOIN users u       ON u.id = e.user_id
      LEFT JOIN departments d ON d.id = e.department_id

@@ -27,6 +27,7 @@ import {
 } from "../helpers/token.js";
 import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { notifyAccountNeedsApproval } from "../helpers/notify.js";
 
 const CODE_VALID_MINUTES = 10;
 const TAUTAN_BERLAKU_MENIT = 15;
@@ -222,6 +223,12 @@ export async function RegisterController(
     }
 
     await sendVerificationCode(email, full_name, requestMeta(req));
+
+    await notifyAccountNeedsApproval({
+      user_id: user.id,
+      full_name: employee.full_name,
+      email: user.email,
+    });
 
     activity.success({
       action: "auth.register",

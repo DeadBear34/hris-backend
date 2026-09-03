@@ -23,6 +23,7 @@ import {
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { notifyLeaveSubmitted, notifyLeaveDecided } from "../helpers/notify.js";
 import {
   BadRequest,
   Conflict,
@@ -348,6 +349,17 @@ export async function CreateLeaveRequestController(
       client.release();
     }
 
+    // setelah COMMIT, supaya atasan tidak diberi tahu pengajuan yang batal
+    await notifyLeaveSubmitted({
+      request_id: request.id,
+      requester_name: requester.employee.full_name,
+      approver_employee_id: request.approver_id,
+      leave_type_name: leaveType.name,
+      start_date: request.start_date,
+      end_date: request.end_date,
+      total_days: request.total_days,
+    });
+
     res.status(201).json({
       success: true,
       message: "Pengajuan cuti berhasil dibuat dan menunggu persetujuan",
@@ -462,6 +474,16 @@ export async function ApproveLeaveRequestController(
       },
     });
 
+    await notifyLeaveDecided({
+      request_id: id,
+      requester_employee_id: existing.employee_id,
+      decision: "approved",
+      leave_type_name: leaveType.name,
+      start_date: existing.start_date,
+      end_date: existing.end_date,
+      decision_note: decision_note ?? null,
+    });
+
     res.json({
       success: true,
       message: "Pengajuan cuti berhasil disetujui",
@@ -537,6 +559,17 @@ export async function RejectLeaveRequestController(
       entity_id: id,
       summary: `Pengajuan cuti ${existing.start_date} sampai ${existing.end_date} ditolak`,
       metadata: { employee_id: existing.employee_id },
+    });
+
+    await notifyLeaveDecided({
+      request_id: id,
+      requester_employee_id: existing.employee_id,
+      decision: "rejected",
+      // jenis cuti boleh saja sudah dihapus, judulnya tetap harus terbaca
+      leave_type_name: leaveType?.name ?? "Cuti",
+      start_date: existing.start_date,
+      end_date: existing.end_date,
+      decision_note: decision_note ?? null,
     });
 
     res.json({

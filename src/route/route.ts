@@ -11,6 +11,7 @@ import leaveRequestRoute from "./leaveRequestRoute.js";
 import leaveBalanceRoute from "./leaveBalanceRoute.js";
 import workScheduleRoute from "./workScheduleRoute.js";
 import attendanceRoute from "./attendanceRoute.js";
+import notificationRoute from "./notificationRoute.js";
 
 const router = Router();
 
@@ -29,5 +30,6 @@ router.use(leaveBalanceRoute);
 
 router.use(workScheduleRoute);
 router.use(attendanceRoute);
+router.use(notificationRoute);
 
 export default router;

@@ -562,6 +562,61 @@ describe("findDetailById", () => {
 
     expect(sql).toContain("deleted_at IS NULL");
   });
+
+  // Halaman edit mengirim balik seluruh kolom ini. Kalau salah satu hilang
+  // dari SELECT, form terisi kosong lalu menimpa data yang sebenarnya ada
+  it.each([
+    "e.phone",
+    "e.gender",
+    "e.birth_date",
+    "e.address",
+    "e.employment_status",
+    "e.join_date",
+    "e.resign_date",
+    "e.department_id",
+    "e.position_id",
+    "e.manager_id",
+  ])("menyertakan %s supaya form edit tidak menimpa data", async (column) => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await employeeModel.findDetailById(EMPLOYEE_ID);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain(column);
+  });
+
+  it("mengembalikan nilai kolom yang dapat diubah apa adanya", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          id: EMPLOYEE_ID,
+          employee_number: "002",
+          full_name: "Ratna Puspita",
+          email: "ratna@awan.io",
+          phone: "+628110000002",
+          gender: "female",
+          birth_date: "1995-03-14",
+          address: "Jl. Merdeka 10",
+          employment_status: "permanent",
+          join_date: "2019-02-18",
+          resign_date: null,
+          department_id: "d1",
+          position_id: "p1",
+          manager_id: "m1",
+          is_active: true,
+        },
+      ],
+    } as never);
+
+    const detail = await employeeModel.findDetailById(EMPLOYEE_ID);
+
+    expect(detail?.phone).toBe("+628110000002");
+    expect(detail?.gender).toBe("female");
+    expect(detail?.employment_status).toBe("permanent");
+    // tanggal tetap berupa teks polos, bukan Date yang bergeser zona waktu
+    expect(detail?.birth_date).toBe("1995-03-14");
+  });
 });
 
 describe("listEmployees", () => {

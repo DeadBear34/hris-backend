@@ -7,6 +7,7 @@ import { sendMailWithoutFailing } from "../helpers/notification.js";
 import { accountApprovedEmail } from "../helpers/emailTemplate.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { clearAccountApproval } from "../helpers/notify.js";
 
 export async function ListPendingUserController(
   _req: Request,
@@ -59,6 +60,10 @@ export async function ApproveUserController(
       "Gagal mengirim email persetujuan akun",
       { email: existing.email },
     );
+
+    // antrean notifikasi dibersihkan supaya penyetuju lain tidak melihat
+    // permintaan yang sudah ditindak
+    clearAccountApproval(id);
 
     activity.success({
       action: "user.approve",

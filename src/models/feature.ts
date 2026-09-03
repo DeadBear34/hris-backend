@@ -72,6 +72,34 @@ export async function findCodesByPosition(
   return result.rows.map((row) => row.code);
 }
 
+// Siapa saja yang berhak atas satu fitur. Role admin melewati seluruh
+// pengecekan fitur, jadi ikut terjaring lewat cabang kedua.
+// Dipakai notifikasi untuk menentukan penerima, misal siapa yang harus
+// diberi tahu kalau ada akun menunggu persetujuan
+export async function findUserIdsWithFeature(code: string): Promise<string[]> {
+  const result = await pool.query<{ user_id: string }>(
+    `SELECT DISTINCT u.id AS user_id
+     FROM users u
+     LEFT JOIN employees e ON e.user_id = u.id AND e.deleted_at IS NULL
+     WHERE u.deleted_at IS NULL
+       AND u.is_active = true
+       AND (
+         u.role = 'admin'
+         OR EXISTS (
+           SELECT 1
+           FROM position_features pf
+           JOIN features f ON f.id = pf.feature_id
+           WHERE pf.position_id = e.position_id
+             AND f.code = $1
+             AND f.is_active = true
+         )
+       )`,
+    [code],
+  );
+
+  return result.rows.map((row) => row.user_id);
+}
+
 export async function findFeaturesByPosition(
   position_id: string,
 ): Promise<Feature[]> {

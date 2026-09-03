@@ -54,12 +54,7 @@ describe("insertUser", () => {
       unknown[],
     ];
 
-    expect(values).toEqual([
-      "ismail@awan.io",
-      "hash-argon2",
-      "employee",
-      at,
-    ]);
+    expect(values).toEqual(["ismail@awan.io", "hash-argon2", "employee", at]);
   });
 
   it("tidak mengembalikan kolom password", async () => {

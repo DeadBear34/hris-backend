@@ -2,15 +2,15 @@ import { logger } from "../config/logger.js";
 import { isSecretLoggingAllowed } from "./mailer.js";
 
 export async function sendMailWithoutFailing(
-  kirim: () => Promise<void>,
-  pesanGagal: string,
+  send: () => Promise<void>,
+  failureMessage: string,
   konteks: Record<string, unknown>,
 ): Promise<boolean> {
   try {
-    await kirim();
+    await send();
     return true;
   } catch (err) {
-    logger.error({ err, ...konteks }, pesanGagal);
+    logger.error({ err, ...konteks }, failureMessage);
     return false;
   }
 }

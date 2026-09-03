@@ -22,13 +22,18 @@ export const MAX_JOIN_DATE_DAYS_AHEAD = 365;
 // tengah malam. Cara ini juga sama persis dengan perhitungan di frontend.
 function ageFrom(birthDate: string): number {
   const [birthYear, birthMonth, birthDay] = birthDate.split("-").map(Number);
-  const [nowYear, nowMonth, nowDay] = todayInOfficeZone().split("-").map(Number);
+  const [nowYear, nowMonth, nowDay] = todayInOfficeZone()
+    .split("-")
+    .map(Number);
 
   if (!birthYear || !birthMonth || !birthDay) return 0;
 
   let age = nowYear! - birthYear;
 
-  if (nowMonth! < birthMonth || (nowMonth === birthMonth && nowDay! < birthDay)) {
+  if (
+    nowMonth! < birthMonth ||
+    (nowMonth === birthMonth && nowDay! < birthDay)
+  ) {
     age -= 1;
   }
 
@@ -86,7 +91,9 @@ const employeeDataSchema = z.object({
       }),
   ),
 
-  address: optionalField(z.string().trim().max(500, "Alamat maksimal 500 karakter")),
+  address: optionalField(
+    z.string().trim().max(500, "Alamat maksimal 500 karakter"),
+  ),
 
   department_id: optionalField(z.uuid("Departemen tidak valid")),
   position_id: optionalField(z.uuid("Jabatan tidak valid")),
@@ -109,10 +116,7 @@ const employeeDataSchema = z.object({
 
 // Tanggal bergabung mustahil mendahului tanggal lahir. Diperiksa di tingkat
 // objek karena membandingkan dua kolom sekaligus
-const datesMakeSense = (data: {
-  birth_date?: unknown;
-  join_date?: unknown;
-}) =>
+const datesMakeSense = (data: { birth_date?: unknown; join_date?: unknown }) =>
   typeof data.birth_date !== "string" ||
   typeof data.join_date !== "string" ||
   data.join_date >= data.birth_date;
@@ -122,20 +126,24 @@ const datesMakeSenseMessage = {
   path: ["join_date"],
 };
 
-export const createEmployeeSchema = employeeDataSchema.extend({
-  email: z
-    .string({ message: "Email wajib diisi" })
-    .trim()
-    .toLowerCase()
-    .pipe(z.email("Format email tidak valid, contoh: nama@domain.com")),
+export const createEmployeeSchema = employeeDataSchema
+  .extend({
+    email: z
+      .string({ message: "Email wajib diisi" })
+      .trim()
+      .toLowerCase()
+      .pipe(z.email("Format email tidak valid, contoh: nama@domain.com")),
 
-  password: z
-    .string({ message: "Password wajib diisi" })
-    .min(8, "Password minimal 8 karakter")
-    .max(72, "Password maksimal 72 karakter"),
+    password: z
+      .string({ message: "Password wajib diisi" })
+      .min(8, "Password minimal 8 karakter")
+      .max(72, "Password maksimal 72 karakter"),
 
-  role: optionalField(z.enum(["employee", "admin"], { message: "Peran tidak dikenal" })),
-}).refine(datesMakeSense, datesMakeSenseMessage);
+    role: optionalField(
+      z.enum(["employee", "admin"], { message: "Peran tidak dikenal" }),
+    ),
+  })
+  .refine(datesMakeSense, datesMakeSenseMessage);
 
 export const updateOwnProfileSchema = employeeDataSchema
   .pick({

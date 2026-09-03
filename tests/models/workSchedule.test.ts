@@ -121,18 +121,14 @@ describe("urutan penentuan jadwal karyawan", () => {
 describe("adalahHariKerja", () => {
   it("mengikuti kolom hari kerja pada jadwal", () => {
     expect(workScheduleModel.isWorkingDay(jadwalUmum, "monday")).toBe(true);
-    expect(workScheduleModel.isWorkingDay(jadwalUmum, "saturday")).toBe(
-      false,
-    );
+    expect(workScheduleModel.isWorkingDay(jadwalUmum, "saturday")).toBe(false);
     expect(workScheduleModel.isWorkingDay(jadwalUmum, "sunday")).toBe(false);
   });
 
   it("menghormati jadwal yang menetapkan Sabtu sebagai hari kerja", () => {
     const jadwalSabtu = { ...jadwalUmum, works_saturday: true };
 
-    expect(workScheduleModel.isWorkingDay(jadwalSabtu, "saturday")).toBe(
-      true,
-    );
+    expect(workScheduleModel.isWorkingDay(jadwalSabtu, "saturday")).toBe(true);
   });
 });
 

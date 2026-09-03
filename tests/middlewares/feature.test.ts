@@ -288,10 +288,7 @@ describe("punyaFitur", () => {
 
 describe("ambilKodeFiturPengguna", () => {
   it("mengembalikan seluruh kode untuk admin", async () => {
-    const codes = await getUserFeatureCodes(
-      siapkanReq("admin"),
-      siapkanRes(),
-    );
+    const codes = await getUserFeatureCodes(siapkanReq("admin"), siapkanRes());
 
     expect(codes).toContain("system.manage_feature");
     expect(codes).toHaveLength(3);

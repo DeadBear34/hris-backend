@@ -84,10 +84,7 @@ async function replacePhoto(
 
   await uploadPhoto(storagePath, berkas.buffer, mime);
 
-  const updated = await employeeModel.updatePhotoPath(
-    employee.id,
-    storagePath,
-  );
+  const updated = await employeeModel.updatePhotoPath(employee.id, storagePath);
 
   if (!updated) {
     await discardOldPhoto(storagePath);

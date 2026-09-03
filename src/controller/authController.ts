@@ -58,7 +58,7 @@ export async function LoginController(
     const { email, password } = req.body;
 
     // Password tidak pernah masuk metadata, hanya email dan sebab gagalnya
-    const tolak = (reason: string, message: string, user_id?: string) => {
+    const reject = (reason: string, message: string, user_id?: string) => {
       activity.failed({
         action: "auth.login",
         entity: "user",
@@ -75,17 +75,17 @@ export async function LoginController(
     const user = await userModel.findByEmail(email);
 
     if (!user) {
-      throw tolak("email_tidak_terdaftar", "Email atau password salah");
+      throw reject("email_tidak_terdaftar", "Email atau password salah");
     }
 
     const valid = await verifyPassword(user.password, password);
 
     if (!valid) {
-      throw tolak("password_salah", "Email atau password salah", user.id);
+      throw reject("password_salah", "Email atau password salah", user.id);
     }
 
     if (!user.email_verified_at) {
-      throw tolak(
+      throw reject(
         "email_belum_diverifikasi",
         "Email belum diverifikasi. Silakan masukkan kode verifikasi yang kami kirim ke email kamu.",
         user.id,
@@ -93,7 +93,7 @@ export async function LoginController(
     }
 
     if (!user.approved_at) {
-      throw tolak(
+      throw reject(
         "belum_disetujui",
         "Akun kamu masih menunggu persetujuan admin",
         user.id,
@@ -101,7 +101,7 @@ export async function LoginController(
     }
 
     if (!user.is_active) {
-      throw tolak(
+      throw reject(
         "akun_nonaktif",
         "Akun kamu dinonaktifkan, silakan hubungi admin",
         user.id,
@@ -205,13 +205,13 @@ export async function UpdateMeController(
       );
     }
 
-    const diperbarui = await employeeModel.updateOwnProfile(
+    const updated = await employeeModel.updateOwnProfile(
       employee.id,
       req.body as employeeModel.UpdateOwnProfileInput,
     );
 
-    const detail = diperbarui
-      ? await employeeModel.findDetailById(diperbarui.id)
+    const detail = updated
+      ? await employeeModel.findDetailById(updated.id)
       : null;
 
     res.json({
@@ -219,7 +219,7 @@ export async function UpdateMeController(
       message: "Profil berhasil diperbarui",
       data: buildProfile(
         user,
-        diperbarui ?? employee,
+        updated ?? employee,
         detail,
         await getUserFeatureCodes(req, res),
       ),

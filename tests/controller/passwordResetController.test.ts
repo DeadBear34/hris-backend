@@ -339,15 +339,15 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .send({ email: EMAIL });
 
     const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
-      Object.hasOwn(data as object, "tautan_reset"),
-    ) as [{ email: string; tautan_reset: string }, string];
+      Object.hasOwn(data as object, "reset_link"),
+    ) as [{ email: string; reset_link: string }, string];
 
     expect(cadangan).toBeDefined();
     expect(cadangan[0].email).toBe(EMAIL);
-    expect(cadangan[0].tautan_reset).toContain(
+    expect(cadangan[0].reset_link).toContain(
       `${env.APP_URL}/reset-password?token=`,
     );
-    expect(cadangan[0].tautan_reset).toMatch(/token=[0-9a-f]{64}/);
+    expect(cadangan[0].reset_link).toMatch(/token=[0-9a-f]{64}/);
   });
 
   it("tidak mencetak tautan reset saat pengiriman email berhasil", async () => {
@@ -358,7 +358,7 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .send({ email: EMAIL });
 
     const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
-      Object.hasOwn(data as object, "tautan_reset"),
+      Object.hasOwn(data as object, "reset_link"),
     );
 
     expect(cadangan).toBeUndefined();
@@ -373,7 +373,7 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .send({ email: "tidakada@awan.io" });
 
     const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
-      Object.hasOwn(data as object, "tautan_reset"),
+      Object.hasOwn(data as object, "reset_link"),
     );
 
     expect(cadangan).toBeUndefined();

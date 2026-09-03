@@ -19,7 +19,10 @@ import { idParamSchema } from "../schema/commonSchema.js";
 const router = Router();
 
 const loggedIn = [authenticate];
-const canManageSchedule = [authenticate, requireFeature("organization.schedule")];
+const canManageSchedule = [
+  authenticate,
+  requireFeature("organization.schedule"),
+];
 
 router.get("/work-schedules/me", ...loggedIn, MyWorkScheduleController);
 

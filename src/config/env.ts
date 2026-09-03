@@ -14,10 +14,7 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET minimal 32 karakter"),
   JWT_EXPIRES_IN: z.string().default("24h"),
-  RESEND_API_KEY: z.preprocess(
-    blankToUndefined,
-    z.string().min(1).optional(),
-  ),
+  RESEND_API_KEY: z.preprocess(blankToUndefined, z.string().min(1).optional()),
 
   MAIL_DRIVER: z.preprocess(
     blankToUndefined,
@@ -37,10 +34,7 @@ export const envSchema = z.object({
     blankToUndefined,
     z.string().min(1).optional(),
   ),
-  TIMEZONE: z.preprocess(
-    blankToUndefined,
-    z.string().default("Asia/Jakarta"),
-  ),
+  TIMEZONE: z.preprocess(blankToUndefined, z.string().default("Asia/Jakarta")),
 
   CRON_SECRET: z.preprocess(
     blankToUndefined,

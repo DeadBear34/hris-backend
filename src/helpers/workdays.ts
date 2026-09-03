@@ -1,7 +1,7 @@
 export type IsoDate = string;
 
-const HARI_MINGGU = 0;
-const HARI_SABTU = 6;
+const SUNDAY = 0;
+const SATURDAY = 6;
 
 export function parseIsoDate(date: IsoDate): Date {
   const [year, month, day] = date.split("-").map(Number);
@@ -20,7 +20,7 @@ export function toIsoDate(date: Date): IsoDate {
 export function isWeekend(date: Date): boolean {
   const day = date.getUTCDay();
 
-  return day === HARI_MINGGU || day === HARI_SABTU;
+  return day === SUNDAY || day === SATURDAY;
 }
 
 export function eachDateInRange(start: IsoDate, end: IsoDate): Date[] {
@@ -52,11 +52,11 @@ export function countWorkdays(
 }
 
 export function daysFromToday(date: IsoDate): number {
-  const hariIni = parseIsoDate(toIsoDate(new Date()));
+  const today = parseIsoDate(toIsoDate(new Date()));
   const target = parseIsoDate(date);
 
   return Math.round(
-    (target.getTime() - hariIni.getTime()) / (24 * 60 * 60 * 1000),
+    (target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
   );
 }
 

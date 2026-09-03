@@ -40,9 +40,9 @@ export async function authenticate(
     const sesi = await userModel.findSessionInfo(payload.id);
 
     if (sesi?.password_changed_at && payload.iat !== undefined) {
-      const diubahPada = Math.floor(sesi.password_changed_at.getTime() / 1000);
+      const changedAt = Math.floor(sesi.password_changed_at.getTime() / 1000);
 
-      if (payload.iat < diubahPada) {
+      if (payload.iat < changedAt) {
         return next(
           Unauthorized(
             "Sesi sudah tidak berlaku karena password telah diubah, silakan login kembali",

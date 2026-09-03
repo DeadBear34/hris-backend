@@ -28,7 +28,7 @@ import {
 import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 
-const KODE_BERLAKU_MENIT = 10;
+const CODE_VALID_MINUTES = 10;
 const TAUTAN_BERLAKU_MENIT = 15;
 const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -61,37 +61,37 @@ async function terbitkanKodeVerifikasi(
 ): Promise<string> {
   await tokenModel.invalidateActive(email, "email_verification");
 
-  const kode = generateVerificationCode();
+  const code = generateVerificationCode();
 
   await tokenModel.createToken({
     email,
     purpose: "email_verification",
-    token_hash: await hashPassword(kode),
-    expires_at: expiresInMinutes(KODE_BERLAKU_MENIT),
+    token_hash: await hashPassword(code),
+    expires_at: expiresInMinutes(CODE_VALID_MINUTES),
     ...konteks,
   });
 
-  return kode;
+  return code;
 }
 
 async function sendVerificationCode(
   email: string,
-  nama: string | null,
+  name: string | null,
   konteks: RequestMeta,
 ): Promise<void> {
-  const kode = await terbitkanKodeVerifikasi(email, konteks);
-  const body = verificationCodeEmail(kode, KODE_BERLAKU_MENIT, nama);
+  const code = await terbitkanKodeVerifikasi(email, konteks);
+  const body = verificationCodeEmail(code, CODE_VALID_MINUTES, name);
 
-  const terkirim = await sendMailWithoutFailing(
+  const sent = await sendMailWithoutFailing(
     () => sendMail({ to: email, subject: body.subject, html: body.html }),
     "Gagal mengirim email verifikasi",
     { email },
   );
 
-  if (!terkirim) {
+  if (!sent) {
     logFallback(
       "Email gagal dikirim, kode verifikasi dicetak di sini agar pengembangan dapat dilanjutkan",
-      { email, kode_verifikasi: kode },
+      { email, verification_code: code },
     );
   }
 }
@@ -106,7 +106,7 @@ async function verifikasiToken(
   email: string,
   purpose: TokenPurpose,
   value: string,
-  pesanGagal: string,
+  failureMessage: string,
 ): Promise<VerificationToken> {
   const token = await tokenModel.findLatest(email, purpose);
 
@@ -115,7 +115,7 @@ async function verifikasiToken(
       { email, purpose, reason: "token belum pernah diterbitkan" },
       "Verifikasi token ditolak",
     );
-    throw BadRequest(pesanGagal);
+    throw BadRequest(failureMessage);
   }
 
   let reason: string | null = null;
@@ -133,7 +133,7 @@ async function verifikasiToken(
   if (reason) {
     await increaseAttempts(token);
     logger.warn({ email, purpose, alasan: reason }, "Verifikasi token ditolak");
-    throw BadRequest(pesanGagal);
+    throw BadRequest(failureMessage);
   }
 
   return token;
@@ -358,24 +358,24 @@ export async function ForgotPasswordController(
         ...requestMeta(req),
       });
 
-      const tautan = `${env.APP_URL}/reset-password?token=${value}&email=${encodeURIComponent(email)}`;
+      const link = `${env.APP_URL}/reset-password?token=${value}&email=${encodeURIComponent(email)}`;
       const employee = await employeeModel.findByUserId(user.id);
       const body = passwordResetEmail(
-        tautan,
+        link,
         TAUTAN_BERLAKU_MENIT,
         employee?.full_name ?? null,
       );
 
-      const terkirim = await sendMailWithoutFailing(
+      const sent = await sendMailWithoutFailing(
         () => sendMail({ to: email, subject: body.subject, html: body.html }),
         "Gagal mengirim email reset password",
         { email },
       );
 
-      if (!terkirim) {
+      if (!sent) {
         logFallback(
           "Email gagal dikirim, tautan reset password dicetak di sini agar pengembangan dapat dilanjutkan",
-          { email, tautan_reset: tautan },
+          { email, reset_link: link },
         );
       }
     }

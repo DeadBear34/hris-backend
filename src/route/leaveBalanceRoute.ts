@@ -22,10 +22,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 const router = Router();
 const loggedIn = [authenticate];
 const canViewAllLeave = [authenticate, requireFeature("leave.view_all")];
-const canAdjustBalance = [
-  authenticate,
-  requireFeature("leave.adjust_balance"),
-];
+const canAdjustBalance = [authenticate, requireFeature("leave.adjust_balance")];
 
 router.get(
   "/leave-balances/me",

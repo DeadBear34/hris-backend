@@ -24,7 +24,7 @@ const CATEGORY_LABEL: Record<FeatureCategory, string> = {
   system: "Sistem",
 };
 
-function kelompokkanPerKategori(features: Feature[]) {
+function groupByCategory(features: Feature[]) {
   return CATEGORY_ORDER.map((category) => ({
     category,
     label: CATEGORY_LABEL[category],
@@ -44,7 +44,7 @@ export async function ListFeatureCatalogController(
       success: true,
       data: {
         total: features.length,
-        categories: kelompokkanPerKategori(features),
+        categories: groupByCategory(features),
       },
     });
   } catch (err) {
@@ -97,12 +97,12 @@ export async function ReplacePositionFeatureController(
     const dikenal = await featureModel.findByCodes(diminta);
 
     if (dikenal.length !== diminta.length) {
-      const kodeDikenal = new Set(dikenal.map((f) => f.code));
-      const tidakDikenal = diminta.filter((code) => !kodeDikenal.has(code));
+      const knownCodes = new Set(dikenal.map((f) => f.code));
+      const unknownCodes = diminta.filter((code) => !knownCodes.has(code));
 
       throw BadRequest(
-        `Kode fitur berikut tidak dikenal: ${tidakDikenal.join(", ")}`,
-        { unknown_codes: tidakDikenal },
+        `Kode fitur berikut tidak dikenal: ${unknownCodes.join(", ")}`,
+        { unknown_codes: unknownCodes },
       );
     }
 
@@ -165,7 +165,7 @@ export async function FeatureMatrixController(
           name: p.name,
           level: p.level,
         })),
-        categories: kelompokkanPerKategori(features),
+        categories: groupByCategory(features),
         grants,
       },
     });

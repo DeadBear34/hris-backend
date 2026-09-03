@@ -46,7 +46,6 @@ router.post(
   CreateEmployeeController,
 );
 
-
 router.get(
   "/employees/:id",
   ...canViewEmployees,

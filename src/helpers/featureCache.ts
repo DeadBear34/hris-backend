@@ -2,7 +2,7 @@ const MASA_BERLAKU_MS = 60_000;
 
 interface Entri {
   codes: string[];
-  kedaluwarsaPada: number;
+  expiresAt: number;
 }
 
 const cache = new Map<string, Entri>();
@@ -12,7 +12,7 @@ export function readFromCache(position_id: string): string[] | null {
 
   if (!entri) return null;
 
-  if (Date.now() >= entri.kedaluwarsaPada) {
+  if (Date.now() >= entri.expiresAt) {
     cache.delete(position_id);
     return null;
   }
@@ -23,7 +23,7 @@ export function readFromCache(position_id: string): string[] | null {
 export function writeToCache(position_id: string, codes: string[]): void {
   cache.set(position_id, {
     codes,
-    kedaluwarsaPada: Date.now() + MASA_BERLAKU_MS,
+    expiresAt: Date.now() + MASA_BERLAKU_MS,
   });
 }
 

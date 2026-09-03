@@ -1,4 +1,3 @@
-import type pg from "pg";
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "../config/databaseConnection.js";
 import * as employeeModel from "../models/employee.js";
@@ -10,7 +9,7 @@ import type {
   CreateEmployeeInput,
   UpdateEmployeeInput,
 } from "../models/employee.js";
-import type { UserRole } from "../models/user.js";
+import type { UserRole, Executor } from "../models/user.js";
 import type { ZodError } from "zod";
 import { hashPassword } from "../helpers/password.js";
 import {
@@ -274,11 +273,11 @@ function indexedObjectToRows(payload: Record<string, unknown>): unknown[] {
   }
 
   if (missing.length > 0) {
-    const diterima = entries.map((entry) => entry.key);
+    const accepted = entries.map((entry) => entry.key);
 
     throw BadRequest(
-      `Kunci karyawan harus berurutan dari 0 sampai ${entries.length - 1} tanpa ada yang terlewat. Yang hilang: ${missing.join(", ")}. Yang diterima: ${diterima.join(", ")}`,
-      { expected: entries.length, missing, received: diterima },
+      `Kunci karyawan harus berurutan dari 0 sampai ${entries.length - 1} tanpa ada yang terlewat. Yang hilang: ${missing.join(", ")}. Yang diterima: ${accepted.join(", ")}`,
+      { expected: entries.length, missing, received: accepted },
     );
   }
 
@@ -286,6 +285,225 @@ function indexedObjectToRows(payload: Record<string, unknown>): unknown[] {
 }
 
 // Menambah karyawan satu objek, array, atau objek berkunci nomor
+// Bentuk kiriman menentukan bentuk jawaban: satu objek dijawab satu objek,
+// array atau objek berkunci nomor dijawab berupa daftar
+function readPayloadRows(payload: unknown): {
+  rawRows: unknown[];
+  isMany: boolean;
+} {
+  if (isIndexedObject(payload)) {
+    return { rawRows: indexedObjectToRows(payload), isMany: true };
+  }
+
+  if (Array.isArray(payload)) {
+    return { rawRows: payload, isMany: true };
+  }
+
+  return { rawRows: [payload], isMany: false };
+}
+
+// Tahap 1: periksa bentuk tiap baris, yaitu kolom kosong dan data tidak sesuai
+function validateShapes(
+  rawRows: unknown[],
+  isMany: boolean,
+): { rows: NewEmployee[]; failed: FailedRow[] } {
+  const rows: NewEmployee[] = [];
+  const failed: FailedRow[] = [];
+
+  for (const [index, row] of rawRows.entries()) {
+    const parsed = createEmployeeSchema.safeParse(row);
+
+    if (parsed.success) {
+      rows.push(parsed.data as NewEmployee);
+      continue;
+    }
+
+    // Kiriman satu objek dilempar apa adanya biar jawabannya tetap
+    // VALIDATION_ERROR seperti sebelumnya
+    if (!isMany) throw parsed.error;
+
+    failed.push(
+      toFailedRow(index, readEmail(row), fieldErrorsFromZod(parsed.error)),
+    );
+  }
+
+  return { rows, failed };
+}
+
+// Tahap 2: periksa isinya ke database, hanya untuk baris yang bentuknya benar.
+// Semua email dicek sekali jalan, bukan satu query per baris
+async function validateAgainstDatabase(
+  rawRows: unknown[],
+  rows: NewEmployee[],
+  shapeFailedIndexes: Set<number>,
+): Promise<FailedRow[]> {
+  const failed: FailedRow[] = [];
+
+  const takenEmails = new Set(
+    await userModel.findExistingEmails(rows.map((row) => row.email)),
+  );
+  const relationCache = new Map<string, Promise<FieldError[]>>();
+  const seenEmails = new Map<string, number>();
+
+  // rows hanya berisi baris yang lolos tahap 1, jadi penomorannya berjalan
+  // sendiri dan tidak sama dengan penomoran rawRows
+  let validIndex = 0;
+
+  for (const index of rawRows.keys()) {
+    if (shapeFailedIndexes.has(index)) continue;
+
+    const data = rows[validIndex]!;
+    validIndex += 1;
+
+    const errors = await checkRowAgainstDatabase(
+      data,
+      index,
+      seenEmails,
+      takenEmails,
+      relationCache,
+    );
+
+    if (errors.length > 0) {
+      const isDuplicate = errors.some((g) => g.field === "email");
+      failed.push(toFailedRow(index, data.email, errors, isDuplicate));
+    }
+  }
+
+  return failed;
+}
+
+// Tahap 3: satu baris gagal berarti tidak ada satu pun yang disimpan
+function rejectFailedRows(
+  failed: FailedRow[],
+  rawRows: unknown[],
+  isMany: boolean,
+  context: RequestContext,
+  occurredAt: Date,
+): never {
+  failed.sort((a, b) => a.index - b.index);
+
+  const first = failed[0]!;
+
+  // Kiriman satu objek tidak punya daftar baris untuk dilaporkan
+  if (!isMany) {
+    recordActivity({
+      action: "employee.create",
+      status: "failed",
+      context,
+      entity: "employee",
+      summary: `Penambahan karyawan ditolak: ${first.message}`,
+      occurred_at: occurredAt,
+      metadata: {
+        email: first.email,
+        fields: first.errors.map((e) => e.field),
+      },
+    });
+
+    throw first.isDuplicate
+      ? Conflict(first.message)
+      : BadRequest(first.message);
+  }
+
+  recordActivity({
+    action: "employee.create_bulk",
+    status: "failed",
+    context,
+    entity: "employee",
+    summary: `Penambahan karyawan ditolak, ${failed.length} dari ${rawRows.length} baris bermasalah`,
+    occurred_at: occurredAt,
+    metadata: {
+      total: rawRows.length,
+      valid: rawRows.length - failed.length,
+      invalid: failed.length,
+      // password tidak pernah ikut dicatat
+      failed_rows: summarizeList(
+        failed.map((row) => ({
+          index: row.index,
+          email: row.email,
+          fields: row.errors.map((e) => e.field),
+        })),
+      ),
+    },
+  });
+
+  throw BadRequest(
+    `${failed.length} dari ${rawRows.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
+    {
+      total: rawRows.length,
+      valid: rawRows.length - failed.length,
+      invalid: failed.length,
+      failed_rows: failed.map(({ isDuplicate: _isDuplicate, ...row }) => row),
+    },
+  );
+}
+
+// argon2 lambat, jadi dijalankan sebelum transaksi dibuka. Password yang sama
+// cukup dihitung sekali, dan impor massal biasanya memakai satu password awal
+function hashPasswords(rows: NewEmployee[]): Promise<string[]> {
+  const cache = new Map<string, Promise<string>>();
+
+  return Promise.all(
+    rows.map((row) => {
+      const cached = cache.get(row.password);
+      if (cached) return cached;
+
+      const pending = hashPassword(row.password);
+      cache.set(row.password, pending);
+
+      return pending;
+    }),
+  );
+}
+
+// Satu query untuk semua akun, satu lagi untuk semua karyawan. Kalau ditulis
+// satu per satu, 20 baris jadi 40 perjalanan ke database
+async function insertWithAccounts(
+  client: Executor,
+  rows: NewEmployee[],
+  hashed: string[],
+  adminId: string,
+) {
+  const accounts = await userModel.insertUsersByAdmin(
+    client,
+    rows.map((row, index) => ({
+      email: row.email,
+      password: hashed[index]!,
+      role: row.role ?? "employee",
+    })),
+    adminId,
+  );
+
+  // Jumlah akun wajib sama dengan jumlah baris, kalau tidak ada karyawan yang
+  // akan tersimpan tanpa akun
+  if (accounts.length !== rows.length) {
+    throw new Error(
+      `Jumlah akun yang dibuat (${accounts.length}) tidak cocok dengan jumlah karyawan (${rows.length})`,
+    );
+  }
+
+  const employees = await employeeModel.createEmployees(
+    client,
+    rows.map((row, index) => {
+      const { email: _email, password: _password, role: _role, ...data } = row;
+
+      return { user_id: accounts[index]!.id, data };
+    }),
+  );
+
+  return employees.map((employee, index) => ({
+    // index disertakan supaya frontend dapat mencocokkan tiap hasil kembali
+    // ke nomor kiriman tanpa mengandalkan urutan
+    index,
+    employee,
+    account: {
+      id: accounts[index]!.id,
+      email: accounts[index]!.email,
+      role: accounts[index]!.role,
+      must_change_password: accounts[index]!.must_change_password,
+    },
+  }));
+}
+
 export async function CreateEmployeeController(
   req: Request,
   res: Response,
@@ -309,17 +527,7 @@ export async function CreateEmployeeController(
     logOccurredAt = occurredAt;
     logContext = context;
 
-    // Cek bentuk kiriman array atau objek kalo berkunci nomor berarti banyak,
-    // objek biasa itu berarti satu karyawan
-    const payload = req.body as unknown;
-    const indexed = isIndexedObject(payload);
-    const isMany = Array.isArray(payload) || indexed;
-
-    const rawRows: unknown[] = indexed
-      ? indexedObjectToRows(payload)
-      : Array.isArray(payload)
-        ? payload
-        : [payload];
+    const { rawRows, isMany } = readPayloadRows(req.body as unknown);
 
     if (rawRows.length > MAX_EMPLOYEES_PER_REQUEST) {
       throw BadRequest(
@@ -327,184 +535,22 @@ export async function CreateEmployeeController(
       );
     }
 
-    const failed: FailedRow[] = [];
-    const rows: NewEmployee[] = [];
+    const { rows, failed } = validateShapes(rawRows, isMany);
+    const shapeFailedIndexes = new Set(failed.map((row) => row.index));
 
-    // Tahap 1 cek bentuk tiap baris, yaitu kolom kosong dan data tidak sesuai
-    for (const [index, row] of rawRows.entries()) {
-      const parsed = createEmployeeSchema.safeParse(row);
-
-      if (parsed.success) {
-        rows.push(parsed.data as NewEmployee);
-        continue;
-      }
-
-      // Kiriman satu objek dilempar apa adanya biar jawabannya tetap
-      // VALIDATION_ERROR seperti sebelumnya
-      if (!isMany) throw parsed.error;
-
-      failed.push(
-        toFailedRow(index, readEmail(row), fieldErrorsFromZod(parsed.error)),
-      );
-    }
-
-    // Tahap 2: cek isinya ke database, cuma untuk baris yang bentuknya benar.
-    // Semua email dicek sekali jalan, bukan satu query per baris
-    const takenEmails = new Set(
-      await userModel.findExistingEmails(rows.map((row) => row.email)),
+    failed.push(
+      ...(await validateAgainstDatabase(rawRows, rows, shapeFailedIndexes)),
     );
-    const relationCache = new Map<string, Promise<FieldError[]>>();
-    const seenEmails = new Map<string, number>();
-    let validIndex = 0;
-
-    for (const [index, row] of rawRows.entries()) {
-      if (failed.some((g) => g.index === index)) continue;
-
-      const data = rows[validIndex]!;
-      validIndex += 1;
-
-      const errors = await checkRowAgainstDatabase(
-        data,
-        index,
-        seenEmails,
-        takenEmails,
-        relationCache,
-      );
-
-      if (errors.length > 0) {
-        const isDuplicate = errors.some((g) => g.field === "email");
-        failed.push(toFailedRow(index, data.email, errors, isDuplicate));
-      }
-    }
 
     if (failed.length > 0) {
-      failed.sort((a, b) => a.index - b.index);
-
-      const first = failed[0]!;
-
-      // Kiriman satu objek tidak punya daftar baris untuk dilaporkan,
-      if (!isMany) {
-        // catat penolakan pada kiriman satu objek
-        recordActivity({
-          action: "employee.create",
-          status: "failed",
-          context,
-          entity: "employee",
-          summary: `Penambahan karyawan ditolak: ${first.message}`,
-          occurred_at: occurredAt,
-          metadata: {
-            email: first.email,
-            fields: first.errors.map((e) => e.field),
-          },
-        });
-
-        throw first.isDuplicate
-          ? Conflict(first.message)
-          : BadRequest(first.message);
-      }
-
-      // catat penolakan validasi pada kiriman banyak
-      recordActivity({
-        action: isMany ? "employee.create_bulk" : "employee.create",
-        status: "failed",
-        context,
-        entity: "employee",
-        summary: `Penambahan karyawan ditolak, ${failed.length} dari ${rawRows.length} baris bermasalah`,
-        occurred_at: occurredAt,
-        metadata: {
-          total: rawRows.length,
-          valid: rawRows.length - failed.length,
-          invalid: failed.length,
-          // password tidak pernah ikut dicatat
-          failed_rows: summarizeList(
-            failed.map((row) => ({
-              index: row.index,
-              email: row.email,
-              fields: row.errors.map((e) => e.field),
-            })),
-          ),
-        },
-      });
-
-      // Semua baris gagal di laporkan sekaligus dan tidak ada yang disimpan
-      throw BadRequest(
-        `${failed.length} dari ${rawRows.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
-        {
-          total: rawRows.length,
-          valid: rawRows.length - failed.length,
-          invalid: failed.length,
-          failed_rows: failed.map(
-            ({ isDuplicate: _isDuplicate, ...row }) => row,
-          ),
-        },
-      );
+      rejectFailedRows(failed, rawRows, isMany, context, occurredAt);
     }
 
-    // Sebelum transaksi dibuka karena argon2 lambat. Password yang sama cukup
-    // dihitung sekali, dan impor massal biasanya memakai satu password awal
-    const hashCache = new Map<string, Promise<string>>();
-    const hashed = await Promise.all(
-      rows.map((row) => {
-        const cached = hashCache.get(row.password);
-        if (cached) return cached;
-
-        const pending = hashPassword(row.password);
-        hashCache.set(row.password, pending);
-
-        return pending;
-      }),
-    );
+    const hashed = await hashPasswords(rows);
 
     await client.query("BEGIN");
-
-    // Satu query untuk semua akun, satu lagi untuk semua karyawan. Kalau
-    // ditulis satu per satu, 250 baris jadi 500 perjalanan ke database
-    const accounts = await userModel.insertUsersByAdmin(
-      client,
-      rows.map((row, index) => ({
-        email: row.email,
-        password: hashed[index]!,
-        role: row.role ?? "employee",
-      })),
-      req.user.id,
-    );
-
-    // Jumlah akun wajib sama dengan jumlah baris, kalau tidak ada karyawan yang
-    // akan tersimpan tanpa akun
-    if (accounts.length !== rows.length) {
-      throw new Error(
-        `Jumlah akun yang dibuat (${accounts.length}) tidak cocok dengan jumlah karyawan (${rows.length})`,
-      );
-    }
-
-    const employees = await employeeModel.createEmployees(
-      client,
-      rows.map((row, index) => {
-        const {
-          email: _email,
-          password: _password,
-          role: _role,
-          ...data
-        } = row;
-
-        return { user_id: accounts[index]!.id, data };
-      }),
-    );
-
+    const created = await insertWithAccounts(client, rows, hashed, req.user.id);
     await client.query("COMMIT");
-
-    const created = employees.map((employee, index) => ({
-      // index disertakan supaya frontend dapat mencocokkan tiap hasil kembali
-      // ke nomor kiriman tanpa mengandalkan urutan
-      index,
-      employee,
-      account: {
-        id: accounts[index]!.id,
-        email: accounts[index]!.email,
-        role: accounts[index]!.role,
-        must_change_password: accounts[index]!.must_change_password,
-      },
-    }));
 
     const message = isMany
       ? `${created.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`

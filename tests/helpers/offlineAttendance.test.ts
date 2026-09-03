@@ -109,7 +109,9 @@ describe("alasanWaktuOfflineDitolak", () => {
     const offline = new Date("2026-08-19T23:00:00Z");
     const server = new Date("2026-08-20T02:00:00Z");
 
-    expect(rejectionReasonForOfflineTime(offline, server, MENIT_MASUK)).toBeNull();
+    expect(
+      rejectionReasonForOfflineTime(offline, server, MENIT_MASUK),
+    ).toBeNull();
   });
 });
 
@@ -121,7 +123,9 @@ describe("susunCatatanOffline", () => {
       null,
     );
 
-    expect(noteField).toBe("[Absen offline pukul 07:55, diterima server 09:12]");
+    expect(noteField).toBe(
+      "[Absen offline pukul 07:55, diterima server 09:12]",
+    );
   });
 
   it("mempertahankan catatan asli karyawan", () => {

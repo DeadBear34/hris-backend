@@ -1,18 +1,18 @@
 export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
 
-const TRANSISI_DIIZINKAN: Record<LeaveStatus, LeaveStatus[]> = {
+const ALLOWED_TRANSITIONS: Record<LeaveStatus, LeaveStatus[]> = {
   pending: ["approved", "rejected", "cancelled"],
   approved: ["cancelled"],
   rejected: [],
   cancelled: [],
 };
 
-export function canTransition(dari: LeaveStatus, ke: LeaveStatus): boolean {
-  return TRANSISI_DIIZINKAN[dari].includes(ke);
+export function canTransition(from: LeaveStatus, to: LeaveStatus): boolean {
+  return ALLOWED_TRANSITIONS[from].includes(to);
 }
 
-export function allowedTransitions(dari: LeaveStatus): LeaveStatus[] {
-  return [...TRANSISI_DIIZINKAN[dari]];
+export function allowedTransitions(from: LeaveStatus): LeaveStatus[] {
+  return [...ALLOWED_TRANSITIONS[from]];
 }
 
 const LABEL: Record<LeaveStatus, string> = {

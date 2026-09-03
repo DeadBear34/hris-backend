@@ -246,8 +246,13 @@ describe("POST /api/v1/auth/register", () => {
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
-    const [, , , , at] = (userModel.insertUser as jest.Mock).mock
-      .calls[0] as [unknown, string, string, string, Date];
+    const [, , , , at] = (userModel.insertUser as jest.Mock).mock.calls[0] as [
+      unknown,
+      string,
+      string,
+      string,
+      Date,
+    ];
 
     expect(at).toBeInstanceOf(Date);
   });

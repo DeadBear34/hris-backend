@@ -23,8 +23,8 @@ async function getRequestEmployee(
 }
 
 async function getPositionFeatureCodes(position_id: string): Promise<string[]> {
-  const dariCache = readFromCache(position_id);
-  if (dariCache) return dariCache;
+  const fromCache = readFromCache(position_id);
+  if (fromCache) return fromCache;
 
   const codes = await featureModel.findCodesByPosition(position_id);
   writeToCache(position_id, codes);

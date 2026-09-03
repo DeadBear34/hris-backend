@@ -7,7 +7,7 @@ import type { ListLedgerParams } from "../models/leaveBalance.js";
 import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 
-function tahunBerjalan(): number {
+function currentYear(): number {
   return new Date().getUTCFullYear();
 }
 
@@ -34,13 +34,13 @@ export async function MyLeaveBalanceController(
   try {
     const employee = await getRequesterEmployee(req);
     const { period_year } = res.locals.query as { period_year?: number };
-    const periode = period_year ?? tahunBerjalan();
+    const period = period_year ?? currentYear();
 
-    const balances = await balanceModel.summaryFor(employee.id, periode);
+    const balances = await balanceModel.summaryFor(employee.id, period);
 
     res.json({
       success: true,
-      data: { employee_id: employee.id, period_year: periode, balances },
+      data: { employee_id: employee.id, period_year: period, balances },
     });
   } catch (err) {
     next(err);
@@ -55,19 +55,19 @@ export async function EmployeeLeaveBalanceController(
   try {
     const { id } = res.locals.params as { id: string };
     const { period_year } = res.locals.query as { period_year?: number };
-    const periode = period_year ?? tahunBerjalan();
+    const period = period_year ?? currentYear();
 
     const employee = await employeeModel.findById(id);
     if (!employee) throw NotFound("Karyawan tidak ditemukan");
 
-    const balances = await balanceModel.summaryFor(employee.id, periode);
+    const balances = await balanceModel.summaryFor(employee.id, period);
 
     res.json({
       success: true,
       data: {
         employee_id: employee.id,
         employee_name: employee.full_name,
-        period_year: periode,
+        period_year: period,
         balances,
       },
     });

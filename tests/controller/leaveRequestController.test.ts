@@ -795,8 +795,8 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
   it("meneruskan catatan keputusan ke model", async () => {
     await tolak();
 
-    const [, , , noteField] = (leaveRequestModel.rejectRequest as jest.Mock).mock
-      .calls[0] as [unknown, string, string, string | null];
+    const [, , , noteField] = (leaveRequestModel.rejectRequest as jest.Mock)
+      .mock.calls[0] as [unknown, string, string, string | null];
 
     expect(noteField).toBe("Kebutuhan tim sedang tinggi");
   });

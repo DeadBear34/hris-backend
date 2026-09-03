@@ -21,10 +21,7 @@ import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
 const loggedIn = [authenticate];
-const canManageLeaveTypes = [
-  authenticate,
-  requireFeature("leave.manage_type"),
-];
+const canManageLeaveTypes = [authenticate, requireFeature("leave.manage_type")];
 
 router.get("/leave-types", ...loggedIn, ListLeaveTypeController);
 

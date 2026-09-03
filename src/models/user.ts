@@ -200,10 +200,10 @@ export async function findPending(): Promise<PendingUser[]> {
 // ke database sebanyak jumlah barisnya
 export async function insertUsersByAdmin(
   db: Executor,
-  daftar: { email: string; password: string; role: UserRole }[],
+  items: { email: string; password: string; role: UserRole }[],
   approved_by: string,
 ): Promise<User[]> {
-  if (daftar.length === 0) return [];
+  if (items.length === 0) return [];
 
   const result = await db.query<User>(
     `INSERT INTO users
@@ -216,14 +216,14 @@ export async function insertUsersByAdmin(
        AS baris(email, password, role)
      RETURNING ${SAFE_COLUMNS}`,
     [
-      daftar.map((row) => row.email),
-      daftar.map((row) => row.password),
-      daftar.map((row) => row.role),
+      items.map((row) => row.email),
+      items.map((row) => row.password),
+      items.map((row) => row.role),
       approved_by,
     ],
   );
 
-  if (result.rows.length !== daftar.length) {
+  if (result.rows.length !== items.length) {
     throw new Error("Gagal menyimpan sebagian akun");
   }
 

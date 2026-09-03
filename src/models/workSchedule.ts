@@ -309,10 +309,7 @@ export async function countEmployees(id: string): Promise<number> {
   return Number(result.rows[0]?.count ?? 0);
 }
 
-export function isWorkingDay(
-  schedule: WorkSchedule,
-  day: DayName,
-): boolean {
+export function isWorkingDay(schedule: WorkSchedule, day: DayName): boolean {
   switch (day) {
     case "monday":
       return schedule.works_monday;

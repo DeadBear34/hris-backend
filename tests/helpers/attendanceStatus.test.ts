@@ -99,9 +99,7 @@ describe("tentukanStatusKedatangan", () => {
 });
 
 describe("tentukanPenandaHarian", () => {
-  const state = (
-    ubah: Partial<Parameters<typeof decideDailyMarker>[0]>,
-  ) =>
+  const state = (ubah: Partial<Parameters<typeof decideDailyMarker>[0]>) =>
     decideDailyMarker({
       alreadyRecorded: false,
       isHoliday: false,

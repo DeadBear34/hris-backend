@@ -57,7 +57,10 @@ function meta(total: number, page: number, limit: number) {
   };
 }
 
-async function getRequesterEmployee(req: Request, res: Response): Promise<Employee> {
+async function getRequesterEmployee(
+  req: Request,
+  res: Response,
+): Promise<Employee> {
   if (!req.user) {
     throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
   }
@@ -118,12 +121,12 @@ function requestedMonth(query: { month?: number; year?: number }): {
   month: number;
   year: number;
 } {
-  const sekarang = toLocalTime();
-  const [tahunKini, bulanKini] = sekarang.date.split("-").map(Number);
+  const now = toLocalTime();
+  const [thisYear, thisMonth] = now.date.split("-").map(Number);
 
   return {
-    month: query.month ?? bulanKini!,
-    year: query.year ?? tahunKini!,
+    month: query.month ?? thisMonth!,
+    year: query.year ?? thisYear!,
   };
 }
 
@@ -143,10 +146,7 @@ async function blockedReasonForDate(
     return `Tanggal ${date} adalah hari libur ${holiday.name}`;
   }
 
-  const leave = await leaveRequestModel.findApprovedCovering(
-    employee_id,
-    date,
-  );
+  const leave = await leaveRequestModel.findApprovedCovering(employee_id, date);
 
   if (leave) {
     return `Kamu sedang menjalani cuti yang disetujui pada tanggal ${date}`;
@@ -158,7 +158,7 @@ async function blockedReasonForDate(
 function rejectEvent(
   eventId: string,
   reason: string,
-  buatGalat: (message: string) => Error,
+  makeError: (message: string) => Error,
 ): Error {
   void eventModel
     .markRejected(eventId, reason)
@@ -169,7 +169,7 @@ function rejectEvent(
       ),
     );
 
-  return buatGalat(reason);
+  return makeError(reason);
 }
 
 interface AttendanceTime {
@@ -203,10 +203,10 @@ function shortTime(at: string): string {
 
 function arrivalDecision(
   schedule: WorkSchedule,
-  menitSekarang: number,
+  currentMinutes: number,
 ): ArrivalOutcome {
   return decideArrivalStatus(
-    menitSekarang,
+    currentMinutes,
     minutesFromClockTime(schedule.start_time),
     schedule.late_tolerance_minutes,
     minutesFromClockTime(schedule.absent_cutoff_time),
@@ -215,9 +215,9 @@ function arrivalDecision(
 
 function blockedReasonForTime(
   schedule: WorkSchedule,
-  menitSekarang: number,
+  currentMinutes: number,
 ): string | null {
-  if (arrivalDecision(schedule, menitSekarang) !== "ditolak") return null;
+  if (arrivalDecision(schedule, currentMinutes) !== "ditolak") return null;
 
   return `Absensi masuk sudah ditutup pukul ${shortTime(schedule.absent_cutoff_time)}, kamu tercatat tidak hadir hari ini`;
 }
@@ -236,16 +236,16 @@ export async function CheckInController(
       offline_time?: string;
     };
 
-    const sekarang = new Date();
+    const now = new Date();
     const schedule = await getSchedule(employee.id);
 
-    const attendanceAt = resolveAttendanceTime(offline_time, sekarang, schedule);
+    const attendanceAt = resolveAttendanceTime(offline_time, now, schedule);
 
     const event = await eventModel.recordEvent({
       employee_id: employee.id,
       kind: "check_in",
       occurred_at: attendanceAt.at,
-      received_at: sekarang,
+      received_at: now,
       source: attendanceAt.offline ? "offline_sync" : "online",
       note: note ?? null,
     });
@@ -253,11 +253,7 @@ export async function CheckInController(
     const local = toLocalTime(attendanceAt.at);
     const date = local.date;
 
-    const terhalang = await blockedReasonForDate(
-      employee.id,
-      schedule,
-      date,
-    );
+    const terhalang = await blockedReasonForDate(employee.id, schedule, date);
     if (terhalang) throw rejectEvent(event.id, terhalang, BadRequest);
 
     const existing = await attendanceModel.findByEmployeeAndDate(
@@ -279,7 +275,10 @@ export async function CheckInController(
     if (ditutup) throw rejectEvent(event.id, ditutup, BadRequest);
 
     const startMinutes = minutesFromClockTime(schedule.start_time);
-    const diffMinutes = lateMinutesFrom(local.minutesSinceMidnight, startMinutes);
+    const diffMinutes = lateMinutesFrom(
+      local.minutesSinceMidnight,
+      startMinutes,
+    );
 
     const terlambat =
       arrivalDecision(schedule, local.minutesSinceMidnight) === "late";
@@ -288,12 +287,12 @@ export async function CheckInController(
       employee_id: employee.id,
       attendance_date: date,
       check_in_at: attendanceAt.at,
-      check_in_recorded_at: sekarang,
+      check_in_recorded_at: now,
       check_in_source: attendanceAt.offline ? "offline_sync" : "online",
       status: terlambat ? "late" : "present",
       late_minutes: terlambat ? diffMinutes : 0,
       note: attendanceAt.offline
-        ? buildOfflineNote(attendanceAt.at, sekarang, note ?? null)
+        ? buildOfflineNote(attendanceAt.at, now, note ?? null)
         : (note ?? null),
     });
 
@@ -324,16 +323,16 @@ export async function CheckOutController(
 
     const { offline_time } = req.body as { offline_time?: string };
 
-    const sekarang = new Date();
+    const now = new Date();
     const schedule = await getSchedule(employee.id);
 
-    const attendanceAt = resolveAttendanceTime(offline_time, sekarang, schedule);
+    const attendanceAt = resolveAttendanceTime(offline_time, now, schedule);
 
     const event = await eventModel.recordEvent({
       employee_id: employee.id,
       kind: "check_out",
       occurred_at: attendanceAt.at,
-      received_at: sekarang,
+      received_at: now,
       source: attendanceAt.offline ? "offline_sync" : "online",
     });
 
@@ -385,7 +384,7 @@ export async function CheckOutController(
     const attendance = await attendanceModel.setCheckOut(
       existing.id,
       attendanceAt.at,
-      sekarang,
+      now,
       attendanceAt.offline ? "offline_sync" : "online",
       workedMinutes,
     );
@@ -416,8 +415,8 @@ export async function TodayAttendanceController(
   try {
     const employee = await getRequesterEmployee(req, res);
 
-    const sekarang = new Date();
-    const date = todayInOfficeZone(sekarang);
+    const now = new Date();
+    const date = todayInOfficeZone(now);
 
     const schedule = await workScheduleModel.resolveForEmployee(employee.id);
     const attendance = await attendanceModel.findByEmployeeAndDate(
@@ -431,7 +430,7 @@ export async function TodayAttendanceController(
           ? null
           : blockedReasonForTime(
               schedule,
-              toLocalTime(sekarang).minutesSinceMidnight,
+              toLocalTime(now).minutesSinceMidnight,
             )))
       : "Belum ada jadwal kerja yang berlaku untukmu, hubungi admin";
 
@@ -439,7 +438,7 @@ export async function TodayAttendanceController(
       success: true,
       data: {
         date: date,
-        server_time: clockTimeOf(sekarang),
+        server_time: clockTimeOf(now),
         schedule,
         attendance,
         can_check_in: Boolean(schedule) && !terhalang && !attendance,
@@ -590,17 +589,18 @@ interface TimeWitness {
 }
 
 function witnessAfterCorrection(
-  waktuBaru: Date | null,
-  waktuLama: Date | null,
+  newTime: Date | null,
+  previousTime: Date | null,
   saksiLama: TimeWitness,
   correctedAt: Date,
 ): TimeWitness {
-  if (!waktuBaru) return { recorded_at: null, source: null };
+  if (!newTime) return { recorded_at: null, source: null };
 
-  const tidakBerubah =
-    waktuLama !== null && new Date(waktuLama).getTime() === waktuBaru.getTime();
+  const unchanged =
+    previousTime !== null &&
+    new Date(previousTime).getTime() === newTime.getTime();
 
-  if (tidakBerubah && saksiLama.recorded_at && saksiLama.source) {
+  if (unchanged && saksiLama.recorded_at && saksiLama.source) {
     return saksiLama;
   }
 
@@ -683,7 +683,9 @@ export async function CorrectAttendanceController(
       check_out_source: checkOutWitness.source,
       late_minutes: lateMinutes,
       work_minutes:
-        newCheckIn && newCheckOut ? minutesBetween(newCheckIn, newCheckOut) : null,
+        newCheckIn && newCheckOut
+          ? minutesBetween(newCheckIn, newCheckOut)
+          : null,
       note: buildCorrectionNote(pengoreksi, data.reason, correctedAt),
     });
 
@@ -790,11 +792,7 @@ export async function CloseDayController(
 
       try {
         await client.query("BEGIN");
-        stored += await attendanceModel.insertMarkers(
-          client,
-          date,
-          chunk,
-        );
+        stored += await attendanceModel.insertMarkers(client, date, chunk);
         await client.query("COMMIT");
       } catch (err) {
         await client.query("ROLLBACK");

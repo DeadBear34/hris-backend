@@ -146,7 +146,8 @@ export async function CreateWorkScheduleController(
       end_time: data.end_time ?? SCHEDULE_DEFAULTS.end_time,
       late_tolerance_minutes:
         data.late_tolerance_minutes ?? SCHEDULE_DEFAULTS.late_tolerance_minutes,
-      absent_cutoff_time: data.absent_cutoff_time ?? SCHEDULE_DEFAULTS.absent_cutoff_time,
+      absent_cutoff_time:
+        data.absent_cutoff_time ?? SCHEDULE_DEFAULTS.absent_cutoff_time,
     });
 
     const schedule = await workScheduleModel.createSchedule(data);

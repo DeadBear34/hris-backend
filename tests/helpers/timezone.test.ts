@@ -86,7 +86,9 @@ describe("keWaktuLokal", () => {
 
 describe("tanggalHariIni", () => {
   it("mengambil tanggal lokal dari waktu yang diberikan", () => {
-    expect(todayInOfficeZone(new Date("2026-03-09T23:00:00Z"))).toBe("2026-03-10");
+    expect(todayInOfficeZone(new Date("2026-03-09T23:00:00Z"))).toBe(
+      "2026-03-10",
+    );
   });
 
   it("berformat YYYY-MM-DD", () => {
@@ -134,9 +136,7 @@ describe("namaHariDariTanggal", () => {
   });
 
   it("menolak tanggal yang tidak dapat dibaca", () => {
-    expect(() => dayNameOf("bukan-tanggal")).toThrow(
-      "Tanggal tidak valid",
-    );
+    expect(() => dayNameOf("bukan-tanggal")).toThrow("Tanggal tidak valid");
   });
 });
 

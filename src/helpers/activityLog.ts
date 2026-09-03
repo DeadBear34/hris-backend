@@ -107,19 +107,17 @@ export interface RecordActivityInput {
 export const MAX_DETAIL_ITEMS = 20;
 
 export function summarizeList<T>(
-  daftar: T[],
-  batas = MAX_DETAIL_ITEMS,
+  items: T[],
+  limit = MAX_DETAIL_ITEMS,
 ): { total: number; sample: T[]; truncated: boolean } {
   return {
-    total: daftar.length,
-    sample: daftar.slice(0, batas),
-    truncated: daftar.length > batas,
+    total: items.length,
+    sample: items.slice(0, limit),
+    truncated: items.length > limit,
   };
 }
 
-export function buildActivityLog(
-  input: RecordActivityInput,
-): ActivityLogEntry {
+export function buildActivityLog(input: RecordActivityInput): ActivityLogEntry {
   const createdAt = new Date();
 
   return {
@@ -146,7 +144,10 @@ export function buildActivityLog(
 // permintaan yang sudah berhasil
 function persistActivity(entry: ActivityLogEntry): void {
   void insertLog(entry).catch((err) => {
-    logger.error({ err, action: entry.action }, "Gagal menyimpan log aktivitas");
+    logger.error(
+      { err, action: entry.action },
+      "Gagal menyimpan log aktivitas",
+    );
   });
 }
 

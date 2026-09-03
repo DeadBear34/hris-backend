@@ -149,14 +149,14 @@ async function validasiSaldo(
   leaveType: LeaveType,
   employee: Employee,
   totalDays: number,
-  periode: number,
+  period: number,
 ): Promise<void> {
   if (!leaveType.deducts_balance) return;
 
   const saldo = await balanceModel.balanceFor(
     employee.id,
     leaveType.id,
-    periode,
+    period,
   );
 
   if (saldo < totalDays) {
@@ -292,11 +292,11 @@ export async function CreateLeaveRequestController(
     }
 
     const totalDays = await countWorkdaysFor(start_date, end_date);
-    const periode = periodYearOf(start_date);
+    const period = periodYearOf(start_date);
 
     validasiGender(leaveType, requester.employee);
     validasiTanggal(leaveType, start_date, totalDays);
-    await validasiSaldo(leaveType, requester.employee, totalDays, periode);
+    await validasiSaldo(leaveType, requester.employee, totalDays, period);
 
     const bentrok = await leaveRequestModel.findOverlapping(
       requester.employee.id,
@@ -331,7 +331,7 @@ export async function CreateLeaveRequestController(
         await balanceModel.createTransaction(client, {
           employee_id: requester.employee.id,
           leave_type_id,
-          period_year: periode,
+          period_year: period,
           amount: -totalDays,
           type: "hold",
           leave_request_id: request.id,
@@ -456,7 +456,10 @@ export async function ApproveLeaveRequestController(
       entity: "leave_request",
       entity_id: id,
       summary: `Pengajuan cuti ${existing.start_date} sampai ${existing.end_date} disetujui`,
-      metadata: { employee_id: existing.employee_id, total_days: existing.total_days },
+      metadata: {
+        employee_id: existing.employee_id,
+        total_days: existing.total_days,
+      },
     });
 
     res.json({

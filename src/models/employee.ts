@@ -390,8 +390,7 @@ export async function createEmployees(
     throw new Error("Karyawan tidak boleh disimpan tanpa akun");
   }
 
-  const column = <T>(read: (row: (typeof rows)[number]) => T) =>
-    rows.map(read);
+  const column = <T>(read: (row: (typeof rows)[number]) => T) => rows.map(read);
 
   const result = await db.query<Employee>(
     `INSERT INTO employees

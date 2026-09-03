@@ -187,9 +187,7 @@ beforeEach(() => {
   (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
     jadwal as never,
   );
-  (workScheduleModel.isWorkingDay as jest.Mock).mockReturnValue(
-    true as never,
-  );
+  (workScheduleModel.isWorkingDay as jest.Mock).mockReturnValue(true as never);
   (holidayModel.findByDate as jest.Mock).mockResolvedValue(null as never);
   (leaveRequestModel.findApprovedCovering as jest.Mock).mockResolvedValue(
     null as never,
@@ -450,8 +448,8 @@ describe("absensi pulang", () => {
 
     expect(res.status).toBe(200);
 
-    const [, , , , workedMinutes] = (attendanceModel.setCheckOut as jest.Mock).mock
-      .calls[0] as [string, Date, Date, string, number];
+    const [, , , , workedMinutes] = (attendanceModel.setCheckOut as jest.Mock)
+      .mock.calls[0] as [string, Date, Date, string, number];
 
     // 08:00 sampai 17:00 adalah 9 jam
     expect(workedMinutes).toBe(540);
@@ -871,9 +869,7 @@ describe("job penutup hari", () => {
   const KARYAWAN_KETIGA = "99999999-9999-4999-8999-999999999999";
 
   function tutupHari(date = "2026-03-10", rahasia?: string) {
-    const req = request(app).post(
-      `/api/v1/attendances/close-day?date=${date}`,
-    );
+    const req = request(app).post(`/api/v1/attendances/close-day?date=${date}`);
 
     if (rahasia !== undefined) req.set("x-cron-secret", rahasia);
 
@@ -1417,8 +1413,8 @@ describe("absen pulang offline", () => {
 
     expect(res.status).toBe(200);
 
-    const [, , , , workedMinutes] = (attendanceModel.setCheckOut as jest.Mock).mock
-      .calls[0] as [string, Date, Date, string, number];
+    const [, , , , workedMinutes] = (attendanceModel.setCheckOut as jest.Mock)
+      .mock.calls[0] as [string, Date, Date, string, number];
 
     expect(workedMinutes).toBe(540);
   });

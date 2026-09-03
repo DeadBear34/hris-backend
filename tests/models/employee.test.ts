@@ -811,9 +811,15 @@ describe("createEmployees menolak karyawan tanpa akun", () => {
 
   it("melempar galat bila ada user_id yang kosong", async () => {
     await expect(
-      employeeModel.createEmployees({ query: mockQuery } as never, [
-        { user_id: "", data: { full_name: "A", phone: "+62811", gender: "male" } },
-      ] as never),
+      employeeModel.createEmployees(
+        { query: mockQuery } as never,
+        [
+          {
+            user_id: "",
+            data: { full_name: "A", phone: "+62811", gender: "male" },
+          },
+        ] as never,
+      ),
     ).rejects.toThrow("tidak boleh disimpan tanpa akun");
 
     expect(mockQuery).not.toHaveBeenCalled();
@@ -823,10 +829,19 @@ describe("createEmployees menolak karyawan tanpa akun", () => {
     mockQuery.mockResolvedValue({ rows: [{ id: "e1" }] } as never);
 
     await expect(
-      employeeModel.createEmployees({ query: mockQuery } as never, [
-        { user_id: "u1", data: { full_name: "A", phone: "+62811", gender: "male" } },
-        { user_id: "u2", data: { full_name: "B", phone: "+62811", gender: "male" } },
-      ] as never),
+      employeeModel.createEmployees(
+        { query: mockQuery } as never,
+        [
+          {
+            user_id: "u1",
+            data: { full_name: "A", phone: "+62811", gender: "male" },
+          },
+          {
+            user_id: "u2",
+            data: { full_name: "B", phone: "+62811", gender: "male" },
+          },
+        ] as never,
+      ),
     ).rejects.toThrow("Gagal menyimpan sebagian data karyawan");
   });
 });

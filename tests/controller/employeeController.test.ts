@@ -75,9 +75,8 @@ const positionModel = await import("../../src/models/position.js");
 const { logger } = await import("../../src/config/logger.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
-const { MAX_EMPLOYEES_PER_REQUEST } = await import(
-  "../../src/schema/employeeSchema.js"
-);
+const { MAX_EMPLOYEES_PER_REQUEST } =
+  await import("../../src/schema/employeeSchema.js");
 
 const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
@@ -165,21 +164,23 @@ beforeEach(() => {
   (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
 
   // Penyimpanan massal mengembalikan sebanyak baris yang diminta
-  (userModel.insertUsersByAdmin as jest.Mock).mockImplementation((_db, daftar) =>
-    Promise.resolve(
-      (daftar as { email: string; role: string }[]).map((row, i) =>
-        akunPalsu(i, row.email, row.role),
-      ),
-    ) as never,
+  (userModel.insertUsersByAdmin as jest.Mock).mockImplementation(
+    (_db, daftar) =>
+      Promise.resolve(
+        (daftar as { email: string; role: string }[]).map((row, i) =>
+          akunPalsu(i, row.email, row.role),
+        ),
+      ) as never,
   );
-  (employeeModel.createEmployees as jest.Mock).mockImplementation((_db, daftar) =>
-    Promise.resolve(
-      (daftar as { data: { full_name: string } }[]).map((row, i) => ({
-        ...fakeEmployee,
-        id: `emp-${i}`,
-        full_name: row.data.full_name,
-      })),
-    ) as never,
+  (employeeModel.createEmployees as jest.Mock).mockImplementation(
+    (_db, daftar) =>
+      Promise.resolve(
+        (daftar as { data: { full_name: string } }[]).map((row, i) => ({
+          ...fakeEmployee,
+          id: `emp-${i}`,
+          full_name: row.data.full_name,
+        })),
+      ) as never,
   );
 });
 
@@ -1026,8 +1027,9 @@ describe("POST /api/v1/employees dengan array", () => {
   });
 
   it("menolak jumlah melebihi batas per permintaan", async () => {
-    const banyak = Array.from({ length: MAX_EMPLOYEES_PER_REQUEST + 1 }, (_, i) =>
-      row(i),
+    const banyak = Array.from(
+      { length: MAX_EMPLOYEES_PER_REQUEST + 1 },
+      (_, i) => row(i),
     );
 
     const res = await tambahMassal(banyak);
@@ -1217,8 +1219,9 @@ describe("satu endpoint, dua bentuk kiriman", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION_ERROR");
-    expect(res.body.errors.some((e: { field: string }) => e.field === "email"))
-      .toBe(true);
+    expect(
+      res.body.errors.some((e: { field: string }) => e.field === "email"),
+    ).toBe(true);
   });
 
   it("galat array menunjuk nomor baris beserta kolomnya", async () => {
@@ -1330,9 +1333,7 @@ describe("laporan per baris pada impor massal", () => {
   });
 
   it("membedakan kolom kosong dari data yang tidak sesuai", async () => {
-    const res = await kirim([
-      { ...utuh(1), email: "bukan-email", gender: "" },
-    ]);
+    const res = await kirim([{ ...utuh(1), email: "bukan-email", gender: "" }]);
 
     const errors = res.body.details.failed_rows[0].errors as {
       field: string;
@@ -1447,12 +1448,12 @@ describe("catatan aktivitas penambahan karyawan", () => {
 
   beforeEach(() => {
     (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
-    (userModel.insertUsersByAdmin as jest.Mock).mockResolvedValue(
-      [fakeAccount] as never,
-    );
-    (employeeModel.createEmployees as jest.Mock).mockResolvedValue(
-      [fakeEmployee] as never,
-    );
+    (userModel.insertUsersByAdmin as jest.Mock).mockResolvedValue([
+      fakeAccount,
+    ] as never);
+    (employeeModel.createEmployees as jest.Mock).mockResolvedValue([
+      fakeEmployee,
+    ] as never);
   });
 
   it("mencatat penambahan satu karyawan sebagai berhasil", async () => {
@@ -1575,7 +1576,9 @@ describe("catatan aktivitas penambahan karyawan", () => {
 
     expect(noteField.action).toBe("employee.create");
     expect(noteField.status).toBe("failed");
-    expect((noteField.metadata as { email: string }).email).toBe("arif@awan.io");
+    expect((noteField.metadata as { email: string }).email).toBe(
+      "arif@awan.io",
+    );
   });
 
   it("tidak mencatat keberhasilan ketika permintaan ditolak", async () => {
@@ -1738,24 +1741,26 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
 
   beforeEach(() => {
     (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
-    (userModel.insertUsersByAdmin as jest.Mock).mockImplementation((_db, list) =>
-      Promise.resolve(
-        (list as { email: string }[]).map((b, i) => ({
-          id: `u${i}`,
-          email: b.email,
-          role: "employee",
-          must_change_password: true,
-        })),
-      ) as never,
+    (userModel.insertUsersByAdmin as jest.Mock).mockImplementation(
+      (_db, list) =>
+        Promise.resolve(
+          (list as { email: string }[]).map((b, i) => ({
+            id: `u${i}`,
+            email: b.email,
+            role: "employee",
+            must_change_password: true,
+          })),
+        ) as never,
     );
-    (employeeModel.createEmployees as jest.Mock).mockImplementation((_db, list) =>
-      Promise.resolve(
-        (list as { data: { full_name: string } }[]).map((b, i) => ({
-          ...fakeEmployee,
-          id: `e${i}`,
-          full_name: b.data.full_name,
-        })),
-      ) as never,
+    (employeeModel.createEmployees as jest.Mock).mockImplementation(
+      (_db, list) =>
+        Promise.resolve(
+          (list as { data: { full_name: string } }[]).map((b, i) => ({
+            ...fakeEmployee,
+            id: `e${i}`,
+            full_name: b.data.full_name,
+          })),
+        ) as never,
     );
   });
 
@@ -1873,25 +1878,27 @@ describe("respons menyebut index untuk yang berhasil maupun yang gagal", () => {
 
   beforeEach(() => {
     (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
-    (userModel.insertUsersByAdmin as jest.Mock).mockImplementation((_db, list) =>
-      Promise.resolve(
-        (list as { email: string }[]).map((b, i) => ({
-          id: `u${i}`,
-          email: b.email,
-          role: "employee",
-          must_change_password: true,
-        })),
-      ) as never,
+    (userModel.insertUsersByAdmin as jest.Mock).mockImplementation(
+      (_db, list) =>
+        Promise.resolve(
+          (list as { email: string }[]).map((b, i) => ({
+            id: `u${i}`,
+            email: b.email,
+            role: "employee",
+            must_change_password: true,
+          })),
+        ) as never,
     );
-    (employeeModel.createEmployees as jest.Mock).mockImplementation((_db, list) =>
-      Promise.resolve(
-        (list as { data: { full_name: string } }[]).map((b, i) => ({
-          ...fakeEmployee,
-          id: `e${i}`,
-          employee_number: String(i + 1).padStart(3, "0"),
-          full_name: b.data.full_name,
-        })),
-      ) as never,
+    (employeeModel.createEmployees as jest.Mock).mockImplementation(
+      (_db, list) =>
+        Promise.resolve(
+          (list as { data: { full_name: string } }[]).map((b, i) => ({
+            ...fakeEmployee,
+            id: `e${i}`,
+            employee_number: String(i + 1).padStart(3, "0"),
+            full_name: b.data.full_name,
+          })),
+        ) as never,
     );
   });
 
@@ -1984,20 +1991,25 @@ describe("setiap karyawan wajib punya akun", () => {
 
   beforeEach(() => {
     (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
-    (userModel.insertUsersByAdmin as jest.Mock).mockImplementation((_db, list) =>
-      Promise.resolve(
-        (list as { email: string }[]).map((b, i) => ({
-          id: `u${i}`,
-          email: b.email,
-          role: "employee",
-          must_change_password: true,
-        })),
-      ) as never,
+    (userModel.insertUsersByAdmin as jest.Mock).mockImplementation(
+      (_db, list) =>
+        Promise.resolve(
+          (list as { email: string }[]).map((b, i) => ({
+            id: `u${i}`,
+            email: b.email,
+            role: "employee",
+            must_change_password: true,
+          })),
+        ) as never,
     );
-    (employeeModel.createEmployees as jest.Mock).mockImplementation((_db, list) =>
-      Promise.resolve(
-        (list as unknown[]).map((_b, i) => ({ ...fakeEmployee, id: `e${i}` })),
-      ) as never,
+    (employeeModel.createEmployees as jest.Mock).mockImplementation(
+      (_db, list) =>
+        Promise.resolve(
+          (list as unknown[]).map((_b, i) => ({
+            ...fakeEmployee,
+            id: `e${i}`,
+          })),
+        ) as never,
     );
   });
 
@@ -2037,7 +2049,12 @@ describe("setiap karyawan wajib punya akun", () => {
   it("gagal seluruhnya kalau jumlah akun tidak cocok dengan jumlah karyawan", async () => {
     // hanya satu akun dikembalikan padahal dua baris dikirim
     (userModel.insertUsersByAdmin as jest.Mock).mockResolvedValue([
-      { id: "u0", email: "akun0@awan.io", role: "employee", must_change_password: true },
+      {
+        id: "u0",
+        email: "akun0@awan.io",
+        role: "employee",
+        must_change_password: true,
+      },
     ] as never);
 
     const res = await kirim([row(0), row(1)]);

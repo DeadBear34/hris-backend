@@ -294,12 +294,12 @@ describe("POST /api/v1/auth/register menerbitkan kode verifikasi", () => {
     await request(app).post("/api/v1/auth/register").send(registerBody);
 
     const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
-      Object.hasOwn(data as object, "kode_verifikasi"),
-    ) as [{ email: string; kode_verifikasi: string }, string];
+      Object.hasOwn(data as object, "verification_code"),
+    ) as [{ email: string; verification_code: string }, string];
 
     expect(cadangan).toBeDefined();
     expect(cadangan[0].email).toBe(EMAIL);
-    expect(cadangan[0].kode_verifikasi).toMatch(/^\d{6}$/);
+    expect(cadangan[0].verification_code).toMatch(/^\d{6}$/);
   });
 
   it("mencetak kode yang sama dengan yang hashnya tersimpan", async () => {
@@ -312,11 +312,11 @@ describe("POST /api/v1/auth/register menerbitkan kode verifikasi", () => {
       { token_hash: string },
     ];
     const cadangan = mockLoggerWarn.mock.calls.find(([d]) =>
-      Object.hasOwn(d as object, "kode_verifikasi"),
-    ) as [{ kode_verifikasi: string }, string];
+      Object.hasOwn(d as object, "verification_code"),
+    ) as [{ verification_code: string }, string];
 
     await expect(
-      verifyPassword(data.token_hash, cadangan[0].kode_verifikasi),
+      verifyPassword(data.token_hash, cadangan[0].verification_code),
     ).resolves.toBe(true);
   });
 
@@ -326,7 +326,7 @@ describe("POST /api/v1/auth/register menerbitkan kode verifikasi", () => {
     await request(app).post("/api/v1/auth/register").send(registerBody);
 
     const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
-      Object.hasOwn(data as object, "kode_verifikasi"),
+      Object.hasOwn(data as object, "verification_code"),
     );
 
     expect(cadangan).toBeUndefined();

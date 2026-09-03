@@ -3,7 +3,7 @@ import { Conflict } from "../helpers/appError.js";
 import type { LeaveStatus } from "../helpers/leaveStatus.js";
 import type { Executor } from "./user.js";
 
-const KODE_EXCLUSION_VIOLATION = "23P01";
+const EXCLUSION_VIOLATION_CODE = "23P01";
 
 export interface LeaveRequest {
   id: string;
@@ -204,7 +204,7 @@ export async function createRequest(
 
     return request;
   } catch (err) {
-    if ((err as { code?: string }).code === KODE_EXCLUSION_VIOLATION) {
+    if ((err as { code?: string }).code === EXCLUSION_VIOLATION_CODE) {
       throw Conflict(
         "Kamu sudah punya pengajuan cuti pada rentang tanggal tersebut",
       );

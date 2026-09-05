@@ -160,12 +160,13 @@ export async function deletePending(
   type: NotificationType,
   entity_id: string,
   db: Executor = pool,
-): Promise<number> {
-  const result = await db.query(
+): Promise<{ id: string; recipient_user_id: string }[]> {
+  const result = await db.query<{ id: string; recipient_user_id: string }>(
     `DELETE FROM notifications
-     WHERE type = $1::notification_type AND entity_id = $2::uuid`,
+     WHERE type = $1::notification_type AND entity_id = $2::uuid
+     RETURNING id, recipient_user_id`,
     [type, entity_id],
   );
 
-  return result.rowCount ?? 0;
+  return result.rows;
 }

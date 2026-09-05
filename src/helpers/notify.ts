@@ -2,19 +2,65 @@ import { logger } from "../config/logger.js";
 import * as notificationModel from "../models/notification.js";
 import * as featureModel from "../models/feature.js";
 import * as employeeModel from "../models/employee.js";
-import type { NewNotification } from "../models/notification.js";
+import type { NewNotification, Notification } from "../models/notification.js";
+import { pushTo, pushToMany } from "../realtime/hub.js";
 
-// Notifikasi bersifat pelengkap: kalau gagal disimpan, pengajuan cuti yang
+// Notifikasi bersifat pelengkap kalau gagal disimpan, pengajuan cuti yang
 // sudah berhasil tidak boleh ikut dibatalkan
+// Bentuk yang dikirim lewat soket harus sama persis dengan yang dikirim
+// GET /notifications, supaya frontend tidak perlu dua penanganan berbeda
+function toPayload(row: Notification) {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    link: row.link,
+    is_read: row.is_read,
+    read_at: row.read_at,
+    created_at: row.created_at,
+  };
+}
+
+// Database dulu, soket belakangan. Kalau urutannya dibalik, penerima bisa
+// melihat notifikasi yang ternyata gagal disimpan
 function persist(rows: NewNotification[]): void {
   if (rows.length === 0) return;
 
-  void notificationModel.insertMany(rows).catch((err) => {
-    logger.error(
-      { err, type: rows[0]?.type, recipients: rows.length },
-      "Gagal menyimpan notifikasi",
-    );
-  });
+  void notificationModel
+    .insertMany(rows)
+    .then((saved) => {
+      for (const row of saved) {
+        pushTo(row.recipient_user_id, {
+          event: "notification.created",
+          data: toPayload(row),
+        });
+      }
+    })
+    .catch((err) => {
+      logger.error(
+        { err, type: rows[0]?.type, recipients: rows.length },
+        "Gagal menyimpan notifikasi",
+      );
+    });
+}
+
+// Antrean yang sudah ditindak ikut dibersihkan di layar penerimanya, supaya
+// lencana tidak menampilkan tugas yang sudah selesai
+function clearPending(type: NewNotification["type"], entity_id: string): void {
+  void notificationModel
+    .deletePending(type, entity_id)
+    .then((removed) => {
+      if (removed.length === 0) return;
+
+      pushToMany(
+        removed.map((row) => row.recipient_user_id),
+        { event: "notification.cleared", ids: removed.map((row) => row.id) },
+      );
+    })
+    .catch((err) => {
+      logger.error({ err, type, entity_id }, "Gagal menghapus notifikasi");
+    });
 }
 
 function dateRangeLabel(start: string, end: string): string {
@@ -83,14 +129,7 @@ export interface LeaveDecidedInput {
 export async function notifyLeaveDecided(
   input: LeaveDecidedInput,
 ): Promise<void> {
-  void notificationModel
-    .deletePending("leave_approval_needed", input.request_id)
-    .catch((err) => {
-      logger.error(
-        { err },
-        "Gagal menghapus notifikasi cuti yang sudah diputus",
-      );
-    });
+  clearPending("leave_approval_needed", input.request_id);
 
   const recipient = await userIdOf(input.requester_employee_id);
   if (!recipient) return;
@@ -145,9 +184,5 @@ export async function notifyAccountNeedsApproval(
 
 // Persetujuan akun sudah diputus, notifikasi antreannya tidak relevan lagi
 export function clearAccountApproval(user_id: string): void {
-  void notificationModel
-    .deletePending("account_approval_needed", user_id)
-    .catch((err) => {
-      logger.error({ err }, "Gagal menghapus notifikasi persetujuan akun");
-    });
+  clearPending("account_approval_needed", user_id);
 }

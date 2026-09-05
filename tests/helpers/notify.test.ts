@@ -6,7 +6,12 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
 
 jest.unstable_mockModule("../../src/models/notification.js", () => ({
   insertMany: jest.fn(() => Promise.resolve([])),
-  deletePending: jest.fn(() => Promise.resolve(0)),
+  deletePending: jest.fn(() => Promise.resolve([])),
+}));
+
+jest.unstable_mockModule("../../src/realtime/hub.js", () => ({
+  pushTo: jest.fn(),
+  pushToMany: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../src/models/feature.js", () => ({
@@ -20,6 +25,7 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
 const notificationModel = await import("../../src/models/notification.js");
 const featureModel = await import("../../src/models/feature.js");
 const employeeModel = await import("../../src/models/employee.js");
+const hub = await import("../../src/realtime/hub.js");
 const { logger } = await import("../../src/config/logger.js");
 const { notifyLeaveSubmitted, notifyLeaveDecided, notifyAccountNeedsApproval } =
   await import("../../src/helpers/notify.js");
@@ -254,5 +260,142 @@ describe("notifikasi pendaftaran akun", () => {
     await settle();
 
     expect(notificationModel.insertMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("dorongan realtime", () => {
+  const REQUEST_ID2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+  it("mendorong notifikasi ke soket penerima setelah tersimpan", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: MANAGER_USER,
+    } as never);
+    (notificationModel.insertMany as jest.Mock).mockResolvedValue([
+      {
+        id: "n1",
+        recipient_user_id: MANAGER_USER,
+        type: "leave_approval_needed",
+        title: "Pengajuan cuti baru",
+        message: "pesan",
+        link: "/leave-management",
+        entity: "leave_request",
+        entity_id: REQUEST_ID2,
+        is_read: false,
+        read_at: null,
+        created_at: new Date(),
+      },
+    ] as never);
+
+    await notifyLeaveSubmitted(submitted);
+    await settle();
+
+    expect(hub.pushTo).toHaveBeenCalledTimes(1);
+
+    const [target, message] = (hub.pushTo as jest.Mock).mock.calls[0] as [
+      string,
+      { event: string; data: Record<string, unknown> },
+    ];
+
+    expect(target).toBe(MANAGER_USER);
+    expect(message.event).toBe("notification.created");
+    expect(message.data.id).toBe("n1");
+  });
+
+  it("tidak mengirim kolom internal lewat soket", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: MANAGER_USER,
+    } as never);
+    (notificationModel.insertMany as jest.Mock).mockResolvedValue([
+      {
+        id: "n1",
+        recipient_user_id: MANAGER_USER,
+        type: "leave_approval_needed",
+        title: "judul",
+        message: "pesan",
+        link: "/leave-management",
+        entity: "leave_request",
+        entity_id: REQUEST_ID2,
+        is_read: false,
+        read_at: null,
+        created_at: new Date(),
+      },
+    ] as never);
+
+    await notifyLeaveSubmitted(submitted);
+    await settle();
+
+    const [, message] = (hub.pushTo as jest.Mock).mock.calls[0] as [
+      string,
+      { data: Record<string, unknown> },
+    ];
+
+    expect(message.data).not.toHaveProperty("recipient_user_id");
+    expect(message.data).not.toHaveProperty("entity");
+    expect(message.data).not.toHaveProperty("entity_id");
+  });
+
+  it("tidak mendorong apa pun kalau penyimpanan gagal", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: MANAGER_USER,
+    } as never);
+    (notificationModel.insertMany as jest.Mock).mockRejectedValue(
+      new Error("database mati") as never,
+    );
+
+    await notifyLeaveSubmitted(submitted);
+    await settle();
+
+    expect(hub.pushTo).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("memberi tahu penerima bahwa antrean persetujuan sudah dibersihkan", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: REQUESTER_USER,
+    } as never);
+    (notificationModel.deletePending as jest.Mock).mockResolvedValue([
+      { id: "n1", recipient_user_id: "a1" },
+      { id: "n2", recipient_user_id: "a2" },
+    ] as never);
+
+    await notifyLeaveDecided({
+      request_id: REQUEST_ID2,
+      requester_employee_id: REQUESTER_EMPLOYEE,
+      decision: "approved",
+      leave_type_name: "Cuti Duka",
+      start_date: "2027-07-12",
+      end_date: "2027-07-12",
+    });
+    await settle();
+
+    const [targets, message] = (hub.pushToMany as jest.Mock).mock.calls[0] as [
+      string[],
+      { event: string; ids: string[] },
+    ];
+
+    expect(targets).toEqual(["a1", "a2"]);
+    expect(message.event).toBe("notification.cleared");
+    expect(message.ids).toEqual(["n1", "n2"]);
+  });
+
+  it("tidak mengirim pesan pembersihan kalau tidak ada yang terhapus", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: REQUESTER_USER,
+    } as never);
+    (notificationModel.deletePending as jest.Mock).mockResolvedValue(
+      [] as never,
+    );
+
+    await notifyLeaveDecided({
+      request_id: REQUEST_ID2,
+      requester_employee_id: REQUESTER_EMPLOYEE,
+      decision: "rejected",
+      leave_type_name: "Cuti Duka",
+      start_date: "2027-07-12",
+      end_date: "2027-07-12",
+    });
+    await settle();
+
+    expect(hub.pushToMany).not.toHaveBeenCalled();
   });
 });

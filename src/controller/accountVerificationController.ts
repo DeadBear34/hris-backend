@@ -4,6 +4,7 @@ import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import * as userModel from "../models/user.js";
 import * as employeeModel from "../models/employee.js";
+import type { EmployeeGender } from "../models/employee.js";
 import * as tokenModel from "../models/verificationToken.js";
 import type {
   TokenPurpose,
@@ -56,9 +57,9 @@ function requestMeta(req: Request): RequestMeta {
   };
 }
 
-async function terbitkanKodeVerifikasi(
+async function issueVerificationCode(
   email: string,
-  konteks: RequestMeta,
+  context: RequestMeta,
 ): Promise<string> {
   await tokenModel.invalidateActive(email, "email_verification");
 
@@ -69,7 +70,7 @@ async function terbitkanKodeVerifikasi(
     purpose: "email_verification",
     token_hash: await hashPassword(code),
     expires_at: expiresInMinutes(CODE_VALID_MINUTES),
-    ...konteks,
+    ...context,
   });
 
   return code;
@@ -78,9 +79,9 @@ async function terbitkanKodeVerifikasi(
 async function sendVerificationCode(
   email: string,
   name: string | null,
-  konteks: RequestMeta,
+  context: RequestMeta,
 ): Promise<void> {
-  const code = await terbitkanKodeVerifikasi(email, konteks);
+  const code = await issueVerificationCode(email, context);
   const body = verificationCodeEmail(code, CODE_VALID_MINUTES, name);
 
   const sent = await sendMailWithoutFailing(
@@ -140,6 +141,49 @@ async function verifikasiToken(
   return token;
 }
 
+interface RegisterInput {
+  email: string;
+  password: string;
+  full_name: string;
+  phone: string;
+  gender: EmployeeGender;
+}
+
+// Akun dan karyawan harus lahir bersama, jadi keduanya satu transaksi.
+// Kalau salah satu gagal, tidak ada akun tanpa karyawan atau sebaliknya
+async function createAccountWithEmployee(data: RegisterInput, hashed: string) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const user = await userModel.insertUser(
+      client,
+      data.email,
+      hashed,
+      "employee",
+      new Date(),
+    );
+
+    const employee = await employeeModel.insertEmployee(
+      client,
+      user.id,
+      data.full_name,
+      data.phone,
+      data.gender,
+    );
+
+    await client.query("COMMIT");
+
+    return { user, employee };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function RegisterController(
   req: Request,
   res: Response,
@@ -148,27 +192,31 @@ export async function RegisterController(
   const activity = startActivity(req);
 
   try {
-    const { email, password, full_name, phone, gender } = req.body;
+    const data = req.body as RegisterInput;
+    const { email, full_name } = data;
 
     const existing = await userModel.findByEmail(email);
 
-    if (existing) {
-      if (existing.email_verified_at) {
-        activity.failed({
-          action: "auth.register",
-          entity: "user",
-          entity_id: existing.id,
-          actor_user_id: existing.id,
-          actor_email: email,
-          summary: `Pendaftaran ditolak, email ${email} sudah terdaftar`,
-          metadata: { reason: "email_sudah_terdaftar" },
-        });
+    // Email yang sudah terverifikasi berarti akunnya benar-benar dipakai
+    if (existing?.email_verified_at) {
+      activity.failed({
+        action: "auth.register",
+        entity: "user",
+        entity_id: existing.id,
+        actor_user_id: existing.id,
+        actor_email: email,
+        summary: `Pendaftaran ditolak, email ${email} sudah terdaftar`,
+        metadata: { reason: "email_sudah_terdaftar" },
+      });
 
-        throw Conflict("Email sudah terdaftar");
-      }
+      throw Conflict("Email sudah terdaftar");
+    }
+
+    // Pernah mendaftar tapi belum verifikasi: kirim ulang kodenya saja,
+    // jangan buat akun kedua
+    if (existing) {
       await sendVerificationCode(email, full_name, requestMeta(req));
 
-      // Bukan akun baru, hanya kode verifikasi yang dikirim ulang
       activity.success({
         action: "auth.register",
         entity: "user",
@@ -189,38 +237,8 @@ export async function RegisterController(
       return;
     }
 
-    const hashed = await hashPassword(password);
-    const client = await pool.connect();
-
-    let user;
-    let employee;
-
-    try {
-      await client.query("BEGIN");
-
-      user = await userModel.insertUser(
-        client,
-        email,
-        hashed,
-        "employee",
-        new Date(),
-      );
-
-      employee = await employeeModel.insertEmployee(
-        client,
-        user.id,
-        full_name,
-        phone,
-        gender,
-      );
-
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    const hashed = await hashPassword(data.password);
+    const { user, employee } = await createAccountWithEmployee(data, hashed);
 
     await sendVerificationCode(email, full_name, requestMeta(req));
 

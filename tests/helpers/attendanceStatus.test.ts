@@ -109,13 +109,13 @@ describe("tentukanPenandaHarian", () => {
     });
 
   it("melewati karyawan yang sudah punya absensi", () => {
-    expect(state({ alreadyRecorded: true })).toBe("lewati");
+    expect(state({ alreadyRecorded: true })).toBe("skip");
   });
 
   it("absensi yang sudah ada mengalahkan seluruh pertimbangan lain", () => {
     expect(
       state({ alreadyRecorded: true, isHoliday: true, onLeave: true }),
-    ).toBe("lewati");
+    ).toBe("skip");
   });
 
   it("hari libur mengalahkan cuti", () => {
@@ -131,7 +131,7 @@ describe("tentukanPenandaHarian", () => {
   });
 
   it("bukan hari kerja tidak menghasilkan baris apa pun", () => {
-    expect(state({ isWorkday: false })).toBe("lewati");
+    expect(state({ isWorkday: false })).toBe("skip");
   });
 
   it("hari libur tetap ditandai walau jatuh di luar hari kerja", () => {
@@ -156,7 +156,7 @@ describe("tentukanPenandaHarian", () => {
               hariKerja: isWorkday,
             });
 
-            expect(["holiday", "leave", "absent", "lewati"]).toContain(result);
+            expect(["holiday", "leave", "absent", "skip"]).toContain(result);
           }
   });
 });

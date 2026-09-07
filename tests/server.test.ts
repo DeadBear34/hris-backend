@@ -9,17 +9,7 @@ import {
 
 const mockClose = jest.fn((selesai: () => void) => selesai());
 
-// WebSocketServer memasang listener di http.Server, jadi tiruannya harus
-// punya on/once/removeListener supaya menyerupai server sungguhan
-const mockListen = jest.fn(() => ({
-  close: mockClose,
-  on: jest.fn(),
-  once: jest.fn(),
-  off: jest.fn(),
-  removeListener: jest.fn(),
-  emit: jest.fn(),
-  address: () => ({ port: 0 }),
-}));
+const mockListen = jest.fn(() => ({ close: mockClose }));
 const mockTestConnection = jest.fn();
 const mockLoggerInfo = jest.fn();
 const mockLoggerError = jest.fn();

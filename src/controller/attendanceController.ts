@@ -21,6 +21,7 @@ import {
   dayNameOf,
   minutesBetween,
   type IsoDate,
+  type DayName,
 } from "../helpers/timezone.js";
 import { isWorkingDay } from "../models/workSchedule.js";
 import {
@@ -712,6 +713,135 @@ export async function CorrectAttendanceController(
   }
 }
 
+// Job penutup hari dipanggil penjadwal, bukan pengguna, jadi penjaganya
+// rahasia bersama di header dan bukan JWT
+function assertCronAuthorized(req: Request): void {
+  if (!env.CRON_SECRET) {
+    throw Forbidden(
+      "CRON_SECRET belum diatur di server sehingga job penutup hari dinonaktifkan",
+    );
+  }
+
+  if (req.header(CRON_HEADER) !== env.CRON_SECRET) {
+    throw Unauthorized(
+      `Header ${CRON_HEADER} tidak cocok, job penutup hari ditolak`,
+    );
+  }
+}
+
+interface DayFacts {
+  holiday: Awaited<ReturnType<typeof holidayModel.findByDate>>;
+  leaveByEmployee: Map<string, string>;
+  alreadyRecorded: Set<string>;
+  employeeSchedules: Awaited<
+    ReturnType<typeof workScheduleModel.resolveForAllActive>
+  >;
+}
+
+// Semua keadaan hari itu dikumpulkan sekali di depan, supaya keputusan
+// per karyawan tidak menyentuh database lagi
+async function collectDayFacts(date: IsoDate): Promise<DayFacts> {
+  const [holiday, approvedLeaves, recorded, employeeSchedules] =
+    await Promise.all([
+      holidayModel.findByDate(date),
+      attendanceModel.findApprovedLeaveOn(date),
+      attendanceModel.findEmployeeIdsOnDate(date),
+      workScheduleModel.resolveForAllActive(),
+    ]);
+
+  return {
+    holiday,
+    leaveByEmployee: new Map(
+      approvedLeaves.map((row) => [row.employee_id, row.leave_request_id]),
+    ),
+    alreadyRecorded: new Set(recorded),
+    employeeSchedules,
+  };
+}
+
+// Menentukan penanda harian tiap karyawan. skipped dihitung terpisah karena
+// baris yang dilewati memang tidak menghasilkan apa pun untuk disimpan
+function buildMarkers(
+  facts: DayFacts,
+  day: DayName,
+): { markers: attendanceModel.MarkerRow[]; skipped: number } {
+  const markers: attendanceModel.MarkerRow[] = [];
+  let skipped = 0;
+
+  for (const { employee_id, schedule } of facts.employeeSchedules) {
+    const leave_request_id = facts.leaveByEmployee.get(employee_id);
+
+    switch (
+      decideDailyMarker({
+        alreadyRecorded: facts.alreadyRecorded.has(employee_id),
+        isHoliday: Boolean(facts.holiday),
+        onLeave: Boolean(leave_request_id),
+        isWorkday: isWorkingDay(schedule, day),
+      })
+    ) {
+      case "holiday":
+        markers.push({
+          employee_id,
+          status: "holiday",
+          note: facts.holiday?.name ?? null,
+        });
+        break;
+
+      case "leave":
+        markers.push({ employee_id, status: "leave", leave_request_id });
+        break;
+
+      case "absent":
+        markers.push({ employee_id, status: "absent" });
+        break;
+
+      case "skip":
+        skipped += 1;
+        break;
+    }
+  }
+
+  return { markers, skipped };
+}
+
+// Ditulis per potongan supaya satu transaksi tidak menahan ribuan baris
+// sekaligus. Tiap potongan berdiri sendiri
+async function storeMarkers(
+  date: IsoDate,
+  markers: attendanceModel.MarkerRow[],
+): Promise<number> {
+  let stored = 0;
+
+  for (let i = 0; i < markers.length; i += BATCH_SIZE) {
+    const chunk = markers.slice(i, i + BATCH_SIZE);
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+      stored += await attendanceModel.insertMarkers(client, date, chunk);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  return stored;
+}
+
+function countMarkers(markers: attendanceModel.MarkerRow[]) {
+  const count = (status: string) =>
+    markers.filter((row) => row.status === status).length;
+
+  return {
+    holiday: count("holiday"),
+    leave: count("leave"),
+    absent: count("absent"),
+  };
+}
+
 export async function CloseDayController(
   req: Request,
   res: Response,
@@ -719,122 +849,35 @@ export async function CloseDayController(
 ) {
   try {
     const activity = startActivity(req);
-    const dikirim = req.header(CRON_HEADER);
 
-    if (!env.CRON_SECRET) {
-      throw Forbidden(
-        "CRON_SECRET belum diatur di server sehingga job penutup hari dinonaktifkan",
-      );
-    }
-
-    if (!dikirim || dikirim !== env.CRON_SECRET) {
-      throw Unauthorized(
-        `Header ${CRON_HEADER} tidak cocok, job penutup hari ditolak`,
-      );
-    }
+    assertCronAuthorized(req);
 
     const query = res.locals.query as { date?: IsoDate };
     const date = query.date ?? todayInOfficeZone();
-    const day = dayNameOf(date);
 
-    const holiday = await holidayModel.findByDate(date);
-    const approvedLeaves = await attendanceModel.findApprovedLeaveOn(date);
-    const alreadyRecorded = new Set(
-      await attendanceModel.findEmployeeIdsOnDate(date),
-    );
-    const employeeSchedules = await workScheduleModel.resolveForAllActive();
+    const facts = await collectDayFacts(date);
+    const { markers, skipped } = buildMarkers(facts, dayNameOf(date));
+    const stored = await storeMarkers(date, markers);
 
-    const leaveByEmployee = new Map(
-      approvedLeaves.map((row) => [row.employee_id, row.leave_request_id]),
-    );
-
-    const markers: attendanceModel.MarkerRow[] = [];
-    let skipped = 0;
-
-    for (const { employee_id, schedule } of employeeSchedules) {
-      const leave_request_id = leaveByEmployee.get(employee_id);
-
-      switch (
-        decideDailyMarker({
-          alreadyRecorded: alreadyRecorded.has(employee_id),
-          isHoliday: Boolean(holiday),
-          onLeave: Boolean(leave_request_id),
-          isWorkday: isWorkingDay(schedule, day),
-        })
-      ) {
-        case "holiday":
-          markers.push({
-            employee_id,
-            status: "holiday",
-            note: holiday?.name ?? null,
-          });
-          break;
-
-        case "leave":
-          markers.push({ employee_id, status: "leave", leave_request_id });
-          break;
-
-        case "absent":
-          markers.push({ employee_id, status: "absent" });
-          break;
-
-        case "lewati":
-          skipped += 1;
-          break;
-      }
-    }
-
-    let stored = 0;
-
-    for (let i = 0; i < markers.length; i += BATCH_SIZE) {
-      const chunk = markers.slice(i, i + BATCH_SIZE);
-      const client = await pool.connect();
-
-      try {
-        await client.query("BEGIN");
-        stored += await attendanceModel.insertMarkers(client, date, chunk);
-        await client.query("COMMIT");
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
-      }
-    }
-
-    const countByStatus = (status: string) =>
-      markers.filter((row) => row.status === status).length;
+    const marked = countMarkers(markers);
 
     activity.success({
       action: "attendance.close_day",
       entity: "attendance",
       summary: `Penutupan hari ${date}: ${stored} baris dibuat, ${skipped} dilewati`,
-      metadata: {
-        date,
-        created: stored,
-        skipped,
-        marked: {
-          holiday: countByStatus("holiday"),
-          leave: countByStatus("leave"),
-          absent: countByStatus("absent"),
-        },
-      },
+      metadata: { date, created: stored, skipped, marked },
     });
 
     res.json({
       success: true,
       message: `Penutupan hari ${date} selesai, ${stored} baris absensi baru dibuat`,
       data: {
-        date: date,
-        is_holiday: Boolean(holiday),
-        holiday_name: holiday?.name ?? null,
+        date,
+        is_holiday: Boolean(facts.holiday),
+        holiday_name: facts.holiday?.name ?? null,
         created: stored,
-        skipped: skipped,
-        marked: {
-          holiday: countByStatus("holiday"),
-          leave: countByStatus("leave"),
-          absent: countByStatus("absent"),
-        },
+        skipped,
+        marked,
       },
     });
   } catch (err) {

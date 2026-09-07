@@ -96,7 +96,7 @@ async function countWorkdaysFor(
   return countWorkdays(start_date, end_date, holidays);
 }
 
-function validasiTanggal(
+function validateLeaveDates(
   leaveType: LeaveType,
   start_date: string,
   totalDays: number,
@@ -296,7 +296,7 @@ export async function CreateLeaveRequestController(
     const period = periodYearOf(start_date);
 
     validasiGender(leaveType, requester.employee);
-    validasiTanggal(leaveType, start_date, totalDays);
+    validateLeaveDates(leaveType, start_date, totalDays);
     await validasiSaldo(leaveType, requester.employee, totalDays, period);
 
     const bentrok = await leaveRequestModel.findOverlapping(

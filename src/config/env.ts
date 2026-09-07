@@ -36,6 +36,13 @@ export const envSchema = z.object({
   ),
   TIMEZONE: z.preprocess(blankToUndefined, z.string().default("Asia/Jakarta")),
 
+  // Dipakai menurunkan nama kanal notifikasi. Kalau kosong, siaran realtime
+  // lewat Supabase dimatikan dan notifikasi mengandalkan polling saja
+  NOTIFY_CHANNEL_SECRET: z.preprocess(
+    blankToUndefined,
+    z.string().min(32, "NOTIFY_CHANNEL_SECRET minimal 32 karakter").optional(),
+  ),
+
   CRON_SECRET: z.preprocess(
     blankToUndefined,
     z.string().min(16, "CRON_SECRET minimal 16 karakter").optional(),

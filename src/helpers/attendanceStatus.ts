@@ -55,7 +55,7 @@ export function decideArrivalStatus(
   }
 }
 
-export type DailyMarker = "holiday" | "leave" | "absent" | "lewati";
+export type DailyMarker = "holiday" | "leave" | "absent" | "skip";
 
 export interface DailyState {
   alreadyRecorded: boolean;
@@ -67,7 +67,7 @@ export interface DailyState {
 export function decideDailyMarker(state: DailyState): DailyMarker {
   switch (true) {
     case state.alreadyRecorded:
-      return "lewati";
+      return "skip";
 
     case state.isHoliday:
       return "holiday";
@@ -76,7 +76,7 @@ export function decideDailyMarker(state: DailyState): DailyMarker {
       return "leave";
 
     case !state.isWorkday:
-      return "lewati";
+      return "skip";
 
     default:
       return "absent";

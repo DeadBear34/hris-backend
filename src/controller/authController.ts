@@ -7,7 +7,6 @@ import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import { startActivity } from "../helpers/activityLog.js";
-import { channelFor } from "../helpers/notificationChannel.js";
 
 function buildProfile(
   user: userModel.User,
@@ -24,12 +23,6 @@ function buildProfile(
     email_verified_at: user.email_verified_at,
     last_login_at: user.last_login_at,
     features,
-
-    // Kanal siaran notifikasi milik pengguna ini. Hanya keluar lewat
-    // endpoint terautentikasi, jadi berfungsi seperti kunci: yang bisa
-    // mendengarkan hanya yang berhasil login sebagai orang ini.
-    // null berarti siaran realtime tidak diaktifkan di server
-    notification_channel: channelFor(user.id),
     employee: employee
       ? {
           id: employee.id,

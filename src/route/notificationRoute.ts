@@ -3,6 +3,7 @@ import {
   ListNotificationController,
   MarkNotificationReadController,
   MarkAllNotificationReadController,
+  RealtimeConfigController,
 } from "../controller/notificationController.js";
 import { authenticate } from "../middlewares/auth.js";
 import { validateQuery, validateParams } from "../middlewares/validate.js";
@@ -21,6 +22,9 @@ router.get(
   validateQuery(listNotificationQuerySchema),
   ListNotificationController,
 );
+
+// Konfigurasi Realtime milik pengguna yang sedang login
+router.get("/notifications/realtime", ...loggedIn, RealtimeConfigController);
 
 router.patch(
   "/notifications/read-all",

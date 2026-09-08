@@ -9,7 +9,17 @@ import {
 
 const mockClose = jest.fn((selesai: () => void) => selesai());
 
-const mockListen = jest.fn(() => ({ close: mockClose }));
+// WebSocketServer memasang listener di http.Server, jadi tiruannya harus
+// punya on/once/removeListener supaya menyerupai server sungguhan
+const mockListen = jest.fn(() => ({
+  close: mockClose,
+  on: jest.fn(),
+  once: jest.fn(),
+  off: jest.fn(),
+  removeListener: jest.fn(),
+  emit: jest.fn(),
+  address: () => ({ port: 0 }),
+}));
 const mockTestConnection = jest.fn();
 const mockLoggerInfo = jest.fn();
 const mockLoggerError = jest.fn();
@@ -21,6 +31,15 @@ jest.unstable_mockModule("../src/app.js", () => ({
 jest.unstable_mockModule("../src/config/databaseConnection.js", () => ({
   pool: { query: jest.fn(), connect: jest.fn() },
   testConnection: mockTestConnection,
+}));
+
+// Pendengar antar-instance membuka koneksi database sendiri, jadi dimatikan
+// di sini supaya pengujian tidak menyentuh database sungguhan
+jest.unstable_mockModule("../src/realtime/crossInstance.js", () => ({
+  startCrossInstance: jest.fn(() => Promise.resolve()),
+  stopCrossInstance: jest.fn(() => Promise.resolve()),
+  announce: jest.fn(),
+  instanceId: () => "uji",
 }));
 
 jest.unstable_mockModule("../src/config/logger.js", () => ({

@@ -36,11 +36,18 @@ export const envSchema = z.object({
   ),
   TIMEZONE: z.preprocess(blankToUndefined, z.string().default("Asia/Jakarta")),
 
-  // Dipakai menurunkan nama kanal notifikasi. Kalau kosong, siaran realtime
-  // lewat Supabase dimatikan dan notifikasi mengandalkan polling saja
-  NOTIFY_CHANNEL_SECRET: z.preprocess(
+  // Rahasia JWT milik proyek Supabase, dari Dashboard > JWT Keys.
+  // Dipakai menandatangani token khusus Realtime supaya Supabase mengenali
+  // pengguna kita. Kosong berarti Realtime dimatikan
+  SUPABASE_JWT_SECRET: z.preprocess(
     blankToUndefined,
-    z.string().min(32, "NOTIFY_CHANNEL_SECRET minimal 32 karakter").optional(),
+    z.string().min(32, "SUPABASE_JWT_SECRET minimal 32 karakter").optional(),
+  ),
+
+  // Kunci publik untuk browser. Aman dikirim ke frontend
+  SUPABASE_ANON_KEY: z.preprocess(
+    blankToUndefined,
+    z.string().min(1).optional(),
   ),
 
   CRON_SECRET: z.preprocess(

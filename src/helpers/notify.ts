@@ -2,21 +2,38 @@ import { logger } from "../config/logger.js";
 import * as notificationModel from "../models/notification.js";
 import * as featureModel from "../models/feature.js";
 import * as employeeModel from "../models/employee.js";
-import type { NewNotification } from "../models/notification.js";
-import { signalUsers } from "../realtime/broadcast.js";
+import type { NewNotification, Notification } from "../models/notification.js";
+import { pushTo, pushToMany } from "../realtime/hub.js";
 
-// Notifikasi bersifat pelengkap: kalau gagal disimpan, pengajuan cuti yang
-// sudah berhasil tidak boleh ikut dibatalkan.
-//
-// Database dulu, siaran belakangan. Kalau urutannya dibalik, penerima bisa
-// diberi tahu tentang notifikasi yang ternyata gagal disimpan
+// Bentuknya sama persis dengan satu baris di GET /notifications, supaya
+// frontend tidak perlu dua penanganan berbeda
+function toPayload(row: Notification) {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    link: row.link,
+    is_read: row.is_read,
+    read_at: row.read_at,
+    created_at: row.created_at,
+  };
+}
+
+// Simpan dulu, baru dorong. Urutannya penting: jangan sampai penerima
+// melihat notifikasi yang ternyata gagal disimpan
 function persist(rows: NewNotification[]): void {
   if (rows.length === 0) return;
 
   void notificationModel
     .insertMany(rows)
     .then((saved) => {
-      signalUsers(saved.map((row) => row.recipient_user_id));
+      for (const row of saved) {
+        pushTo(row.recipient_user_id, {
+          event: "notification.created",
+          data: toPayload(row),
+        });
+      }
     })
     .catch((err) => {
       logger.error(
@@ -26,13 +43,18 @@ function persist(rows: NewNotification[]): void {
     });
 }
 
-// Antrean yang sudah ditindak ikut dibersihkan di layar penerimanya, supaya
+// Hapus antrean yang sudah ditindak, lalu beri tahu penerimanya supaya
 // lencana tidak menampilkan tugas yang sudah selesai
 function clearPending(type: NewNotification["type"], entity_id: string): void {
   void notificationModel
     .deletePending(type, entity_id)
     .then((removed) => {
-      signalUsers(removed.map((row) => row.recipient_user_id));
+      if (removed.length === 0) return;
+
+      pushToMany(
+        removed.map((row) => row.recipient_user_id),
+        { event: "notification.cleared", ids: removed.map((row) => row.id) },
+      );
     })
     .catch((err) => {
       logger.error({ err, type, entity_id }, "Gagal menghapus notifikasi");

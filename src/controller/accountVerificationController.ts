@@ -240,13 +240,15 @@ export async function RegisterController(
     const hashed = await hashPassword(data.password);
     const { user, employee } = await createAccountWithEmployee(data, hashed);
 
-    await sendVerificationCode(email, full_name, requestMeta(req));
-
+    // Notifikasi dulu, email belakangan. Pengiriman email lewat jaringan
+    // memakan waktu, dan tidak ada alasan penyetuju menunggunya
     await notifyAccountNeedsApproval({
       user_id: user.id,
       full_name: employee.full_name,
       email: user.email,
     });
+
+    await sendVerificationCode(email, full_name, requestMeta(req));
 
     activity.success({
       action: "auth.register",

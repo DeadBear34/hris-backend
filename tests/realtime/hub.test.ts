@@ -1,29 +1,14 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { WebSocket } from "ws";
 
-jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
-  pool: { query: jest.fn() },
-}));
-
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-// Pengumuman antar-instance diuji terpisah; di sini yang diperiksa hanya
-// pengiriman ke soket lokal
-jest.unstable_mockModule("../../src/realtime/crossInstance.js", () => ({
-  announce: jest.fn(),
-}));
-
-jest.unstable_mockModule("../../src/realtime/supabaseBroadcast.js", () => ({
-  publish: jest.fn(),
-}));
-
-const crossInstance = await import("../../src/realtime/crossInstance.js");
 const {
   register,
   unregister,
-  pushTo,
+  pushToLocal,
   pushToMany,
   connectionCount,
   isConnected,
@@ -90,7 +75,7 @@ describe("pengiriman pesan", () => {
     register("u1", a);
     register("u1", b);
 
-    const delivered = pushTo("u1", { event: "ready", unread: 3 });
+    const delivered = pushToLocal("u1", { event: "ready", unread: 3 });
 
     expect(delivered).toBe(2);
     expect(a.send).toHaveBeenCalled();
@@ -103,7 +88,7 @@ describe("pengiriman pesan", () => {
     register("u1", fakeSocket());
     register("u2", milikOrangLain);
 
-    pushTo("u1", { event: "ready", unread: 1 });
+    pushToLocal("u1", { event: "ready", unread: 1 });
 
     expect(milikOrangLain.send).not.toHaveBeenCalled();
   });
@@ -113,12 +98,12 @@ describe("pengiriman pesan", () => {
 
     register("u1", menutup);
 
-    expect(pushTo("u1", { event: "ready", unread: 0 })).toBe(0);
+    expect(pushToLocal("u1", { event: "ready", unread: 0 })).toBe(0);
     expect(menutup.send).not.toHaveBeenCalled();
   });
 
   it("aman dipanggil untuk pengguna yang sedang tidak tersambung", () => {
-    expect(pushTo("hantu", { event: "ready", unread: 0 })).toBe(0);
+    expect(pushToLocal("hantu", { event: "ready", unread: 0 })).toBe(0);
   });
 
   it("tidak melempar walau pengiriman gagal", () => {
@@ -129,14 +114,16 @@ describe("pengiriman pesan", () => {
 
     register("u1", rusak);
 
-    expect(() => pushTo("u1", { event: "ready", unread: 0 })).not.toThrow();
+    expect(() =>
+      pushToLocal("u1", { event: "ready", unread: 0 }),
+    ).not.toThrow();
   });
 
   it("mengirim pesan sebagai JSON", () => {
     const socket = fakeSocket();
 
     register("u1", socket);
-    pushTo("u1", { event: "notification.cleared", ids: ["n1"] });
+    pushToLocal("u1", { event: "notification.cleared", ids: ["n1"] });
 
     const [payload] = socket.send.mock.calls[0] as [string];
 

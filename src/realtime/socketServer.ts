@@ -1,10 +1,11 @@
 import type { Server } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { logger } from "../config/logger.js";
+import { originAllowed } from "../config/allowedOrigins.js";
 import { verifyToken } from "../helpers/jwt.js";
 import * as userModel from "../models/user.js";
 import * as notificationModel from "../models/notification.js";
-import { register, unregister, pushTo } from "./hub.js";
+import { register, unregister, pushToLocal, countFor } from "./hub.js";
 
 // Koneksi dibuka dalam keadaan belum diautentikasi. Kalau token sah tidak
 // datang dalam tenggang ini, soket ditutup
@@ -14,8 +15,13 @@ const AUTH_TIMEOUT_MS = 10_000;
 // Sekaligus cara mendeteksi soket mati agar tidak menumpuk di memori
 const HEARTBEAT_MS = 30_000;
 
+// Satu orang wajar membuka beberapa tab, tapi tidak puluhan. Batas ini
+// mencegah satu akun menghabiskan memori server
+const MAX_SOCKETS_PER_USER = 5;
+
 const CLOSE_UNAUTHORIZED = 4001;
 const CLOSE_AUTH_TIMEOUT = 4002;
+const CLOSE_TOO_MANY = 4003;
 
 // Soket yang sudah membalas ping sejak putaran terakhir
 const alive = new WeakSet<WebSocket>();
@@ -72,7 +78,27 @@ async function authenticateSocket(
 }
 
 export function attachSocketServer(server: Server): WebSocketServer {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({
+    server,
+    path: "/ws",
+
+    // Jabat tangan WebSocket TIDAK tunduk pada CORS, jadi asalnya harus
+    // diperiksa sendiri. Tanpa ini, halaman mana pun di internet bisa
+    // membuka koneksi ke server kita
+    verifyClient: ({ origin }, done) => {
+      if (originAllowed(origin)) {
+        done(true);
+        return;
+      }
+
+      logger.warn({ origin }, "Koneksi soket dari asal tidak dikenal ditolak");
+      done(false, 403, "Origin tidak diizinkan");
+    },
+
+    // Klien hanya perlu mengirim satu pesan auth yang kecil. Batas ini
+    // menutup kiriman besar yang dipakai menghabiskan memori
+    maxPayload: 4 * 1024,
+  });
 
   wss.on("connection", (socket: WebSocket) => {
     let user_id: string | null = null;
@@ -97,6 +123,11 @@ export function attachSocketServer(server: Server): WebSocketServer {
           return;
         }
 
+        if (countFor(authenticated) >= MAX_SOCKETS_PER_USER) {
+          socket.close(CLOSE_TOO_MANY, "Terlalu banyak koneksi");
+          return;
+        }
+
         user_id = authenticated;
         clearTimeout(timeout);
         register(user_id, socket);
@@ -105,10 +136,10 @@ export function attachSocketServer(server: Server): WebSocketServer {
         // polling berikutnya
         try {
           const unread = await notificationModel.countUnread(user_id);
-          pushTo(user_id, { event: "ready", unread });
+          pushToLocal(user_id, { event: "ready", unread });
         } catch (err) {
           logger.error({ err, user_id }, "Gagal mengirim keadaan awal soket");
-          pushTo(user_id, { event: "ready", unread: 0 });
+          pushToLocal(user_id, { event: "ready", unread: 0 });
         }
       })();
     });

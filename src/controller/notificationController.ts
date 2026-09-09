@@ -1,28 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import * as notificationModel from "../models/notification.js";
+import { toView } from "../realtime/event.js";
 import { Unauthorized, NotFound } from "../helpers/appError.js";
-import { env } from "../config/env.js";
-import {
-  mintRealtimeToken,
-  topicFor,
-  realtimeEnabled,
-  REALTIME_TOKEN_TTL,
-} from "../helpers/realtimeToken.js";
-
-// Bentuk yang dipakai frontend: id, type, title, message, is_read,
-// created_at, link. Kolom internal seperti recipient_user_id tidak ikut
-function toResponse(row: notificationModel.Notification) {
-  return {
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    message: row.message,
-    link: row.link,
-    is_read: row.is_read,
-    read_at: row.read_at,
-    created_at: row.created_at,
-  };
-}
 
 function requireUserId(req: Request): string {
   if (!req.user) {
@@ -54,7 +33,7 @@ export async function ListNotificationController(
 
     res.json({
       success: true,
-      data: rows.map(toResponse),
+      data: rows.map(toView),
       meta: {
         page,
         limit,
@@ -89,7 +68,7 @@ export async function MarkNotificationReadController(
     res.json({
       success: true,
       message: "Notifikasi ditandai sudah dibaca",
-      data: toResponse(updated),
+      data: toView(updated),
       meta: { unread: await notificationModel.countUnread(recipient_user_id) },
     });
   } catch (err) {
@@ -110,38 +89,6 @@ export async function MarkAllNotificationReadController(
       success: true,
       message: `${affected} notifikasi ditandai sudah dibaca`,
       meta: { updated: affected, unread: 0 },
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-// Frontend mengambil seluruh keperluan Realtime dari sini, bukan dari .env.
-// Semuanya aman dikirim: anon key memang untuk browser, dan tokennya hanya
-// berlaku untuk kanal milik pemanggil sendiri
-export async function RealtimeConfigController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  try {
-    const user_id = requireUserId(req);
-
-    if (!realtimeEnabled()) {
-      res.json({ success: true, data: { enabled: false } });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        enabled: true,
-        url: env.SUPABASE_URL,
-        anon_key: env.SUPABASE_ANON_KEY,
-        topic: topicFor(user_id),
-        token: mintRealtimeToken(user_id),
-        expires_in: REALTIME_TOKEN_TTL,
-      },
     });
   } catch (err) {
     next(err);

@@ -3,7 +3,12 @@ import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { testConnection } from "./config/databaseConnection.js";
 import { attachSocketServer } from "./realtime/socketServer.js";
-import { deliverFromOtherInstance } from "./realtime/hub.js";
+import { startCleanup } from "./helpers/notificationCleanup.js";
+import { pushToMany } from "./realtime/hub.js";
+import { parseEvent } from "./realtime/event.js";
+import { registerTransport } from "./realtime/dispatcher.js";
+import { localSocketTransport } from "./realtime/transports/localSocket.js";
+import { crossInstanceTransport } from "./realtime/transports/crossInstanceSocket.js";
 import {
   startCrossInstance,
   stopCrossInstance,
@@ -26,9 +31,18 @@ async function start() {
   // supaya keduanya berbagi port yang sama
   const wss = attachSocketServer(server);
 
-  // Menyambungkan instance yang berbeda lewat LISTEN/NOTIFY PostgreSQL,
-  // supaya notifikasi dari instance lain tetap sampai ke soket di sini
-  await startCrossInstance(deliverFromOtherInstance);
+  startCleanup();
+
+  // Soket lokal dulu karena paling cepat, lalu diteruskan ke instance lain
+  registerTransport(localSocketTransport);
+  registerTransport(crossInstanceTransport);
+
+  // Pengumuman dari instance lain hanya diteruskan ke soket lokal, tidak
+  // diumumkan balik. Bentuk yang tidak dikenali dibuang di parseEvent
+  await startCrossInstance((user_ids, raw) => {
+    const event = parseEvent(raw);
+    if (event) pushToMany(user_ids, event);
+  });
 
   process.on("SIGINT", () => {
     logger.info("Server dimatikan");

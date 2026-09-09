@@ -6,12 +6,10 @@ import { logger } from "../config/logger.js";
 // Kanal LISTEN/NOTIFY milik PostgreSQL, bukan kanal WebSocket
 const CHANNEL = "hris_notifications";
 
-// Batas payload pg_notify 8000 byte. Notifikasi jauh di bawah itu, tapi
-// tetap dijaga supaya kiriman besar tidak menggagalkan seluruh query
+// Batas payload pg_notify 8000 byte, disisakan sedikit untuk aman
 const MAX_PAYLOAD = 7000;
 
-// Penanda instance ini. Dipakai mengabaikan pengumuman sendiri, karena
-// soket lokal sudah dikirimi lebih dulu tanpa lewat database
+// Penanda instance, dipakai mengabaikan pengumuman dari diri sendiri
 const INSTANCE_ID = randomUUID();
 
 export interface CrossInstanceMessage {
@@ -26,8 +24,8 @@ let listener: pg.Client | null = null;
 let handler: Handler | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 
-// LISTEN butuh koneksi yang dipegang terus, jadi tidak boleh memakai pool
-// yang mengembalikan koneksinya setelah query selesai
+// Membuka koneksi khusus untuk LISTEN. Tidak boleh dari pool, karena
+// pool mengembalikan koneksinya setelah query selesai
 async function connectListener(): Promise<void> {
   const client = new pg.Client({ connectionString: env.DATABASE_URL });
 
@@ -98,8 +96,7 @@ export async function stopCrossInstance(): Promise<void> {
   if (client) await client.end().catch(() => undefined);
 }
 
-// Memberi tahu instance LAIN. Instance ini tidak perlu diberi tahu karena
-// soket lokalnya sudah dikirimi langsung
+// Mengumumkan ke instance lain. Yang di sini sudah dikirimi langsung
 export function announce(
   user_ids: string[],
   message: unknown,

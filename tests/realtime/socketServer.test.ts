@@ -28,6 +28,7 @@ const { connectionCount, isConnected, resetHub } =
   await import("../../src/realtime/hub.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { WebSocket } = await import("ws");
+const { allowedOrigins } = await import("../../src/config/allowedOrigins.js");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -204,5 +205,86 @@ describe("autentikasi soket", () => {
 
     expect(connectionCount()).toBe(1);
     expect(socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it("membatasi jumlah koneksi per pengguna", async () => {
+    const token = createToken({
+      id: USER_ID,
+      email: "yusuf@awan.io",
+      role: "employee",
+    });
+
+    // buka sampai melewati batas
+    const dibuka: InstanceType<typeof WebSocket>[] = [];
+    for (let i = 0; i < 6; i++) {
+      const s = connect();
+      dibuka.push(s);
+      await opened(s);
+      s.send(JSON.stringify({ action: "auth", token }));
+      await new Promise((done) => setTimeout(done, 120));
+    }
+
+    // yang keenam ditolak, lima pertama tetap hidup
+    expect(connectionCount()).toBe(5);
+    expect(dibuka[5]!.readyState).not.toBe(WebSocket.OPEN);
+  });
+
+  it("menolak pesan yang terlalu besar", async () => {
+    const socket = connect();
+    await opened(socket);
+
+    socket.send("x".repeat(8 * 1024));
+
+    // ws menutup koneksi sendiri saat payload melebihi maxPayload
+    const kode = await closed(socket);
+
+    expect(kode).toBeGreaterThan(0);
+    expect(connectionCount()).toBe(0);
+  });
+
+  it("menolak jabat tangan dari asal yang tidak dikenal", async () => {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      origin: "https://situs-jahat.com",
+    });
+    sockets.push(socket);
+
+    const galat = await new Promise<string>((done) => {
+      const batas = setTimeout(() => done("TIMEOUT"), 5000);
+      const selesai = (pesan: string) => {
+        clearTimeout(batas);
+        done(pesan);
+      };
+
+      socket.once("error", (err) => selesai(err.message));
+      socket.once("open", () => selesai("MALAH TERBUKA"));
+    });
+
+    expect(galat).toContain("403");
+    expect(connectionCount()).toBe(0);
+
+    // soket yang ditolak tetap menyisakan handle kalau tidak ditutup
+    socket.terminate();
+  });
+
+  it("menerima jabat tangan dari asal frontend yang sah", async () => {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      origin: allowedOrigins[0],
+    });
+    sockets.push(socket);
+
+    await expect(
+      new Promise<string>((done) => {
+        const batas = setTimeout(() => done("TIMEOUT"), 5000);
+        const selesai = (pesan: string) => {
+          clearTimeout(batas);
+          done(pesan);
+        };
+
+        socket.once("open", () => selesai("terbuka"));
+        socket.once("error", (err) => selesai(err.message));
+      }),
+    ).resolves.toBe("terbuka");
+
+    socket.terminate();
   });
 });

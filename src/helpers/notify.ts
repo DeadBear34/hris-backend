@@ -2,23 +2,9 @@ import { logger } from "../config/logger.js";
 import * as notificationModel from "../models/notification.js";
 import * as featureModel from "../models/feature.js";
 import * as employeeModel from "../models/employee.js";
-import type { NewNotification, Notification } from "../models/notification.js";
-import { pushTo, pushToMany } from "../realtime/hub.js";
-
-// Bentuknya sama persis dengan satu baris di GET /notifications, supaya
-// frontend tidak perlu dua penanganan berbeda
-function toPayload(row: Notification) {
-  return {
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    message: row.message,
-    link: row.link,
-    is_read: row.is_read,
-    read_at: row.read_at,
-    created_at: row.created_at,
-  };
-}
+import type { NewNotification } from "../models/notification.js";
+import { dispatch } from "../realtime/dispatcher.js";
+import { toView } from "../realtime/event.js";
 
 // Simpan dulu, baru dorong. Urutannya penting: jangan sampai penerima
 // melihat notifikasi yang ternyata gagal disimpan
@@ -29,9 +15,9 @@ function persist(rows: NewNotification[]): void {
     .insertMany(rows)
     .then((saved) => {
       for (const row of saved) {
-        pushTo(row.recipient_user_id, {
+        dispatch([row.recipient_user_id], {
           event: "notification.created",
-          data: toPayload(row),
+          data: toView(row),
         });
       }
     })
@@ -51,7 +37,7 @@ function clearPending(type: NewNotification["type"], entity_id: string): void {
     .then((removed) => {
       if (removed.length === 0) return;
 
-      pushToMany(
+      dispatch(
         removed.map((row) => row.recipient_user_id),
         { event: "notification.cleared", ids: removed.map((row) => row.id) },
       );

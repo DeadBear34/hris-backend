@@ -1,14 +1,14 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { env } from "./config/env.js";
+import { allowedOrigins } from "./config/allowedOrigins.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import router from "./route/route.js";
 
 export const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN }));
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {

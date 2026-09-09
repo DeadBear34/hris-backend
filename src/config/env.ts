@@ -9,6 +9,8 @@ export const envSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   PORT: z.coerce.number().default(8080),
+  // Boleh berisi beberapa asal dipisah koma, misalnya saat frontend
+  // dijalankan di beberapa laptop
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
@@ -35,20 +37,6 @@ export const envSchema = z.object({
     z.string().min(1).optional(),
   ),
   TIMEZONE: z.preprocess(blankToUndefined, z.string().default("Asia/Jakarta")),
-
-  // Rahasia JWT milik proyek Supabase, dari Dashboard > JWT Keys.
-  // Dipakai menandatangani token khusus Realtime supaya Supabase mengenali
-  // pengguna kita. Kosong berarti Realtime dimatikan
-  SUPABASE_JWT_SECRET: z.preprocess(
-    blankToUndefined,
-    z.string().min(32, "SUPABASE_JWT_SECRET minimal 32 karakter").optional(),
-  ),
-
-  // Kunci publik untuk browser. Aman dikirim ke frontend
-  SUPABASE_ANON_KEY: z.preprocess(
-    blankToUndefined,
-    z.string().min(1).optional(),
-  ),
 
   CRON_SECRET: z.preprocess(
     blankToUndefined,

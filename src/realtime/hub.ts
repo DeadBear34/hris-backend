@@ -1,21 +1,16 @@
 import type { WebSocket } from "ws";
+import type { NotificationEvent } from "./event.js";
 import { logger } from "../config/logger.js";
-import { pool } from "../config/databaseConnection.js";
-import { announce } from "./crossInstance.js";
-import { publish } from "./supabaseBroadcast.js";
 
-// Pesan yang dikirim server ke browser
+// Pesan yang dikirim server ke browser. "ready" hanya ada di soket sendiri,
+// dikirim sekali setelah jabat tangan berhasil
 export type ServerEvent =
-  | { event: "ready"; unread: number }
-  | { event: "notification.created"; data: unknown }
-  | { event: "notification.cleared"; ids: string[] };
+  NotificationEvent | { event: "ready"; unread: number };
 
-// Satu orang bisa membuka beberapa tab, jadi tiap pengguna memegang
-// sekumpulan soket, bukan satu
+// Satu orang bisa membuka beberapa tab, jadi soketnya sekumpulan
 const byUser = new Map<string, Set<WebSocket>>();
 
-// Arah sebaliknya, supaya pembersihan saat koneksi tertutup tidak perlu
-// menyisir seluruh peta
+// Arah sebaliknya, supaya pembersihan tidak perlu menyisir seluruh peta
 const userOf = new WeakMap<WebSocket, string>();
 
 export function register(user_id: string, socket: WebSocket): void {
@@ -45,11 +40,7 @@ export function unregister(socket: WebSocket): void {
   userOf.delete(socket);
 }
 
-// Nilai kembalian dipakai pemanggil untuk tahu apakah pesannya benar-benar
-// terkirim. Kalau tidak ada soket, notifikasi tetap aman di database dan
-// akan terbaca lewat polling
-// Hanya soket yang menempel di instance ini. Dipakai juga saat menerima
-// pengumuman dari instance lain, supaya tidak diumumkan balik
+// Mengirim ke soket yang menempel di instance ini saja
 export function pushToLocal(user_id: string, message: ServerEvent): number {
   const sockets = byUser.get(user_id);
   if (!sockets || sockets.size === 0) return 0;
@@ -72,47 +63,16 @@ export function pushToLocal(user_id: string, message: ServerEvent): number {
   return delivered;
 }
 
-// Soket lokal dikirimi langsung, instance lain lewat pengumuman database.
-// Nilai kembaliannya hanya menghitung yang lokal
-export function pushTo(user_id: string, message: ServerEvent): number {
-  const delivered = pushToLocal(user_id, message);
-
-  // "ready" adalah jawaban jabat tangan, hanya berlaku di instance ini
-  if (message.event !== "ready") {
-    announce([user_id], message, pool);
-    publishToSupabase([user_id], message);
-  }
-
-  return delivered;
-}
-
+// Mengirim ke beberapa penerima sekaligus di instance ini
 export function pushToMany(user_ids: string[], message: ServerEvent): number {
-  // penerima kembar dibuang supaya satu tab tidak menerima dua kali
-  const unique = [...new Set(user_ids)];
-
   let delivered = 0;
-  for (const user_id of unique) {
+
+  // penerima kembar dibuang supaya satu tab tidak menerima dua kali
+  for (const user_id of new Set(user_ids)) {
     delivered += pushToLocal(user_id, message);
   }
 
-  // diumumkan sekali untuk seluruh penerima, bukan satu per orang
-  if (message.event !== "ready") {
-    announce(unique, message, pool);
-    publishToSupabase(unique, message);
-  }
-
   return delivered;
-}
-
-// Dipanggil saat instance lain mengumumkan sesuatu. Tidak diumumkan balik,
-// kalau tidak pengumumannya akan berputar tanpa henti
-export function deliverFromOtherInstance(
-  user_ids: string[],
-  message: unknown,
-): void {
-  for (const user_id of user_ids) {
-    pushToLocal(user_id, message as ServerEvent);
-  }
 }
 
 export function connectionCount(): number {
@@ -122,6 +82,11 @@ export function connectionCount(): number {
   return total;
 }
 
+// Berapa soket yang sedang dipegang satu pengguna
+export function countFor(user_id: string): number {
+  return byUser.get(user_id)?.size ?? 0;
+}
+
 export function isConnected(user_id: string): boolean {
   return (byUser.get(user_id)?.size ?? 0) > 0;
 }
@@ -129,17 +94,4 @@ export function isConnected(user_id: string): boolean {
 // Hanya dipakai pengujian, supaya keadaan tidak bocor antar berkas tes
 export function resetHub(): void {
   byUser.clear();
-}
-
-// Bentuk pesan Supabase dipisah dari bentuk pesan soket sendiri, supaya
-// keduanya bisa berbeda tanpa saling mengganggu
-function publishToSupabase(user_ids: string[], message: ServerEvent): void {
-  if (message.event === "notification.created") {
-    publish(user_ids, "notification.created", { data: message.data });
-    return;
-  }
-
-  if (message.event === "notification.cleared") {
-    publish(user_ids, "notification.cleared", { ids: message.ids });
-  }
 }

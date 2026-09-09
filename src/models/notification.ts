@@ -170,3 +170,19 @@ export async function deletePending(
 
   return result.rows;
 }
+
+// Menghapus notifikasi lama yang sudah dibaca. Yang belum dibaca dibiarkan
+// berapa pun umurnya, karena berarti penerimanya belum sempat melihatnya
+export async function deleteReadOlderThan(
+  days: number,
+  db: Executor = pool,
+): Promise<number> {
+  const result = await db.query(
+    `DELETE FROM notifications
+     WHERE is_read = true
+       AND created_at < now() - make_interval(days => $1::int)`,
+    [days],
+  );
+
+  return result.rowCount ?? 0;
+}

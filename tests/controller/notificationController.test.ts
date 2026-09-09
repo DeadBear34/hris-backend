@@ -1,11 +1,4 @@
-import {
-  jest,
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "@jest/globals";
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
@@ -28,7 +21,6 @@ jest.unstable_mockModule("../../src/models/notification.js", () => ({
 const notificationModel = await import("../../src/models/notification.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
-const { env } = await import("../../src/config/env.js");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
@@ -232,81 +224,5 @@ describe("PATCH /api/v1/notifications/read-all", () => {
       .set("Authorization", `Bearer ${token}`);
 
     expect(notificationModel.markRead).not.toHaveBeenCalled();
-  });
-});
-
-describe("GET /api/v1/notifications/realtime", () => {
-  type Ubah = {
-    SUPABASE_JWT_SECRET?: string;
-    SUPABASE_ANON_KEY?: string;
-    SUPABASE_URL?: string;
-  };
-
-  let asli: Ubah;
-
-  beforeEach(() => {
-    const e = env as Ubah;
-    asli = {
-      SUPABASE_JWT_SECRET: e.SUPABASE_JWT_SECRET,
-      SUPABASE_ANON_KEY: e.SUPABASE_ANON_KEY,
-      SUPABASE_URL: e.SUPABASE_URL,
-    };
-    e.SUPABASE_JWT_SECRET =
-      "rahasia-uji-yang-panjangnya-lebih-dari-32-karakter";
-    e.SUPABASE_ANON_KEY = "sb_publishable_uji";
-    e.SUPABASE_URL = "https://uji.supabase.co";
-  });
-
-  afterEach(() => {
-    Object.assign(env as Ubah, asli);
-  });
-
-  it("menolak permintaan tanpa token", async () => {
-    const res = await request(app).get("/api/v1/notifications/realtime");
-
-    expect(res.status).toBe(401);
-  });
-
-  it("memberi semua keperluan Realtime dalam satu panggilan", async () => {
-    const res = await request(app)
-      .get("/api/v1/notifications/realtime")
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.enabled).toBe(true);
-    expect(res.body.data.url).toBe("https://uji.supabase.co");
-    expect(res.body.data.anon_key).toBe("sb_publishable_uji");
-    expect(typeof res.body.data.token).toBe("string");
-  });
-
-  it("kanalnya milik pemanggil, bukan orang lain", async () => {
-    const res = await request(app)
-      .get("/api/v1/notifications/realtime")
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(res.body.data.topic).toBe(`notif:${USER_ID}`);
-  });
-
-  it("tidak pernah membocorkan service role key", async () => {
-    const res = await request(app)
-      .get("/api/v1/notifications/realtime")
-      .set("Authorization", `Bearer ${token}`);
-
-    const isi = JSON.stringify(res.body);
-
-    expect(isi).not.toContain("sb_secret");
-    expect(isi).not.toContain("service_role");
-  });
-
-  it("menjawab enabled false kalau Realtime belum diatur", async () => {
-    (env as Ubah).SUPABASE_JWT_SECRET = undefined;
-
-    const res = await request(app)
-      .get("/api/v1/notifications/realtime")
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.enabled).toBe(false);
-    expect(res.body.data.token).toBeUndefined();
   });
 });

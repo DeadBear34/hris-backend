@@ -9,9 +9,8 @@ jest.unstable_mockModule("../../src/models/notification.js", () => ({
   deletePending: jest.fn(() => Promise.resolve([])),
 }));
 
-jest.unstable_mockModule("../../src/realtime/hub.js", () => ({
-  pushTo: jest.fn(),
-  pushToMany: jest.fn(),
+jest.unstable_mockModule("../../src/realtime/dispatcher.js", () => ({
+  dispatch: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../src/models/feature.js", () => ({
@@ -25,7 +24,7 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
 const notificationModel = await import("../../src/models/notification.js");
 const featureModel = await import("../../src/models/feature.js");
 const employeeModel = await import("../../src/models/employee.js");
-const hub = await import("../../src/realtime/hub.js");
+const dispatcher = await import("../../src/realtime/dispatcher.js");
 const { logger } = await import("../../src/config/logger.js");
 const { notifyLeaveSubmitted, notifyLeaveDecided, notifyAccountNeedsApproval } =
   await import("../../src/helpers/notify.js");
@@ -289,14 +288,12 @@ describe("dorongan realtime", () => {
     await notifyLeaveSubmitted(submitted);
     await settle();
 
-    expect(hub.pushTo).toHaveBeenCalledTimes(1);
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
 
-    const [target, message] = (hub.pushTo as jest.Mock).mock.calls[0] as [
-      string,
-      { event: string; data: Record<string, unknown> },
-    ];
+    const [targets, message] = (dispatcher.dispatch as jest.Mock).mock
+      .calls[0] as [string[], { event: string; data: Record<string, unknown> }];
 
-    expect(target).toBe(MANAGER_USER);
+    expect(targets).toEqual([MANAGER_USER]);
     expect(message.event).toBe("notification.created");
     expect(message.data.id).toBe("n1");
   });
@@ -324,8 +321,8 @@ describe("dorongan realtime", () => {
     await notifyLeaveSubmitted(submitted);
     await settle();
 
-    const [, message] = (hub.pushTo as jest.Mock).mock.calls[0] as [
-      string,
+    const [, message] = (dispatcher.dispatch as jest.Mock).mock.calls[0] as [
+      string[],
       { data: Record<string, unknown> },
     ];
 
@@ -345,7 +342,7 @@ describe("dorongan realtime", () => {
     await notifyLeaveSubmitted(submitted);
     await settle();
 
-    expect(hub.pushTo).not.toHaveBeenCalled();
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -368,10 +365,8 @@ describe("dorongan realtime", () => {
     });
     await settle();
 
-    const [targets, message] = (hub.pushToMany as jest.Mock).mock.calls[0] as [
-      string[],
-      { event: string; ids: string[] },
-    ];
+    const [targets, message] = (dispatcher.dispatch as jest.Mock).mock
+      .calls[0] as [string[], { event: string; ids: string[] }];
 
     expect(targets).toEqual(["a1", "a2"]);
     expect(message.event).toBe("notification.cleared");
@@ -396,6 +391,6 @@ describe("dorongan realtime", () => {
     });
     await settle();
 
-    expect(hub.pushToMany).not.toHaveBeenCalled();
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
   });
 });

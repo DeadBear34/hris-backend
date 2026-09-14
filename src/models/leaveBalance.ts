@@ -111,8 +111,9 @@ export async function balanceFor(
   employee_id: string,
   leave_type_id: string,
   period_year: number,
+  db: Executor = pool,
 ): Promise<number> {
-  const result = await pool.query<{ balance: string }>(
+  const result = await db.query<{ balance: string }>(
     `SELECT COALESCE(SUM(amount), 0)::float8 AS balance
      FROM leave_balance_transactions
      WHERE employee_id = $1::uuid AND leave_type_id = $2::uuid
@@ -193,4 +194,15 @@ export async function findByRequest(
   );
 
   return result.rows;
+}
+
+// Mengunci baris karyawan sampai transaksi selesai. Dua pengajuan cuti
+// dari orang yang sama jadi berurutan, bukan saling mendahului
+export async function lockEmployeeBalance(
+  db: Executor,
+  employee_id: string,
+): Promise<void> {
+  await db.query(`SELECT id FROM employees WHERE id = $1::uuid FOR UPDATE`, [
+    employee_id,
+  ]);
 }

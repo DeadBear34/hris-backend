@@ -43,6 +43,7 @@ jest.unstable_mockModule("../../src/models/leaveRequest.js", () => ({
 jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   createTransaction: jest.fn(),
   balanceFor: jest.fn(),
+  lockEmployeeBalance: jest.fn(),
   convertHoldToDeduction: jest.fn(),
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
@@ -1177,6 +1178,68 @@ describe("penghapusan absensi saat cuti dibatalkan", () => {
     const res = await batalkan();
 
     expect(res.status).toBe(500);
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+});
+
+// Saldo pernah bisa jadi minus karena diperiksa di luar transaksi: dua
+// pengajuan bersamaan sama-sama membaca saldo lama lalu keduanya lolos
+describe("saldo tidak boleh bisa ditembus permintaan bersamaan", () => {
+  beforeEach(() => {
+    (balanceModel.balanceFor as jest.Mock).mockResolvedValue(12 as never);
+  });
+
+  it("mengunci baris karyawan sebelum menulis pengajuan", async () => {
+    await ajukan();
+
+    expect(balanceModel.lockEmployeeBalance).toHaveBeenCalled();
+  });
+
+  it("mengunci di dalam transaksi, bukan sebelum BEGIN", async () => {
+    await ajukan();
+
+    const urutanQuery = mockClient.query.mock.calls.map(([sql]) => String(sql));
+
+    expect(urutanQuery[0]).toBe("BEGIN");
+    expect(
+      (balanceModel.lockEmployeeBalance as jest.Mock).mock
+        .invocationCallOrder[0],
+    ).toBeGreaterThan(0);
+  });
+
+  it("memeriksa saldo memakai klien transaksi, bukan pool", async () => {
+    await ajukan();
+
+    // panggilan terakhir balanceFor adalah pemeriksaan yang menentukan,
+    // dan argumen keempatnya harus klien transaksi
+    const panggilan = (balanceModel.balanceFor as jest.Mock).mock.calls;
+    const terakhir = panggilan[panggilan.length - 1] as unknown[];
+
+    expect(terakhir[3]).toBe(mockClient);
+  });
+
+  it("memeriksa saldo SESUDAH mengunci, bukan sebelum", async () => {
+    await ajukan();
+
+    const urutanKunci = (balanceModel.lockEmployeeBalance as jest.Mock).mock
+      .invocationCallOrder[0]!;
+    const panggilanSaldo = (balanceModel.balanceFor as jest.Mock).mock
+      .invocationCallOrder;
+    const saldoTerakhir = panggilanSaldo[panggilanSaldo.length - 1]!;
+
+    expect(saldoTerakhir).toBeGreaterThan(urutanKunci);
+  });
+
+  it("tidak menulis apa pun kalau saldo kurang saat diperiksa ulang", async () => {
+    // lolos penyaring awal, tapi habis saat pemeriksaan di dalam transaksi
+    (balanceModel.balanceFor as jest.Mock)
+      .mockResolvedValueOnce(12 as never)
+      .mockResolvedValueOnce(0 as never);
+
+    const res = await ajukan();
+
+    expect(res.status).toBe(400);
+    expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
   });
 });

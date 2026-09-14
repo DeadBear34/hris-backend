@@ -146,11 +146,14 @@ function validasiGender(leaveType: LeaveType, employee: Employee): void {
   }
 }
 
+// db diisi klien transaksi saat pemeriksaan menentukan, supaya angkanya
+// dibaca setelah baris karyawan dikunci
 async function validasiSaldo(
   leaveType: LeaveType,
   employee: Employee,
   totalDays: number,
   period: number,
+  db: Executor = pool,
 ): Promise<void> {
   if (!leaveType.deducts_balance) return;
 
@@ -158,6 +161,7 @@ async function validasiSaldo(
     employee.id,
     leaveType.id,
     period,
+    db,
   );
 
   if (saldo < totalDays) {
@@ -297,6 +301,9 @@ export async function CreateLeaveRequestController(
 
     validasiGender(leaveType, requester.employee);
     validateLeaveDates(leaveType, start_date, totalDays);
+
+    // Penyaring awal supaya kasus yang jelas kurang tidak perlu membuka
+    // transaksi. Pemeriksaan yang menentukan ada di dalam transaksi
     await validasiSaldo(leaveType, requester.employee, totalDays, period);
 
     const bentrok = await leaveRequestModel.findOverlapping(
@@ -317,6 +324,17 @@ export async function CreateLeaveRequestController(
 
     try {
       await client.query("BEGIN");
+
+      // Kunci dulu, baru baca saldo. Tanpa ini dua pengajuan bersamaan
+      // sama-sama membaca saldo lama dan keduanya lolos
+      await balanceModel.lockEmployeeBalance(client, requester.employee.id);
+      await validasiSaldo(
+        leaveType,
+        requester.employee,
+        totalDays,
+        period,
+        client,
+      );
 
       request = await leaveRequestModel.createRequest(client, {
         employee_id: requester.employee.id,

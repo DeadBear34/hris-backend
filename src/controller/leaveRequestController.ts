@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "../config/databaseConnection.js";
-import * as employeeModel from "../models/employee.js";
 import * as holidayModel from "../models/holiday.js";
 import * as leaveTypeModel from "../models/leaveType.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
@@ -23,15 +22,19 @@ import {
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
 import { startActivity } from "../helpers/activityLog.js";
-import { notifyLeaveSubmitted, notifyLeaveDecided } from "../helpers/notify.js";
+import {
+  notifyLeaveSubmitted,
+  notifyLeaveDecided,
+  clearLeaveApproval,
+} from "../helpers/notify.js";
 import {
   BadRequest,
   Conflict,
   Forbidden,
   NotFound,
-  Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 
 const SICK_LEAVE_CODE = "SICK";
 
@@ -42,24 +45,14 @@ interface Requester {
 }
 
 async function getRequester(req: Request, res: Response): Promise<Requester> {
-  if (!req.user)
-    throw Unauthorized("You are not logged in, please log in first");
+  const employee = await requireRequestEmployee(req, res);
 
-  const employee = await employeeModel.findByUserId(req.user.id);
+  const [canApproveAll, canViewAll] = await Promise.all([
+    hasFeature(req, res, "leave.approve_all"),
+    hasFeature(req, res, "leave.view_all"),
+  ]);
 
-  if (!employee) {
-    throw BadRequest(
-      "Your account is not linked to an employee record yet, please contact an admin first",
-    );
-  }
-
-  res.locals.employee ??= employee;
-
-  return {
-    employee,
-    canApproveAll: await hasFeature(req, res, "leave.approve_all"),
-    canViewAll: await hasFeature(req, res, "leave.view_all"),
-  };
+  return { employee, canApproveAll, canViewAll };
 }
 
 function resolveApprover(employee: Employee): string | null {
@@ -122,9 +115,9 @@ function validateLeaveDates(
   }
 
   if (!canGoBack && leaveType.min_notice_days > 0) {
-    const jarak = daysFromToday(start_date);
+    const gapDays = daysFromToday(start_date);
 
-    if (jarak < leaveType.min_notice_days) {
+    if (gapDays < leaveType.min_notice_days) {
       throw BadRequest(
         `This leave type must be requested at least ${plural(leaveType.min_notice_days, "day")} before the start date`,
       );
@@ -132,7 +125,7 @@ function validateLeaveDates(
   }
 }
 
-function validasiGender(leaveType: LeaveType, employee: Employee): void {
+function assertGenderAllowed(leaveType: LeaveType, employee: Employee): void {
   if (
     leaveType.gender_restriction &&
     leaveType.gender_restriction !== employee.gender
@@ -143,7 +136,7 @@ function validasiGender(leaveType: LeaveType, employee: Employee): void {
 
 // db diisi klien transaksi saat pemeriksaan menentukan, supaya angkanya
 // dibaca setelah baris karyawan dikunci
-async function validasiSaldo(
+async function assertSufficientBalance(
   leaveType: LeaveType,
   employee: Employee,
   totalDays: number,
@@ -152,17 +145,17 @@ async function validasiSaldo(
 ): Promise<void> {
   if (!leaveType.deducts_balance) return;
 
-  const saldo = await balanceModel.balanceFor(
+  const balance = await balanceModel.balanceFor(
     employee.id,
     leaveType.id,
     period,
     db,
   );
 
-  if (saldo < totalDays) {
+  if (balance < totalDays) {
     throw BadRequest(
-      `Insufficient ${leaveType.name} balance. You have ${plural(saldo, "day")} left, but your request is ${plural(totalDays, "day")}`,
-      { balance: saldo, requested: totalDays },
+      `Insufficient ${leaveType.name} balance. You have ${plural(balance, "day")} left, but your request is ${plural(totalDays, "day")}`,
+      { balance, requested: totalDays },
     );
   }
 }
@@ -294,23 +287,28 @@ export async function CreateLeaveRequestController(
     const totalDays = await countWorkdaysFor(start_date, end_date);
     const period = periodYearOf(start_date);
 
-    validasiGender(leaveType, requester.employee);
+    assertGenderAllowed(leaveType, requester.employee);
     validateLeaveDates(leaveType, start_date, totalDays);
 
     // Penyaring awal supaya kasus yang jelas kurang tidak perlu membuka
     // transaksi. Pemeriksaan yang menentukan ada di dalam transaksi
-    await validasiSaldo(leaveType, requester.employee, totalDays, period);
+    await assertSufficientBalance(
+      leaveType,
+      requester.employee,
+      totalDays,
+      period,
+    );
 
-    const bentrok = await leaveRequestModel.findOverlapping(
+    const overlapping = await leaveRequestModel.findOverlapping(
       requester.employee.id,
       start_date,
       end_date,
     );
 
-    if (bentrok) {
+    if (overlapping) {
       throw Conflict(
-        `You already have a leave request with status ${statusLabel(bentrok.status)} from ${bentrok.start_date} to ${bentrok.end_date}`,
-        { conflicting_request_id: bentrok.id },
+        `You already have a leave request with status ${statusLabel(overlapping.status)} from ${overlapping.start_date} to ${overlapping.end_date}`,
+        { conflicting_request_id: overlapping.id },
       );
     }
 
@@ -323,7 +321,7 @@ export async function CreateLeaveRequestController(
       // Kunci dulu, baru baca saldo. Tanpa ini dua pengajuan bersamaan
       // sama-sama membaca saldo lama dan keduanya lolos
       await balanceModel.lockEmployeeBalance(client, requester.employee.id);
-      await validasiSaldo(
+      await assertSufficientBalance(
         leaveType,
         requester.employee,
         totalDays,
@@ -632,10 +630,13 @@ export async function CancelLeaveRequestController(
 
     await client.query("BEGIN");
 
+    // Status yang sudah diperiksa di atas ikut jadi syarat. Kalau pengajuan
+    // disetujui di tengah jalan, pembatalan gagal alih-alih memakai status lama
     const request = await leaveRequestModel.cancelRequest(
       client,
       id,
       requester.employee.id,
+      existing.status,
     );
 
     if (!request) {
@@ -660,6 +661,10 @@ export async function CancelLeaveRequestController(
     }
 
     await client.query("COMMIT");
+
+    // setelah COMMIT, supaya lencana atasan tidak kehilangan tugas yang
+    // ternyata gagal dibatalkan
+    clearLeaveApproval(id);
 
     res.json({
       success: true,

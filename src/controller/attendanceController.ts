@@ -6,7 +6,6 @@ import { startActivity } from "../helpers/activityLog.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as eventModel from "../models/attendanceEvent.js";
 import * as workScheduleModel from "../models/workSchedule.js";
-import * as employeeModel from "../models/employee.js";
 import * as holidayModel from "../models/holiday.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import type { Employee } from "../models/employee.js";
@@ -27,6 +26,7 @@ import { isWorkingDay } from "../models/workSchedule.js";
 import {
   rejectionReasonForOfflineTime,
   buildOfflineNote,
+  DEVICE_CLOCK_SKEW_MINUTES,
 } from "../helpers/offlineAttendance.js";
 import {
   statusLabel,
@@ -45,6 +45,7 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 
 const CRON_HEADER = "x-cron-secret";
 
@@ -57,27 +58,6 @@ function meta(total: number, page: number, limit: number) {
     total,
     total_pages: Math.ceil(total / limit),
   };
-}
-
-async function getRequesterEmployee(
-  req: Request,
-  res: Response,
-): Promise<Employee> {
-  if (!req.user) {
-    throw Unauthorized("You are not logged in, please log in first");
-  }
-
-  const employee = await employeeModel.findByUserId(req.user.id);
-
-  if (!employee) {
-    throw BadRequest(
-      "Your account is not linked to an employee record yet, please contact an admin first",
-    );
-  }
-
-  res.locals.employee ??= employee;
-
-  return employee;
 }
 
 function assertMayCheckIn(employee: Employee): void {
@@ -186,6 +166,15 @@ function resolveAttendanceTime(
 
   const at = new Date(offline_time);
 
+  // Selisih sekecil ini berarti tombol ditekan saat online. Jam server yang
+  // dipakai, jadi jam perangkat tidak ikut menentukan status kehadiran
+  if (
+    Math.abs(serverTime.getTime() - at.getTime()) <=
+    DEVICE_CLOCK_SKEW_MINUTES * 60_000
+  ) {
+    return { at: serverTime, offline: false };
+  }
+
   const reason = rejectionReasonForOfflineTime(
     at,
     serverTime,
@@ -228,7 +217,7 @@ export async function CheckInController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req, res);
+    const employee = await requireRequestEmployee(req, res);
     assertMayCheckIn(employee);
 
     const { note, offline_time } = req.body as {
@@ -253,8 +242,12 @@ export async function CheckInController(
     const local = toLocalTime(attendanceAt.at);
     const date = local.date;
 
-    const terhalang = await blockedReasonForDate(employee.id, schedule, date);
-    if (terhalang) throw rejectEvent(event.id, terhalang, BadRequest);
+    const blockedReason = await blockedReasonForDate(
+      employee.id,
+      schedule,
+      date,
+    );
+    if (blockedReason) throw rejectEvent(event.id, blockedReason, BadRequest);
 
     const existing = await attendanceModel.findByEmployeeAndDate(
       employee.id,
@@ -271,8 +264,11 @@ export async function CheckInController(
       throw Conflict(message, { attendance: existing });
     }
 
-    const ditutup = blockedReasonForTime(schedule, local.minutesSinceMidnight);
-    if (ditutup) throw rejectEvent(event.id, ditutup, BadRequest);
+    const closedReason = blockedReasonForTime(
+      schedule,
+      local.minutesSinceMidnight,
+    );
+    if (closedReason) throw rejectEvent(event.id, closedReason, BadRequest);
 
     const startMinutes = minutesFromClockTime(schedule.start_time);
     const diffMinutes = lateMinutesFrom(
@@ -280,7 +276,7 @@ export async function CheckInController(
       startMinutes,
     );
 
-    const terlambat =
+    const isLate =
       arrivalDecision(schedule, local.minutesSinceMidnight) === "late";
 
     const attendance = await attendanceModel.createCheckIn({
@@ -289,8 +285,8 @@ export async function CheckInController(
       check_in_at: attendanceAt.at,
       check_in_recorded_at: now,
       check_in_source: attendanceAt.offline ? "offline_sync" : "online",
-      status: terlambat ? "late" : "present",
-      late_minutes: terlambat ? diffMinutes : 0,
+      status: isLate ? "late" : "present",
+      late_minutes: isLate ? diffMinutes : 0,
       note: attendanceAt.offline
         ? buildOfflineNote(attendanceAt.at, now, note ?? null)
         : (note ?? null),
@@ -302,7 +298,7 @@ export async function CheckInController(
 
     res.status(201).json({
       success: true,
-      message: terlambat
+      message: isLate
         ? `Check-in recorded at ${recordedClockTime}, ${plural(diffMinutes, "minute")} late for the ${shortTime(schedule.start_time)} start time`
         : `Check-in recorded at ${recordedClockTime}`,
       data: attendance,
@@ -318,7 +314,7 @@ export async function CheckOutController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req, res);
+    const employee = await requireRequestEmployee(req, res);
     assertMayCheckIn(employee);
 
     const { offline_time } = req.body as { offline_time?: string };
@@ -413,7 +409,7 @@ export async function TodayAttendanceController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req, res);
+    const employee = await requireRequestEmployee(req, res);
 
     const now = new Date();
     const date = todayInOfficeZone(now);
@@ -424,7 +420,7 @@ export async function TodayAttendanceController(
       date,
     );
 
-    const terhalang = schedule
+    const blockedReason = schedule
       ? ((await blockedReasonForDate(employee.id, schedule, date)) ??
         (attendance
           ? null
@@ -441,11 +437,11 @@ export async function TodayAttendanceController(
         server_time: clockTimeOf(now),
         schedule,
         attendance,
-        can_check_in: Boolean(schedule) && !terhalang && !attendance,
+        can_check_in: Boolean(schedule) && !blockedReason && !attendance,
         can_check_out: Boolean(
           attendance?.check_in_at && !attendance.check_out_at,
         ),
-        blocked_reason: terhalang,
+        blocked_reason: blockedReason,
       },
     });
   } catch (err) {
@@ -459,7 +455,7 @@ export async function MyAttendanceController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req, res);
+    const employee = await requireRequestEmployee(req, res);
 
     const query = res.locals.query as {
       month?: number;
@@ -505,7 +501,7 @@ export async function TeamAttendanceController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req, res);
+    const employee = await requireRequestEmployee(req, res);
     const query = res.locals.query as ListAttendanceParams;
 
     const { rows, total } = await attendanceModel.listAttendances({
@@ -574,13 +570,13 @@ export async function ReportAttendanceController(
 }
 
 function buildCorrectionNote(
-  pengoreksi: Employee,
+  corrector: Employee,
   reason: string,
   at: Date,
 ): string {
   const date = todayInOfficeZone(at);
 
-  return `[Corrected by ${pengoreksi.full_name} (${pengoreksi.employee_number}) on ${date} ${clockTimeOf(at)}] ${reason}`;
+  return `[Corrected by ${corrector.full_name} (${corrector.employee_number}) on ${date} ${clockTimeOf(at)}] ${reason}`;
 }
 
 interface TimeWitness {
@@ -591,7 +587,7 @@ interface TimeWitness {
 function witnessAfterCorrection(
   newTime: Date | null,
   previousTime: Date | null,
-  saksiLama: TimeWitness,
+  previousWitness: TimeWitness,
   correctedAt: Date,
 ): TimeWitness {
   if (!newTime) return { recorded_at: null, source: null };
@@ -600,8 +596,8 @@ function witnessAfterCorrection(
     previousTime !== null &&
     new Date(previousTime).getTime() === newTime.getTime();
 
-  if (unchanged && saksiLama.recorded_at && saksiLama.source) {
-    return saksiLama;
+  if (unchanged && previousWitness.recorded_at && previousWitness.source) {
+    return previousWitness;
   }
 
   return { recorded_at: correctedAt, source: "correction" };
@@ -614,7 +610,7 @@ export async function CorrectAttendanceController(
 ) {
   try {
     const activity = startActivity(req);
-    const pengoreksi = await getRequesterEmployee(req, res);
+    const corrector = await requireRequestEmployee(req, res);
     const { id } = res.locals.params as { id: string };
 
     const data = req.body as {
@@ -686,7 +682,7 @@ export async function CorrectAttendanceController(
         newCheckIn && newCheckOut
           ? minutesBetween(newCheckIn, newCheckOut)
           : null,
-      note: buildCorrectionNote(pengoreksi, data.reason, correctedAt),
+      note: buildCorrectionNote(corrector, data.reason, correctedAt),
     });
 
     activity.success({

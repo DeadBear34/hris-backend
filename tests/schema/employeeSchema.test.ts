@@ -560,8 +560,46 @@ describe("updateEmployeeSchema", () => {
   });
 });
 
+describe("mengosongkan kolom lewat update", () => {
+  it("menerima null untuk melepas manajer, departemen, dan jabatan", () => {
+    const result = updateEmployeeSchema.safeParse({
+      manager_id: null,
+      department_id: null,
+      position_id: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({
+      manager_id: null,
+      department_id: null,
+      position_id: null,
+    });
+  });
+
+  it("menerima null untuk alamat dan tanggal resign", () => {
+    const result = updateEmployeeSchema.safeParse({
+      address: null,
+      resign_date: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("kolom yang tidak dikirim tidak ikut dikosongkan", () => {
+    const result = updateEmployeeSchema.safeParse({ full_name: "Nama Baru" });
+
+    expect(result.data?.manager_id).toBeUndefined();
+  });
+
+  it("null tidak berlaku untuk kolom wajib seperti nama", () => {
+    const result = updateEmployeeSchema.safeParse({ full_name: null });
+
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("kolom opsional yang dikirim kosong", () => {
-  const dasar = {
+  const base = {
     email: "ujang@awan.io",
     password: "12345678",
     full_name: "Ujang Sutisna",
@@ -571,7 +609,7 @@ describe("kolom opsional yang dikirim kosong", () => {
 
   it("sel CSV kosong diperlakukan sebagai tidak diisi, bukan ditolak", () => {
     const result = createEmployeeSchema.safeParse({
-      ...dasar,
+      ...base,
       birth_date: "",
       address: "",
       department_id: "",
@@ -587,7 +625,7 @@ describe("kolom opsional yang dikirim kosong", () => {
 
   it("kolom kosong menjadi undefined, bukan string kosong", () => {
     const result = createEmployeeSchema.parse({
-      ...dasar,
+      ...base,
       address: "",
       birth_date: "",
     });
@@ -597,14 +635,14 @@ describe("kolom opsional yang dikirim kosong", () => {
   });
 
   it("alamat berisi spasi saja dianggap kosong", () => {
-    const result = createEmployeeSchema.parse({ ...dasar, address: "   " });
+    const result = createEmployeeSchema.parse({ ...base, address: "   " });
 
     expect(result.address).toBeUndefined();
   });
 
   it("kolom yang benar-benar diisi tetap tersimpan", () => {
     const result = createEmployeeSchema.parse({
-      ...dasar,
+      ...base,
       address: "Jl. Merdeka No. 10",
       birth_date: "1998-05-20",
     });
@@ -615,7 +653,7 @@ describe("kolom opsional yang dikirim kosong", () => {
 });
 
 describe("kewajaran tanggal", () => {
-  const dasar = {
+  const base = {
     email: "ujang@awan.io",
     password: "12345678",
     full_name: "Ujang Sutisna",
@@ -623,8 +661,8 @@ describe("kewajaran tanggal", () => {
     gender: "male",
   };
 
-  function tolak(data: Record<string, unknown>): string {
-    const result = createEmployeeSchema.safeParse({ ...dasar, ...data });
+  function rejectionMessage(data: Record<string, unknown>): string {
+    const result = createEmployeeSchema.safeParse({ ...base, ...data });
 
     expect(result.success).toBe(false);
 
@@ -632,44 +670,46 @@ describe("kewajaran tanggal", () => {
   }
 
   it("menolak tanggal lahir di masa depan", () => {
-    expect(tolak({ birth_date: "2090-01-01" })).toContain("at least");
+    expect(rejectionMessage({ birth_date: "2090-01-01" })).toContain(
+      "at least",
+    );
   });
 
   it("menolak karyawan di bawah usia kerja", () => {
-    const limaTahunLalu = new Date();
-    limaTahunLalu.setFullYear(limaTahunLalu.getFullYear() - 5);
+    const fiveYearsAgo = new Date();
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
 
     expect(
-      tolak({ birth_date: limaTahunLalu.toISOString().slice(0, 10) }),
+      rejectionMessage({ birth_date: fiveYearsAgo.toISOString().slice(0, 10) }),
     ).toContain("at least 15 years");
   });
 
   it("menolak tanggal lahir yang terlalu jauh ke belakang", () => {
-    expect(tolak({ birth_date: "1850-01-01" })).toContain("too far");
+    expect(rejectionMessage({ birth_date: "1850-01-01" })).toContain("too far");
   });
 
   it("menerima usia kerja yang wajar", () => {
-    const duaPuluhLima = new Date();
-    duaPuluhLima.setFullYear(duaPuluhLima.getFullYear() - 25);
+    const twentyFive = new Date();
+    twentyFive.setFullYear(twentyFive.getFullYear() - 25);
 
     const result = createEmployeeSchema.safeParse({
-      ...dasar,
-      birth_date: duaPuluhLima.toISOString().slice(0, 10),
+      ...base,
+      birth_date: twentyFive.toISOString().slice(0, 10),
     });
 
     expect(result.success).toBe(true);
   });
 
   it("menolak tanggal bergabung yang terlalu jauh ke depan", () => {
-    expect(tolak({ join_date: "2200-01-01" })).toContain("365 days");
+    expect(rejectionMessage({ join_date: "2200-01-01" })).toContain("365 days");
   });
 
   it("menerima tanggal bergabung yang belum tiba tetapi masih wajar", () => {
-    const bulanDepan = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const result = createEmployeeSchema.safeParse({
-      ...dasar,
-      join_date: bulanDepan.toISOString().slice(0, 10),
+      ...base,
+      join_date: nextMonth.toISOString().slice(0, 10),
     });
 
     expect(result.success).toBe(true);
@@ -677,7 +717,7 @@ describe("kewajaran tanggal", () => {
 
   it("menolak bergabung sebelum tanggal lahir", () => {
     expect(
-      tolak({ birth_date: "2000-01-01", join_date: "1990-01-01" }),
+      rejectionMessage({ birth_date: "2000-01-01", join_date: "1990-01-01" }),
     ).toContain("before birth date");
   });
 
@@ -692,7 +732,7 @@ describe("kewajaran tanggal", () => {
 });
 
 describe("usia dihitung secara kalender", () => {
-  const dasar = {
+  const base = {
     email: "batas@awan.io",
     password: "12345678",
     full_name: "Uji Batas",
@@ -700,39 +740,39 @@ describe("usia dihitung secara kalender", () => {
     gender: "male",
   };
 
-  function tanggalUsia(tahun: number, geserHari = 0): string {
+  function dateForAge(years: number, dayOffset = 0): string {
     const d = new Date();
-    d.setFullYear(d.getFullYear() - tahun);
-    d.setDate(d.getDate() + geserHari);
+    d.setFullYear(d.getFullYear() - years);
+    d.setDate(d.getDate() + dayOffset);
 
     return d.toISOString().slice(0, 10);
   }
 
-  function diterima(birth_date: string): boolean {
-    return createEmployeeSchema.safeParse({ ...dasar, birth_date }).success;
+  function accepted(birth_date: string): boolean {
+    return createEmployeeSchema.safeParse({ ...base, birth_date }).success;
   }
 
   it("menerima yang tepat berulang tahun ke-15 hari ini", () => {
-    expect(diterima(tanggalUsia(15))).toBe(true);
+    expect(accepted(dateForAge(15))).toBe(true);
   });
 
   it("menolak yang baru berusia 15 besok", () => {
-    expect(diterima(tanggalUsia(15, 1))).toBe(false);
+    expect(accepted(dateForAge(15, 1))).toBe(false);
   });
 
   it("menerima yang tepat berusia 100 tahun", () => {
     // pembagian selisih milidetik sempat menolak kasus ini karena Date.now()
     // membawa jam saat ini sedangkan tanggal lahir dihitung dari tengah malam
-    expect(diterima(tanggalUsia(100))).toBe(true);
+    expect(accepted(dateForAge(100))).toBe(true);
   });
 
   it("menolak yang sudah lewat 101 tahun", () => {
-    expect(diterima(tanggalUsia(101, -1))).toBe(false);
+    expect(accepted(dateForAge(101, -1))).toBe(false);
   });
 
   it("hasilnya tidak bergantung pada jam saat pengujian dijalankan", () => {
     // usia kalender hanya melihat bagian tanggal, bukan jam
-    expect(diterima(tanggalUsia(30))).toBe(true);
-    expect(diterima(tanggalUsia(16))).toBe(true);
+    expect(accepted(dateForAge(30))).toBe(true);
+    expect(accepted(dateForAge(16))).toBe(true);
   });
 });

@@ -252,15 +252,17 @@ export async function cancelRequest(
   db: Executor,
   id: string,
   cancelled_by: string,
+  expected_status: LeaveStatus,
 ): Promise<LeaveRequest | null> {
   const result = await db.query<LeaveRequest>(
     `UPDATE leave_requests
      SET status = 'cancelled'::leave_status, cancelled_by = $2::uuid,
          cancelled_at = now(), updated_at = now()
      WHERE id = $1::uuid
+       AND status = $3::leave_status
        AND status IN ('pending'::leave_status, 'approved'::leave_status)
      RETURNING ${COLUMNS.replaceAll("lr.", "")}`,
-    [id, cancelled_by],
+    [id, cancelled_by, expected_status],
   );
 
   return result.rows[0] ?? null;

@@ -35,10 +35,10 @@ describe("keWaktuLokal", () => {
   });
 
   it("check-in pukul 08:00 pada hari yang sama menghasilkan tanggal sama", () => {
-    const dini = toLocalTime(new Date("2026-03-09T23:00:00Z"));
-    const pagi = toLocalTime(new Date("2026-03-10T01:00:00Z"));
+    const earlyMorning = toLocalTime(new Date("2026-03-09T23:00:00Z"));
+    const morning = toLocalTime(new Date("2026-03-10T01:00:00Z"));
 
-    expect(dini.date).toBe(pagi.date);
+    expect(earlyMorning.date).toBe(morning.date);
   });
 
   it("tepat tengah malam WIB masuk ke tanggal baru", () => {

@@ -48,7 +48,7 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
   findLatestActive: jest.fn(),
-  incrementAttempts: jest.fn(),
+  claimAttempt: jest.fn(),
   markConsumed: jest.fn(),
   invalidateActive: jest.fn(),
 }));
@@ -106,16 +106,16 @@ const fakeEmployee = {
   updated_at: new Date(),
 };
 
-function catatanTerakhir(mock: jest.Mock) {
-  const panggilan = mock.mock.calls.at(-1) as [
+function lastLogEntry(mock: jest.Mock) {
+  const calls = mock.mock.calls.at(-1) as [
     { activity: Record<string, unknown> },
     string,
   ];
 
-  return panggilan[0].activity;
+  return calls[0].activity;
 }
 
-async function siapkanLogin(override: Record<string, unknown> = {}) {
+async function prepareLogin(override: Record<string, unknown> = {}) {
   const hashed = await hashPassword("password123");
 
   (userModel.findByEmail as jest.Mock).mockResolvedValue({
@@ -143,13 +143,13 @@ describe("catatan aktivitas login", () => {
   });
 
   it("mencatat login yang berhasil beserta pelakunya", async () => {
-    await siapkanLogin();
+    await prepareLogin();
 
     const res = await login();
 
     expect(res.status).toBe(200);
 
-    const note = catatanTerakhir(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.login");
     expect(note.status).toBe("success");
@@ -168,7 +168,7 @@ describe("catatan aktivitas login", () => {
 
     expect(res.status).toBe(401);
 
-    const note = catatanTerakhir(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.warn as jest.Mock);
 
     expect(note.action).toBe("auth.login");
     expect(note.status).toBe("failed");
@@ -180,14 +180,14 @@ describe("catatan aktivitas login", () => {
   });
 
   it("membedakan sebab gagal walau pesan ke pengguna disamakan", async () => {
-    await siapkanLogin();
+    await prepareLogin();
 
     const res = await login("passwordsalah");
 
     expect(res.status).toBe(401);
     expect(res.body.message).toBe("Incorrect email or password");
 
-    const note = catatanTerakhir(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.warn as jest.Mock);
 
     expect((note.metadata as { reason: string }).reason).toBe("wrong_password");
     expect(note.actor_user_id).toBe(USER_ID);
@@ -198,28 +198,28 @@ describe("catatan aktivitas login", () => {
     [{ approved_at: null }, "not_approved"],
     [{ is_active: false }, "account_inactive"],
   ])("mencatat sebab %#", async (override, reason) => {
-    await siapkanLogin(override);
+    await prepareLogin(override);
 
     const res = await login();
 
     expect(res.status).toBe(401);
     expect(
-      (catatanTerakhir(logger.warn as jest.Mock).metadata as { reason: string })
+      (lastLogEntry(logger.warn as jest.Mock).metadata as { reason: string })
         .reason,
     ).toBe(reason);
   });
 
   it("tidak pernah menuliskan password ke catatan", async () => {
-    await siapkanLogin();
+    await prepareLogin();
     await login("passwordsalah");
 
-    const semua = JSON.stringify([
+    const everything = JSON.stringify([
       ...(logger.info as jest.Mock).mock.calls,
       ...(logger.warn as jest.Mock).mock.calls,
     ]);
 
-    expect(semua).not.toContain("passwordsalah");
-    expect(semua).not.toContain("password123");
+    expect(everything).not.toContain("passwordsalah");
+    expect(everything).not.toContain("password123");
   });
 });
 
@@ -238,7 +238,7 @@ describe("catatan aktivitas register", () => {
     mockClient.query.mockResolvedValue({ rows: [] } as never);
   });
 
-  function daftar() {
+  function register() {
     return request(app).post("/api/v1/auth/register").send(body);
   }
 
@@ -253,11 +253,11 @@ describe("catatan aktivitas register", () => {
       full_name: body.full_name,
     } as never);
 
-    const res = await daftar();
+    const res = await register();
 
     expect(res.status).toBe(201);
 
-    const note = catatanTerakhir(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.register");
     expect(note.status).toBe("success");
@@ -272,11 +272,11 @@ describe("catatan aktivitas register", () => {
   it("mencatat penolakan karena email sudah terdaftar", async () => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
 
-    const res = await daftar();
+    const res = await register();
 
     expect(res.status).toBe(409);
 
-    const note = catatanTerakhir(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.warn as jest.Mock);
 
     expect(note.action).toBe("auth.register");
     expect(note.status).toBe("failed");
@@ -292,11 +292,11 @@ describe("catatan aktivitas register", () => {
       email_verified_at: null,
     } as never);
 
-    const res = await daftar();
+    const res = await register();
 
     expect(res.status).toBe(200);
 
-    const note = catatanTerakhir(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.register");
     expect((note.metadata as { resent: boolean }).resent).toBe(true);

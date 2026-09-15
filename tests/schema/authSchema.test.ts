@@ -234,8 +234,8 @@ describe("registerSchema", () => {
   });
 
   it("menolak jika syarat dan ketentuan tidak dikirim", () => {
-    const { terms_accepted, ...tanpaTerms } = validRegister;
-    const result = registerSchema.safeParse(tanpaTerms);
+    const { terms_accepted, ...withoutTerms } = validRegister;
+    const result = registerSchema.safeParse(withoutTerms);
 
     expect(result.success).toBe(false);
   });
@@ -584,8 +584,8 @@ describe("resetPasswordSchema", () => {
   });
 
   it("menolak konfirmasi password yang tidak dikirim", () => {
-    const { password_confirmation, ...tanpaKonfirmasi } = validReset;
-    const result = resetPasswordSchema.safeParse(tanpaKonfirmasi);
+    const { password_confirmation, ...withoutConfirmation } = validReset;
+    const result = resetPasswordSchema.safeParse(withoutConfirmation);
 
     expect(result.success).toBe(false);
   });
@@ -601,11 +601,11 @@ describe("resetPasswordSchema", () => {
   });
 
   it("menolak password baru melebihi 72 karakter", () => {
-    const panjang = "a".repeat(73);
+    const long = "a".repeat(73);
     const result = resetPasswordSchema.safeParse({
       ...validReset,
-      password: panjang,
-      password_confirmation: panjang,
+      password: long,
+      password_confirmation: long,
     });
 
     expect(result.success).toBe(false);
@@ -618,8 +618,8 @@ describe("resetPasswordSchema", () => {
   });
 
   it("menolak token yang tidak dikirim", () => {
-    const { token, ...tanpaToken } = validReset;
-    const result = resetPasswordSchema.safeParse(tanpaToken);
+    const { token, ...withoutToken } = validReset;
+    const result = resetPasswordSchema.safeParse(withoutToken);
 
     expect(result.success).toBe(false);
   });

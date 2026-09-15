@@ -6,15 +6,15 @@ import {
   MAX_FILE_SIZE,
 } from "../../src/helpers/fileType.js";
 
-function berkas(...bytes: number[]): Buffer {
+function bytesOf(...bytes: number[]): Buffer {
   return Buffer.from(bytes);
 }
 
-const JPEG = berkas(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10);
-const PNG = berkas(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00);
+const JPEG = bytesOf(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10);
+const PNG = bytesOf(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00);
 const WEBP = Buffer.concat([
   Buffer.from("RIFF"),
-  berkas(0x00, 0x00, 0x00, 0x00),
+  bytesOf(0x00, 0x00, 0x00, 0x00),
   Buffer.from("WEBP"),
 ]);
 
@@ -50,13 +50,13 @@ describe("detectImageMimeType", () => {
   });
 
   it("menolak buffer yang terlalu pendek untuk dikenali", () => {
-    expect(detectImageMimeType(berkas(0xff, 0xd8))).toBeNull();
+    expect(detectImageMimeType(bytesOf(0xff, 0xd8))).toBeNull();
   });
 
   it("menolak RIFF yang bukan WebP, misalnya WAV", () => {
     const wav = Buffer.concat([
       Buffer.from("RIFF"),
-      berkas(0x00, 0x00, 0x00, 0x00),
+      bytesOf(0x00, 0x00, 0x00, 0x00),
       Buffer.from("WAVE"),
     ]);
 
@@ -65,7 +65,7 @@ describe("detectImageMimeType", () => {
 
   it("menolak PNG yang hanya benar sebagian", () => {
     expect(
-      detectImageMimeType(berkas(0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00)),
+      detectImageMimeType(bytesOf(0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00)),
     ).toBeNull();
   });
 

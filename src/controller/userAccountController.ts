@@ -42,7 +42,10 @@ export async function ApproveUserController(
       throw BadRequest("This account has already been approved");
     }
 
+    // Syarat "belum disetujui" dicek ulang di query, jadi dua klik bersamaan
+    // tidak mengirim email persetujuan dua kali
     const user = await userModel.approveUser(id, req.user.id);
+    if (!user) throw BadRequest("This account has already been approved");
 
     const employee = await employeeModel.findByUserId(id);
     const body = accountApprovedEmail(

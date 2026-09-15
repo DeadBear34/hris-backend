@@ -83,7 +83,7 @@ const fakeEmployee = {
   is_active: true,
 };
 
-const jadwalBawaan = {
+const defaultSchedule = {
   id: SCHEDULE_ID,
   name: "Jadwal Kerja Umum",
   department_id: null,
@@ -97,8 +97,8 @@ const jadwalBawaan = {
   is_active: true,
 };
 
-const jadwalDepartemen = {
-  ...jadwalBawaan,
+const departmentSchedule = {
+  ...defaultSchedule,
   id: "66666666-6666-4666-8666-666666666666",
   name: "Jadwal Operasional",
   department_id: DEPARTMENT_ID,
@@ -117,36 +117,36 @@ beforeEach(() => {
     name: "Operasional",
   } as never);
   (workScheduleModel.findAll as jest.Mock).mockResolvedValue([
-    jadwalBawaan,
+    defaultSchedule,
   ] as never);
   (workScheduleModel.findById as jest.Mock).mockResolvedValue(
-    jadwalDepartemen as never,
+    departmentSchedule as never,
   );
   (workScheduleModel.findDefault as jest.Mock).mockResolvedValue(null as never);
   (workScheduleModel.findByDepartment as jest.Mock).mockResolvedValue(
     null as never,
   );
   (workScheduleModel.createSchedule as jest.Mock).mockResolvedValue(
-    jadwalDepartemen as never,
+    departmentSchedule as never,
   );
   (workScheduleModel.updateSchedule as jest.Mock).mockResolvedValue(
-    jadwalDepartemen as never,
+    departmentSchedule as never,
   );
   (workScheduleModel.softDeleteSchedule as jest.Mock).mockResolvedValue(
-    jadwalDepartemen as never,
+    departmentSchedule as never,
   );
   (workScheduleModel.countEmployees as jest.Mock).mockResolvedValue(0 as never);
   (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
-    jadwalDepartemen as never,
+    departmentSchedule as never,
   );
 });
 
-function sebagaiKaryawan(
-  metode: "get" | "post" | "patch" | "delete",
-  jalur: string,
+function asEmployee(
+  method: "get" | "post" | "patch" | "delete",
+  urlPath: string,
 ) {
   return request(app)
-    [metode](jalur)
+    [method](urlPath)
     .set("Authorization", `Bearer ${employeeToken}`);
 }
 
@@ -162,14 +162,14 @@ describe("membaca jadwal kerja", () => {
       [] as never,
     );
 
-    const res = await sebagaiKaryawan("get", "/api/v1/work-schedules");
+    const res = await asEmployee("get", "/api/v1/work-schedules");
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
   });
 
   it("memberi jadwal yang berlaku bagi pengguna yang sedang login", async () => {
-    const res = await sebagaiKaryawan("get", "/api/v1/work-schedules/me");
+    const res = await asEmployee("get", "/api/v1/work-schedules/me");
 
     expect(res.status).toBe(200);
     expect(res.body.data.name).toBe("Jadwal Operasional");
@@ -183,22 +183,19 @@ describe("membaca jadwal kerja", () => {
       null as never,
     );
 
-    const res = await sebagaiKaryawan("get", "/api/v1/work-schedules/me");
+    const res = await asEmployee("get", "/api/v1/work-schedules/me");
 
     expect(res.status).toBe(404);
   });
 
   it("tidak membaca kata me sebagai id jadwal", async () => {
-    await sebagaiKaryawan("get", "/api/v1/work-schedules/me");
+    await asEmployee("get", "/api/v1/work-schedules/me");
 
     expect(workScheduleModel.findById).not.toHaveBeenCalled();
   });
 
   it("menolak id yang bukan uuid", async () => {
-    const res = await sebagaiKaryawan(
-      "get",
-      "/api/v1/work-schedules/bukan-uuid",
-    );
+    const res = await asEmployee("get", "/api/v1/work-schedules/bukan-uuid");
 
     expect(res.status).toBe(400);
   });
@@ -206,7 +203,7 @@ describe("membaca jadwal kerja", () => {
   it("melaporkan jadwal yang tidak ditemukan", async () => {
     (workScheduleModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await sebagaiKaryawan(
+    const res = await asEmployee(
       "get",
       `/api/v1/work-schedules/${SCHEDULE_ID}`,
     );
@@ -216,8 +213,8 @@ describe("membaca jadwal kerja", () => {
 });
 
 describe("membuat jadwal kerja", () => {
-  function buat(body: Record<string, unknown>) {
-    return sebagaiKaryawan("post", "/api/v1/work-schedules").send(body);
+  function postSchedule(body: Record<string, unknown>) {
+    return asEmployee("post", "/api/v1/work-schedules").send(body);
   }
 
   it("menolak tanpa fitur organization.schedule", async () => {
@@ -225,14 +222,14 @@ describe("membuat jadwal kerja", () => {
       [] as never,
     );
 
-    const res = await buat({ name: "Jadwal Operasional" });
+    const res = await postSchedule({ name: "Jadwal Operasional" });
 
     expect(res.status).toBe(403);
     expect(res.body.details.required_feature).toBe("organization.schedule");
   });
 
   it("menyimpan jadwal departemen baru", async () => {
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Operasional",
       department_id: DEPARTMENT_ID,
       start_time: "09:00",
@@ -245,10 +242,10 @@ describe("membuat jadwal kerja", () => {
 
   it("menolak departemen yang sudah punya jadwal", async () => {
     (workScheduleModel.findByDepartment as jest.Mock).mockResolvedValue(
-      jadwalDepartemen as never,
+      departmentSchedule as never,
     );
 
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Lain",
       department_id: DEPARTMENT_ID,
     });
@@ -260,7 +257,7 @@ describe("membuat jadwal kerja", () => {
   it("menolak departemen yang tidak ditemukan", async () => {
     (departmentModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Operasional",
       department_id: DEPARTMENT_ID,
     });
@@ -270,17 +267,17 @@ describe("membuat jadwal kerja", () => {
 
   it("menolak jadwal bawaan kedua", async () => {
     (workScheduleModel.findDefault as jest.Mock).mockResolvedValue(
-      jadwalBawaan as never,
+      defaultSchedule as never,
     );
 
-    const res = await buat({ name: "Jadwal Bawaan Lain" });
+    const res = await postSchedule({ name: "Jadwal Bawaan Lain" });
 
     expect(res.status).toBe(409);
     expect(res.body.message).toContain("only one default schedule is allowed");
   });
 
   it("menolak jam pulang yang tidak melewati jam masuk", async () => {
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Terbalik",
       start_time: "17:00",
       end_time: "08:00",
@@ -291,24 +288,26 @@ describe("membuat jadwal kerja", () => {
   });
 
   it("menolak format jam yang tidak valid", async () => {
-    const res = await buat({ name: "Jadwal Aneh", start_time: "8 pagi" });
+    const res = await postSchedule({
+      name: "Jadwal Aneh",
+      start_time: "8 pagi",
+    });
 
     expect(res.status).toBe(400);
   });
 
   it("menolak nama yang terlalu pendek", async () => {
-    const res = await buat({ name: "AB" });
+    const res = await postSchedule({ name: "AB" });
 
     expect(res.status).toBe(400);
   });
 });
 
 describe("mengubah jadwal kerja", () => {
-  function ubah(body: Record<string, unknown>) {
-    return sebagaiKaryawan(
-      "patch",
-      `/api/v1/work-schedules/${SCHEDULE_ID}`,
-    ).send(body);
+  function patchSchedule(body: Record<string, unknown>) {
+    return asEmployee("patch", `/api/v1/work-schedules/${SCHEDULE_ID}`).send(
+      body,
+    );
   }
 
   it("menolak tanpa fitur organization.schedule", async () => {
@@ -316,13 +315,13 @@ describe("mengubah jadwal kerja", () => {
       [] as never,
     );
 
-    const res = await ubah({ name: "Nama Baru" });
+    const res = await patchSchedule({ name: "Nama Baru" });
 
     expect(res.status).toBe(403);
   });
 
   it("mengubah jadwal departemen", async () => {
-    const res = await ubah({ late_tolerance_minutes: 10 });
+    const res = await patchSchedule({ late_tolerance_minutes: 10 });
 
     expect(res.status).toBe(200);
     expect(workScheduleModel.updateSchedule).toHaveBeenCalledWith(SCHEDULE_ID, {
@@ -332,7 +331,7 @@ describe("mengubah jadwal kerja", () => {
 
   it("membandingkan jam dengan nilai lama ketika hanya satu yang diubah", async () => {
     // jadwal lama 08:00 sampai 17:00, jam masuk baru 18:00 melewati jam pulang
-    const res = await ubah({ start_time: "18:00" });
+    const res = await patchSchedule({ start_time: "18:00" });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("End time");
@@ -341,10 +340,10 @@ describe("mengubah jadwal kerja", () => {
 
   it("menolak memindahkan jadwal bawaan ke satu departemen", async () => {
     (workScheduleModel.findById as jest.Mock).mockResolvedValue(
-      jadwalBawaan as never,
+      defaultSchedule as never,
     );
 
-    const res = await ubah({ department_id: DEPARTMENT_ID });
+    const res = await patchSchedule({ department_id: DEPARTMENT_ID });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("default schedule");
@@ -352,10 +351,10 @@ describe("mengubah jadwal kerja", () => {
 
   it("menolak menonaktifkan jadwal bawaan", async () => {
     (workScheduleModel.findById as jest.Mock).mockResolvedValue(
-      jadwalBawaan as never,
+      defaultSchedule as never,
     );
 
-    const res = await ubah({ is_active: false });
+    const res = await patchSchedule({ is_active: false });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("fallback");
@@ -363,12 +362,12 @@ describe("mengubah jadwal kerja", () => {
 
   it("menolak memindahkan jadwal ke departemen yang sudah punya jadwal", async () => {
     (workScheduleModel.findByDepartment as jest.Mock).mockResolvedValue({
-      ...jadwalDepartemen,
+      ...departmentSchedule,
       id: "77777777-7777-4777-8777-777777777777",
       name: "Jadwal Gudang",
     } as never);
 
-    const res = await ubah({
+    const res = await patchSchedule({
       department_id: "88888888-8888-4888-8888-888888888888",
     });
 
@@ -379,15 +378,15 @@ describe("mengubah jadwal kerja", () => {
   it("melaporkan jadwal yang tidak ditemukan", async () => {
     (workScheduleModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await ubah({ name: "Nama Baru" });
+    const res = await patchSchedule({ name: "Nama Baru" });
 
     expect(res.status).toBe(404);
   });
 });
 
 describe("menghapus jadwal kerja", () => {
-  function hapus() {
-    return sebagaiKaryawan("delete", `/api/v1/work-schedules/${SCHEDULE_ID}`);
+  function deleteSchedule() {
+    return asEmployee("delete", `/api/v1/work-schedules/${SCHEDULE_ID}`);
   }
 
   it("menolak tanpa fitur organization.schedule", async () => {
@@ -395,13 +394,13 @@ describe("menghapus jadwal kerja", () => {
       [] as never,
     );
 
-    const res = await hapus();
+    const res = await deleteSchedule();
 
     expect(res.status).toBe(403);
   });
 
   it("menghapus jadwal yang tidak dipakai siapa pun", async () => {
-    const res = await hapus();
+    const res = await deleteSchedule();
 
     expect(res.status).toBe(200);
     expect(workScheduleModel.softDeleteSchedule).toHaveBeenCalledWith(
@@ -414,7 +413,7 @@ describe("menghapus jadwal kerja", () => {
       4 as never,
     );
 
-    const res = await hapus();
+    const res = await deleteSchedule();
 
     expect(res.status).toBe(409);
     expect(res.body.message).toContain("4 employees");
@@ -424,10 +423,10 @@ describe("menghapus jadwal kerja", () => {
 
   it("tidak pernah menghapus jadwal bawaan", async () => {
     (workScheduleModel.findById as jest.Mock).mockResolvedValue(
-      jadwalBawaan as never,
+      defaultSchedule as never,
     );
 
-    const res = await hapus();
+    const res = await deleteSchedule();
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("fallback");
@@ -437,26 +436,25 @@ describe("menghapus jadwal kerja", () => {
   it("melaporkan jadwal yang tidak ditemukan", async () => {
     (workScheduleModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await hapus();
+    const res = await deleteSchedule();
 
     expect(res.status).toBe(404);
   });
 });
 
 describe("keselarasan batas absen dengan jam kerja", () => {
-  function buat(body: Record<string, unknown>) {
-    return sebagaiKaryawan("post", "/api/v1/work-schedules").send(body);
+  function postSchedule(body: Record<string, unknown>) {
+    return asEmployee("post", "/api/v1/work-schedules").send(body);
   }
 
-  function ubah(body: Record<string, unknown>) {
-    return sebagaiKaryawan(
-      "patch",
-      `/api/v1/work-schedules/${SCHEDULE_ID}`,
-    ).send(body);
+  function patchSchedule(body: Record<string, unknown>) {
+    return asEmployee("patch", `/api/v1/work-schedules/${SCHEDULE_ID}`).send(
+      body,
+    );
   }
 
   it("menerima batas absen yang melewati akhir toleransi", async () => {
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Ketat",
       department_id: DEPARTMENT_ID,
       start_time: "08:00",
@@ -469,7 +467,7 @@ describe("keselarasan batas absen dengan jam kerja", () => {
   });
 
   it("menolak batas absen yang jatuh sebelum akhir toleransi", async () => {
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Rancu",
       department_id: DEPARTMENT_ID,
       start_time: "08:00",
@@ -484,7 +482,7 @@ describe("keselarasan batas absen dengan jam kerja", () => {
   });
 
   it("menolak batas absen yang tepat di akhir toleransi", async () => {
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Rancu",
       department_id: DEPARTMENT_ID,
       start_time: "08:00",
@@ -497,7 +495,7 @@ describe("keselarasan batas absen dengan jam kerja", () => {
   });
 
   it("menolak batas absen yang melewati jam pulang", async () => {
-    const res = await buat({
+    const res = await postSchedule({
       name: "Jadwal Rancu",
       department_id: DEPARTMENT_ID,
       start_time: "08:00",
@@ -510,7 +508,7 @@ describe("keselarasan batas absen dengan jam kerja", () => {
   });
 
   it("memakai toleransi lama saat hanya batas absen yang diubah", async () => {
-    const res = await ubah({ absent_cutoff_time: "08:02" });
+    const res = await patchSchedule({ absent_cutoff_time: "08:02" });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("late tolerance");
@@ -518,7 +516,7 @@ describe("keselarasan batas absen dengan jam kerja", () => {
   });
 
   it("mengizinkan pengetatan batas absen", async () => {
-    const res = await ubah({ absent_cutoff_time: "08:10" });
+    const res = await patchSchedule({ absent_cutoff_time: "08:10" });
 
     expect(res.status).toBe(200);
   });

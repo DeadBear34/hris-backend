@@ -1,26 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
-import * as employeeModel from "../models/employee.js";
 import * as featureModel from "../models/feature.js";
-import type { Employee } from "../models/employee.js";
 import { readFromCache, writeToCache } from "../helpers/featureCache.js";
 import { Forbidden } from "../helpers/appError.js";
-
-async function getRequestEmployee(
-  req: Request,
-  res: Response,
-): Promise<Employee | null> {
-  const stored = res.locals.employee as Employee | undefined;
-  if (stored) return stored;
-
-  if (!req.user) return null;
-
-  const employee = await employeeModel.findByUserId(req.user.id);
-  if (!employee) return null;
-
-  res.locals.employee = employee;
-
-  return employee;
-}
+import { findRequestEmployee } from "../helpers/requestEmployee.js";
 
 async function getPositionFeatureCodes(position_id: string): Promise<string[]> {
   const fromCache = readFromCache(position_id);
@@ -40,7 +22,7 @@ export async function getUserFeatureCodes(
     return featureModel.findAllCodes();
   }
 
-  const employee = await getRequestEmployee(req, res);
+  const employee = await findRequestEmployee(req, res);
 
   if (!employee?.position_id) return [];
 
@@ -54,7 +36,7 @@ export async function hasFeature(
 ): Promise<boolean> {
   if (req.user?.role === "admin") return true;
 
-  const employee = await getRequestEmployee(req, res);
+  const employee = await findRequestEmployee(req, res);
 
   if (!employee?.position_id) return false;
 
@@ -68,7 +50,7 @@ export function requireFeature(code: string) {
     try {
       if (req.user?.role === "admin") return next();
 
-      const employee = await getRequestEmployee(req, res);
+      const employee = await findRequestEmployee(req, res);
 
       if (!employee) {
         throw Forbidden(

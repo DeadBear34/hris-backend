@@ -32,7 +32,7 @@ import { notifyAccountNeedsApproval } from "../helpers/notify.js";
 import { plural } from "../helpers/plural.js";
 
 const CODE_VALID_MINUTES = 10;
-const TAUTAN_BERLAKU_MENIT = 15;
+const RESET_LINK_TTL_MINUTES = 15;
 const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -97,13 +97,7 @@ async function sendVerificationCode(
   }
 }
 
-async function increaseAttempts(token: VerificationToken): Promise<void> {
-  if (!token.consumed_at) {
-    await tokenModel.incrementAttempts(token.id);
-  }
-}
-
-async function verifikasiToken(
+async function verifyTokenValue(
   email: string,
   purpose: TokenPurpose,
   value: string,
@@ -111,32 +105,24 @@ async function verifikasiToken(
 ): Promise<VerificationToken> {
   const token = await tokenModel.findLatest(email, purpose);
 
-  if (!token) {
-    logger.warn(
-      { email, purpose, reason: "token was never issued" },
-      "Token verification rejected",
-    );
-    throw BadRequest(failureMessage);
-  }
-
   let reason: string | null = null;
 
-  if (token.consumed_at) {
+  // Jatah percobaan diambil sebelum nilai token dicocokkan. Kalau dihitung
+  // belakangan, tebakan yang dikirim bersamaan lolos dari batas percobaan
+  if (!token) {
+    reason = "token was never issued";
+  } else if (token.consumed_at) {
     reason = "token already used";
   } else if (token.expires_at.getTime() <= Date.now()) {
     reason = "token expired";
-  } else if (token.attempts >= MAX_ATTEMPTS) {
+  } else if (!(await tokenModel.claimAttempt(token.id, MAX_ATTEMPTS))) {
     reason = "attempt limit exceeded";
   } else if (!(await verifyPassword(token.token_hash, value))) {
     reason = "token value does not match";
   }
 
-  if (reason) {
-    await increaseAttempts(token);
-    logger.warn(
-      { email, purpose, alasan: reason },
-      "Token verification rejected",
-    );
+  if (!token || reason) {
+    logger.warn({ email, purpose, reason }, "Token verification rejected");
     throw BadRequest(failureMessage);
   }
 
@@ -299,7 +285,7 @@ export async function VerifyEmailController(
   try {
     const { email, code } = req.body as { email: string; code: string };
 
-    const token = await verifikasiToken(
+    const token = await verifyTokenValue(
       email,
       "email_verification",
       code,
@@ -309,7 +295,9 @@ export async function VerifyEmailController(
     const user = await userModel.findByEmail(email);
     if (!user) throw BadRequest(MESSAGE_INVALID_CODE);
 
-    await tokenModel.markConsumed(token.id);
+    // Hanya satu permintaan yang bisa menandai token terpakai
+    const consumed = await tokenModel.markConsumed(token.id);
+    if (!consumed) throw BadRequest(MESSAGE_INVALID_CODE);
 
     if (!user.email_verified_at) {
       await userModel.setEmailVerified(user.id);
@@ -334,10 +322,13 @@ export async function ResendVerificationController(
   try {
     const { email } = req.body as { email: string };
 
-    const terakhir = await tokenModel.findLatest(email, "email_verification");
+    const latestToken = await tokenModel.findLatest(
+      email,
+      "email_verification",
+    );
 
-    if (terakhir) {
-      const cooldownElapsed = Date.now() - terakhir.created_at.getTime();
+    if (latestToken) {
+      const cooldownElapsed = Date.now() - latestToken.created_at.getTime();
       const remainder = RESEND_COOLDOWN_SECONDS * 1000 - cooldownElapsed;
 
       if (remainder > 0) {
@@ -383,7 +374,7 @@ export async function ForgotPasswordController(
         email,
         purpose: "password_reset",
         token_hash: await hashPassword(value),
-        expires_at: expiresInMinutes(TAUTAN_BERLAKU_MENIT),
+        expires_at: expiresInMinutes(RESET_LINK_TTL_MINUTES),
         ...requestMeta(req),
       });
 
@@ -391,7 +382,7 @@ export async function ForgotPasswordController(
       const employee = await employeeModel.findByUserId(user.id);
       const body = passwordResetEmail(
         link,
-        TAUTAN_BERLAKU_MENIT,
+        RESET_LINK_TTL_MINUTES,
         employee?.full_name ?? null,
       );
 
@@ -431,7 +422,7 @@ export async function ResetPasswordController(
       password: string;
     };
 
-    const token = await verifikasiToken(
+    const token = await verifyTokenValue(
       email,
       "password_reset",
       value,
@@ -441,10 +432,14 @@ export async function ResetPasswordController(
     const user = await userModel.findByEmail(email);
     if (!user) throw BadRequest(MESSAGE_INVALID_LINK);
 
+    // Token ditandai terpakai sebelum password diganti. Dua permintaan dengan
+    // token yang sama tidak bisa sama-sama mengganti password
+    const consumed = await tokenModel.markConsumed(token.id);
+    if (!consumed) throw BadRequest(MESSAGE_INVALID_LINK);
+
     const hashed = await hashPassword(password);
 
     await userModel.updatePassword(user.id, hashed);
-    await tokenModel.markConsumed(token.id);
 
     const employee = await employeeModel.findByUserId(user.id);
     const body = passwordResetSuccessEmail(employee?.full_name ?? null);

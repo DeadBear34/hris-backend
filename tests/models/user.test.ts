@@ -26,7 +26,7 @@ const fakeUser = {
 const ADMIN_ID = "99999999-9999-9999-9999-999999999999";
 
 // kolom password sebagai kata utuh, bukan bagian dari must_change_password
-const KOLOM_PASSWORD = /(^|[\s,(])password([\s,)]|$)/;
+const PASSWORD_COLUMN = /(^|[\s,(])password([\s,)]|$)/;
 
 describe("insertUser", () => {
   const fakeDb = { query: jest.fn() };
@@ -73,7 +73,7 @@ describe("insertUser", () => {
     const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
     const returning = sql.split("RETURNING")[1] ?? "";
 
-    expect(returning).not.toMatch(KOLOM_PASSWORD);
+    expect(returning).not.toMatch(PASSWORD_COLUMN);
   });
 
   it("memakai parameterized query, bukan interpolasi", async () => {
@@ -153,7 +153,7 @@ describe("insertUserByAdmin", () => {
     // Hanya daftar kolom yang diisi yang diperiksa, karena klausa RETURNING
     // memuat seluruh nama kolom sehingga pemeriksaan atas keseluruhan teks
     // dapat lolos tanpa kolomnya benar-benar ditulis.
-    const kolomDiisi = sql.slice(
+    const filledColumns = sql.slice(
       sql.indexOf("(", sql.indexOf("INSERT INTO users")),
       sql.indexOf("VALUES"),
     );
@@ -164,7 +164,7 @@ describe("insertUserByAdmin", () => {
       "is_active",
       "must_change_password",
     ]) {
-      expect(kolomDiisi).toContain(column);
+      expect(filledColumns).toContain(column);
     }
   });
 
@@ -308,7 +308,7 @@ describe("findById", () => {
 
     const [sql] = mockQuery.mock.calls[0] as [string];
 
-    expect(sql).not.toMatch(KOLOM_PASSWORD);
+    expect(sql).not.toMatch(PASSWORD_COLUMN);
   });
 
   it("mengabaikan user yang sudah dihapus", async () => {
@@ -406,7 +406,7 @@ describe("setEmailVerified", () => {
     const [sql] = mockQuery.mock.calls[0] as [string];
     const returning = sql.split("RETURNING")[1] ?? "";
 
-    expect(returning).not.toMatch(KOLOM_PASSWORD);
+    expect(returning).not.toMatch(PASSWORD_COLUMN);
   });
 
   it("mengembalikan null jika user tidak ditemukan", async () => {
@@ -431,7 +431,7 @@ describe("findSessionInfo", () => {
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("SELECT id, password_changed_at");
-    expect(sql).not.toMatch(KOLOM_PASSWORD);
+    expect(sql).not.toMatch(PASSWORD_COLUMN);
     expect(values).toEqual([fakeUser.id]);
   });
 
@@ -448,9 +448,9 @@ describe("findSessionInfo", () => {
   it("mengembalikan null jika user tidak ada", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const sesi = await userModel.findSessionInfo(fakeUser.id);
+    const session = await userModel.findSessionInfo(fakeUser.id);
 
-    expect(sesi).toBeNull();
+    expect(session).toBeNull();
   });
 
   it("mengembalikan waktu perubahan password terakhir", async () => {
@@ -459,9 +459,9 @@ describe("findSessionInfo", () => {
       rows: [{ id: fakeUser.id, password_changed_at: at }],
     } as never);
 
-    const sesi = await userModel.findSessionInfo(fakeUser.id);
+    const session = await userModel.findSessionInfo(fakeUser.id);
 
-    expect(sesi?.password_changed_at).toBe(at);
+    expect(session?.password_changed_at).toBe(at);
   });
 });
 
@@ -500,7 +500,7 @@ describe("findPending", () => {
 
     const [sql] = mockQuery.mock.calls[0] as [string];
 
-    expect(sql).not.toMatch(KOLOM_PASSWORD);
+    expect(sql).not.toMatch(PASSWORD_COLUMN);
   });
 
   it("mengurutkan dari pendaftar paling lama", async () => {
@@ -528,6 +528,7 @@ describe("approveUser", () => {
 
     expect(sql).toContain("is_active = true");
     expect(sql).toContain("approved_at = now()");
+    expect(sql).toContain("approved_at IS NULL");
     expect(values).toEqual([fakeUser.id, ADMIN_ID]);
   });
 

@@ -60,8 +60,8 @@ const COLUMNS = `id, code, name, default_quota::float8 AS default_quota,
   max_days_per_request, min_notice_days, gender_restriction, is_active,
   deleted_at, created_at, updated_at`;
 
-export async function findAll(hanyaAktif = false): Promise<LeaveType[]> {
-  const where = hanyaAktif
+export async function findAll(activeOnly = false): Promise<LeaveType[]> {
+  const where = activeOnly
     ? "WHERE deleted_at IS NULL AND is_active = true"
     : "WHERE deleted_at IS NULL";
 

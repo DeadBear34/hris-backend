@@ -58,7 +58,7 @@ const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const MANAGER_ID = "33333333-3333-4333-8333-333333333333";
 const DEPARTMENT_ID = "44444444-4444-4444-8444-444444444444";
 const POSITION_ID = "55555555-5555-4555-8555-555555555555";
-const LAIN_ID = "66666666-6666-4666-8666-666666666666";
+const OTHER_ID = "66666666-6666-4666-8666-666666666666";
 
 const token = createToken({
   id: USER_ID,
@@ -121,7 +121,7 @@ beforeEach(() => {
   );
 });
 
-function perbarui(body: Record<string, unknown>) {
+function updateProfile(body: Record<string, unknown>) {
   return request(app)
     .patch("/api/v1/auth/me")
     .set("Authorization", `Bearer ${token}`)
@@ -129,7 +129,7 @@ function perbarui(body: Record<string, unknown>) {
 }
 
 /** Data yang benar-benar sampai ke model. */
-function dataTersimpan(): Record<string, unknown> {
+function storedData(): Record<string, unknown> {
   const [, data] = (employeeModel.updateOwnProfile as jest.Mock).mock
     .calls[0] as [string, Record<string, unknown>];
 
@@ -186,20 +186,20 @@ describe("PATCH /api/v1/auth/me", () => {
   });
 
   it("memperbarui nama lengkap", async () => {
-    const res = await perbarui({ full_name: "Ismail Muhammad Baru" });
+    const res = await updateProfile({ full_name: "Ismail Muhammad Baru" });
 
     expect(res.status).toBe(200);
-    expect(dataTersimpan().full_name).toBe("Ismail Muhammad Baru");
+    expect(storedData().full_name).toBe("Ismail Muhammad Baru");
   });
 
   it("memperbarui nomor telepon, tanggal lahir, dan alamat", async () => {
-    await perbarui({
+    await updateProfile({
       phone: "+628990000001",
       birth_date: "1999-01-15",
       address: "Jalan Baru 5",
     });
 
-    expect(dataTersimpan()).toEqual({
+    expect(storedData()).toEqual({
       phone: "+628990000001",
       birth_date: "1999-01-15",
       address: "Jalan Baru 5",
@@ -207,7 +207,7 @@ describe("PATCH /api/v1/auth/me", () => {
   });
 
   it("memperbarui profil milik karyawan yang sedang login", async () => {
-    await perbarui({ full_name: "Nama Baru" });
+    await updateProfile({ full_name: "Nama Baru" });
 
     const [id] = (employeeModel.updateOwnProfile as jest.Mock).mock
       .calls[0] as [string];
@@ -216,7 +216,7 @@ describe("PATCH /api/v1/auth/me", () => {
   });
 
   it("mengembalikan profil terbaru dalam bentuk yang sama dengan GET", async () => {
-    const res = await perbarui({ full_name: "Nama Baru" });
+    const res = await updateProfile({ full_name: "Nama Baru" });
 
     expect(res.body.data.employee.id).toBe(EMPLOYEE_ID);
     expect(res.body.data.email).toBe("karyawan@awan.io");
@@ -224,15 +224,15 @@ describe("PATCH /api/v1/auth/me", () => {
   });
 
   it("menerima pembaruan sebagian tanpa menghapus field lain", async () => {
-    await perbarui({ phone: "+628990000001" });
+    await updateProfile({ phone: "+628990000001" });
 
-    expect(dataTersimpan()).toEqual({ phone: "+628990000001" });
+    expect(storedData()).toEqual({ phone: "+628990000001" });
   });
 
   it("memberi pesan jelas jika akun belum terhubung ke karyawan", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await perbarui({ full_name: "Nama Baru" });
+    const res = await updateProfile({ full_name: "Nama Baru" });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("not linked to an employee record");
@@ -242,26 +242,26 @@ describe("PATCH /api/v1/auth/me", () => {
 
 describe("PATCH /api/v1/auth/me menolak field di luar hak karyawan", () => {
   it("tidak pernah mengubah manager_id", async () => {
-    await perbarui({ full_name: "Nama Baru", manager_id: LAIN_ID });
+    await updateProfile({ full_name: "Nama Baru", manager_id: OTHER_ID });
 
-    expect(dataTersimpan()).not.toHaveProperty("manager_id");
+    expect(storedData()).not.toHaveProperty("manager_id");
   });
 
   it("tidak pernah mengubah struktur organisasi", async () => {
-    await perbarui({
+    await updateProfile({
       full_name: "Nama Baru",
-      department_id: LAIN_ID,
-      position_id: LAIN_ID,
+      department_id: OTHER_ID,
+      position_id: OTHER_ID,
     });
 
-    const data = dataTersimpan();
+    const data = storedData();
 
     expect(data).not.toHaveProperty("department_id");
     expect(data).not.toHaveProperty("position_id");
   });
 
   it("tidak pernah mengubah status kepegawaian", async () => {
-    await perbarui({
+    await updateProfile({
       full_name: "Nama Baru",
       employment_status: "permanent",
       join_date: "2020-01-01",
@@ -269,7 +269,7 @@ describe("PATCH /api/v1/auth/me menolak field di luar hak karyawan", () => {
       is_active: false,
     });
 
-    const data = dataTersimpan();
+    const data = storedData();
 
     expect(data).not.toHaveProperty("employment_status");
     expect(data).not.toHaveProperty("join_date");
@@ -278,36 +278,36 @@ describe("PATCH /api/v1/auth/me menolak field di luar hak karyawan", () => {
   });
 
   it("tidak pernah mengubah gender karena memengaruhi kelayakan cuti", async () => {
-    await perbarui({ full_name: "Nama Baru", gender: "female" });
+    await updateProfile({ full_name: "Nama Baru", gender: "female" });
 
-    expect(dataTersimpan()).not.toHaveProperty("gender");
+    expect(storedData()).not.toHaveProperty("gender");
   });
 
   it("tidak pernah mengubah email maupun role", async () => {
-    await perbarui({
+    await updateProfile({
       full_name: "Nama Baru",
       email: "penyerang@awan.io",
       role: "admin",
     });
 
-    const data = dataTersimpan();
+    const data = storedData();
 
     expect(data).not.toHaveProperty("email");
     expect(data).not.toHaveProperty("role");
   });
 
   it("hanya meneruskan empat field yang diizinkan", async () => {
-    await perbarui({
+    await updateProfile({
       full_name: "Nama Baru",
       phone: "+628990000001",
       birth_date: "1999-01-15",
       address: "Jalan Baru 5",
-      manager_id: LAIN_ID,
+      manager_id: OTHER_ID,
       is_active: false,
       role: "admin",
     });
 
-    expect(Object.keys(dataTersimpan()).sort()).toEqual([
+    expect(Object.keys(storedData()).sort()).toEqual([
       "address",
       "birth_date",
       "full_name",
@@ -318,7 +318,7 @@ describe("PATCH /api/v1/auth/me menolak field di luar hak karyawan", () => {
 
 describe("PATCH /api/v1/auth/me menerapkan aturan validasi yang sama", () => {
   it("menolak nomor telepon tanpa kode negara", async () => {
-    const res = await perbarui({ phone: "08123456789" });
+    const res = await updateProfile({ phone: "08123456789" });
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION_ERROR");
@@ -326,33 +326,33 @@ describe("PATCH /api/v1/auth/me menerapkan aturan validasi yang sama", () => {
   });
 
   it("menolak nama yang terlalu pendek", async () => {
-    const res = await perbarui({ full_name: "Is" });
+    const res = await updateProfile({ full_name: "Is" });
 
     expect(res.status).toBe(400);
   });
 
   it("menolak tanggal lahir dengan format salah", async () => {
-    const res = await perbarui({ birth_date: "20-05-1998" });
+    const res = await updateProfile({ birth_date: "20-05-1998" });
 
     expect(res.status).toBe(400);
   });
 
   it("menolak alamat melebihi 500 karakter", async () => {
-    const res = await perbarui({ address: "a".repeat(501) });
+    const res = await updateProfile({ address: "a".repeat(501) });
 
     expect(res.status).toBe(400);
   });
 
   it("membuang spasi di sekitar nama", async () => {
-    await perbarui({ full_name: "  Ismail Muhammad  " });
+    await updateProfile({ full_name: "  Ismail Muhammad  " });
 
-    expect(dataTersimpan().full_name).toBe("Ismail Muhammad");
+    expect(storedData().full_name).toBe("Ismail Muhammad");
   });
 
   it("menerima body kosong sebagai tanpa perubahan", async () => {
-    const res = await perbarui({});
+    const res = await updateProfile({});
 
     expect(res.status).toBe(200);
-    expect(dataTersimpan()).toEqual({});
+    expect(storedData()).toEqual({});
   });
 });

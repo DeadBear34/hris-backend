@@ -32,7 +32,7 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
   findLatestActive: jest.fn(),
-  incrementAttempts: jest.fn(),
+  claimAttempt: jest.fn(),
   markConsumed: jest.fn(),
   invalidateActive: jest.fn(),
 }));
@@ -133,7 +133,7 @@ const employeeToken = createToken({
   role: "employee",
 });
 
-function siapkanRegisterBerhasil() {
+function prepareSuccessfulRegistration() {
   (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
   (userModel.insertUser as jest.Mock).mockResolvedValue(fakeUser as never);
   (employeeModel.insertEmployee as jest.Mock).mockResolvedValue(
@@ -141,7 +141,7 @@ function siapkanRegisterBerhasil() {
   );
 }
 
-async function siapkanLoginBerhasil(override: Record<string, unknown> = {}) {
+async function prepareSuccessfulLogin(override: Record<string, unknown> = {}) {
   const hashed = await hashPassword("password123");
 
   (userModel.findByEmail as jest.Mock).mockResolvedValue({
@@ -192,7 +192,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("membuat akun baru dan mengembalikan 201", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     const res = await request(app)
       .post("/api/v1/auth/register")
@@ -203,7 +203,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("tidak mengembalikan password dalam respons", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     const res = await request(app)
       .post("/api/v1/auth/register")
@@ -213,19 +213,19 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("menyimpan password dalam bentuk hash argon2", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
-    const [, , passwordTersimpan] = (userModel.insertUser as jest.Mock).mock
+    const [, , storedPassword] = (userModel.insertUser as jest.Mock).mock
       .calls[0] as [unknown, string, string];
 
-    expect(passwordTersimpan).not.toBe("password123");
-    expect(passwordTersimpan).toContain("$argon2id$");
+    expect(storedPassword).not.toBe("password123");
+    expect(storedPassword).toContain("$argon2id$");
   });
 
   it("selalu memberi role employee meski body mengirim role lain", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app)
       .post("/api/v1/auth/register")
@@ -242,7 +242,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("mencatat waktu persetujuan syarat dan ketentuan", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
@@ -258,7 +258,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("menyimpan email dalam huruf kecil", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app)
       .post("/api/v1/auth/register")
@@ -273,7 +273,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("menjalankan BEGIN dan COMMIT saat berhasil", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
@@ -282,7 +282,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("menyimpan user dan karyawan dalam satu transaksi yang sama", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
@@ -297,7 +297,7 @@ describe("POST /api/v1/auth/register", () => {
   });
 
   it("menghubungkan karyawan ke akun yang baru dibuat", async () => {
-    siapkanRegisterBerhasil();
+    prepareSuccessfulRegistration();
 
     await request(app).post("/api/v1/auth/register").send(validBody);
 
@@ -372,7 +372,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("menolak password yang salah", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -387,7 +387,7 @@ describe("POST /api/v1/auth/login", () => {
       .post("/api/v1/auth/login")
       .send({ email: "tidakada@awan.io", password: "password123" });
 
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
     const resPassword = await request(app)
       .post("/api/v1/auth/login")
       .send({ email: "ismail@awan.io", password: "salah" });
@@ -396,7 +396,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("menolak akun yang belum disetujui", async () => {
-    await siapkanLoginBerhasil({ is_active: false, approved_at: null });
+    await prepareSuccessfulLogin({ is_active: false, approved_at: null });
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -407,7 +407,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("menolak akun yang dinonaktifkan", async () => {
-    await siapkanLoginBerhasil({ is_active: false });
+    await prepareSuccessfulLogin({ is_active: false });
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -418,7 +418,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("tidak menerbitkan token untuk akun yang belum disetujui", async () => {
-    await siapkanLoginBerhasil({ is_active: false, approved_at: null });
+    await prepareSuccessfulLogin({ is_active: false, approved_at: null });
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -428,7 +428,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("mengembalikan token saat login berhasil", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -439,7 +439,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("menyertakan data karyawan dalam respons login", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -450,7 +450,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("tidak menyertakan password dalam respons", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -460,7 +460,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("tidak menyimpan password di dalam payload token", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -476,7 +476,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("menerbitkan token dengan masa berlaku", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     const res = await request(app)
       .post("/api/v1/auth/login")
@@ -490,7 +490,7 @@ describe("POST /api/v1/auth/login", () => {
   });
 
   it("mencatat waktu login terakhir", async () => {
-    await siapkanLoginBerhasil();
+    await prepareSuccessfulLogin();
 
     await request(app)
       .post("/api/v1/auth/login")
@@ -684,12 +684,12 @@ describe("PATCH /api/v1/auth/password", () => {
         new_password: "passwordbaru456",
       });
 
-    const [id, passwordTersimpan] = (userModel.updatePassword as jest.Mock).mock
+    const [id, storedPassword] = (userModel.updatePassword as jest.Mock).mock
       .calls[0] as [string, string];
 
     expect(id).toBe(fakeUser.id);
-    expect(passwordTersimpan).not.toBe("passwordbaru456");
-    expect(passwordTersimpan).toContain("$argon2id$");
+    expect(storedPassword).not.toBe("passwordbaru456");
+    expect(storedPassword).toContain("$argon2id$");
   });
 });
 
@@ -841,6 +841,21 @@ describe("PATCH /api/v1/users/:id/approve", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.is_active).toBe(true);
+  });
+
+  it("menolak persetujuan kedua yang datang bersamaan", async () => {
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      approved_at: null,
+    } as never);
+    (userModel.approveUser as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${TARGET_ID}/approve`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("already been approved");
   });
 
   it("mencatat Admin yang menyetujui", async () => {

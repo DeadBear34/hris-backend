@@ -69,9 +69,9 @@ describe("pengumuman antar-instance", () => {
   });
 
   it("melewati pengumuman yang melebihi batas payload pg_notify", async () => {
-    const besar = { event: "notification.created", data: "x".repeat(8000) };
+    const oversized = { event: "notification.created", data: "x".repeat(8000) };
 
-    announce([USER_A], besar, db());
+    announce([USER_A], oversized, db());
     await settle();
 
     expect(query).not.toHaveBeenCalled();

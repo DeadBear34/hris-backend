@@ -13,17 +13,17 @@ describe("generateVerificationCode", () => {
   });
 
   it("mempertahankan angka nol di depan", () => {
-    const kode = Array.from({ length: 500 }, () => generateVerificationCode());
+    const codes = Array.from({ length: 500 }, () => generateVerificationCode());
 
-    expect(kode.every((k) => k.length === 6)).toBe(true);
+    expect(codes.every((k) => k.length === 6)).toBe(true);
   });
 
   it("tidak menghasilkan kode yang sama berulang kali", () => {
-    const kode = new Set(
+    const codes = new Set(
       Array.from({ length: 50 }, () => generateVerificationCode()),
     );
 
-    expect(kode.size).toBeGreaterThan(1);
+    expect(codes.size).toBeGreaterThan(1);
   });
 });
 

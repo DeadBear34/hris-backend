@@ -322,11 +322,11 @@ export async function monthlyReport(
   department_id?: string,
 ): Promise<MonthlyReportRow[]> {
   const values: unknown[] = [start_date, end_date];
-  let filterDepartemen = "";
+  let departmentFilter = "";
 
   if (department_id) {
     values.push(department_id);
-    filterDepartemen = `AND e.department_id = $${values.length}::uuid`;
+    departmentFilter = `AND e.department_id = $${values.length}::uuid`;
   }
 
   const result = await pool.query<MonthlyReportRow>(
@@ -345,7 +345,7 @@ export async function monthlyReport(
      LEFT JOIN positions p ON p.id = e.position_id
      LEFT JOIN attendances a ON a.employee_id = e.id
           AND a.attendance_date BETWEEN $1::date AND $2::date
-     WHERE e.deleted_at IS NULL AND e.is_active = true ${filterDepartemen}
+     WHERE e.deleted_at IS NULL AND e.is_active = true ${departmentFilter}
      GROUP BY e.id, e.employee_number, e.full_name, d.name, p.name
      ORDER BY e.employee_number ASC`,
     values,

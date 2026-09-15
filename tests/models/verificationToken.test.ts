@@ -168,7 +168,7 @@ describe("findLatestActive", () => {
   });
 });
 
-describe("incrementAttempts", () => {
+describe("claimAttempt", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockQuery.mockResolvedValue({
@@ -176,26 +176,35 @@ describe("incrementAttempts", () => {
     } as never);
   });
 
-  it("menaikkan penghitung berdasarkan nilai di database", async () => {
-    await tokenModel.incrementAttempts(TOKEN_ID);
+  it("menaikkan penghitung di database sekaligus memeriksa batasnya", async () => {
+    await tokenModel.claimAttempt(TOKEN_ID, 5);
 
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("attempts = attempts + 1");
-    expect(sql).toContain("$1::uuid");
-    expect(values).toEqual([TOKEN_ID]);
+    expect(sql).toContain("attempts < $2::int");
+    expect(values).toEqual([TOKEN_ID, 5]);
+  });
+
+  it("tidak memberi jatah pada token yang terpakai atau kedaluwarsa", async () => {
+    await tokenModel.claimAttempt(TOKEN_ID, 5);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("consumed_at IS NULL");
+    expect(sql).toContain("expires_at > now()");
   });
 
   it("mengembalikan token dengan penghitung terbaru", async () => {
-    const token = await tokenModel.incrementAttempts(TOKEN_ID);
+    const token = await tokenModel.claimAttempt(TOKEN_ID, 5);
 
     expect(token?.attempts).toBe(1);
   });
 
-  it("mengembalikan null jika token tidak ditemukan", async () => {
+  it("mengembalikan null saat jatah percobaan sudah habis", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const token = await tokenModel.incrementAttempts(TOKEN_ID);
+    const token = await tokenModel.claimAttempt(TOKEN_ID, 5);
 
     expect(token).toBeNull();
   });

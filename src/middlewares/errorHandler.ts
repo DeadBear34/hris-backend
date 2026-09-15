@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { AppError } from "../helpers/appError.js";
+import { AppError, Conflict } from "../helpers/appError.js";
 import { logger } from "../config/logger.js";
 
 export function notFoundHandler(req: Request, res: Response) {
@@ -8,6 +8,18 @@ export function notFoundHandler(req: Request, res: Response) {
     success: false,
     message: `Route ${req.method} ${req.originalUrl} not found`,
   });
+}
+
+const UNIQUE_VIOLATION = "23505";
+
+// Pelanggaran UNIQUE dari database biasanya muncul saat permintaan yang sama
+// datang bersamaan. Itu konflik data, bukan kesalahan server
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === UNIQUE_VIOLATION
+  );
 }
 
 export function errorHandler(
@@ -36,12 +48,16 @@ export function errorHandler(
     });
   }
 
-  if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
+  const appError = isUniqueViolation(err)
+    ? Conflict("Data already exists")
+    : err;
+
+  if (appError instanceof AppError) {
+    return res.status(appError.statusCode).json({
       success: false,
-      message: err.message,
-      code: err.code,
-      ...(err.details ? { details: err.details } : {}),
+      message: appError.message,
+      code: appError.code,
+      ...(appError.details ? { details: appError.details } : {}),
     });
   }
 

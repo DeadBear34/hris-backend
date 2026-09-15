@@ -247,7 +247,7 @@ describe("GET /api/v1/positions/:id/features", () => {
 });
 
 describe("PUT /api/v1/positions/:id/features", () => {
-  function ganti(codes: unknown) {
+  function replaceFeatures(codes: unknown) {
     return request(app)
       .put(`/api/v1/positions/${POSITION_ID}/features`)
       .set("Authorization", `Bearer ${adminToken}`)
@@ -255,7 +255,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
   }
 
   it("mengganti seluruh fitur jabatan", async () => {
-    const res = await ganti(["employee.view_all"]);
+    const res = await replaceFeatures(["employee.view_all"]);
 
     expect(res.status).toBe(200);
     expect(featureModel.replacePositionFeatures).toHaveBeenCalledWith(
@@ -267,7 +267,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
   });
 
   it("membungkus penggantian dalam satu transaksi", async () => {
-    await ganti(["employee.view_all"]);
+    await replaceFeatures(["employee.view_all"]);
 
     expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
@@ -278,7 +278,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
       new Error("gagal menulis") as never,
     );
 
-    const res = await ganti(["employee.view_all"]);
+    const res = await replaceFeatures(["employee.view_all"]);
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
@@ -290,7 +290,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
       new Error("gagal menulis") as never,
     );
 
-    await ganti(["employee.view_all"]);
+    await replaceFeatures(["employee.view_all"]);
 
     expect(mockClient.release).toHaveBeenCalled();
   });
@@ -300,7 +300,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
       fakeFeature,
     ] as never);
 
-    const res = await ganti(["employee.view_all", "fitur.karangan"]);
+    const res = await replaceFeatures(["employee.view_all", "fitur.karangan"]);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("fitur.karangan");
@@ -311,7 +311,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
   it("menerima daftar kosong sebagai pencabutan seluruh fitur", async () => {
     (featureModel.findByCodes as jest.Mock).mockResolvedValue([] as never);
 
-    const res = await ganti([]);
+    const res = await replaceFeatures([]);
 
     expect(res.status).toBe(200);
     expect(featureModel.replacePositionFeatures).toHaveBeenCalledWith(
@@ -323,7 +323,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
   });
 
   it("membuang kode duplikat sebelum menyimpan", async () => {
-    await ganti(["employee.view_all", "employee.view_all"]);
+    await replaceFeatures(["employee.view_all", "employee.view_all"]);
 
     const [, , ids] = (featureModel.replacePositionFeatures as jest.Mock).mock
       .calls[0] as [unknown, string, string[]];
@@ -337,7 +337,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
       .get("/api/v1/leave-requests/me")
       .set("Authorization", `Bearer ${employeeToken}`);
 
-    await ganti(["employee.view_all"]);
+    await replaceFeatures(["employee.view_all"]);
 
     expect(readFromCache(POSITION_ID)).toBeNull();
   });
@@ -347,7 +347,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
       new Error("gagal menulis") as never,
     );
 
-    await ganti(["employee.view_all"]);
+    await replaceFeatures(["employee.view_all"]);
 
     // cache dibatalkan hanya setelah COMMIT berhasil
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
@@ -364,7 +364,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
   });
 
   it("menolak codes yang bukan array", async () => {
-    const res = await ganti("employee.view_all");
+    const res = await replaceFeatures("employee.view_all");
 
     expect(res.status).toBe(400);
   });
@@ -372,7 +372,7 @@ describe("PUT /api/v1/positions/:id/features", () => {
   it("mengembalikan 404 untuk jabatan yang tidak ada", async () => {
     (positionModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await ganti(["employee.view_all"]);
+    const res = await replaceFeatures(["employee.view_all"]);
 
     expect(res.status).toBe(404);
     expect(featureModel.replacePositionFeatures).not.toHaveBeenCalled();

@@ -1,30 +1,30 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockQuery = jest.fn();
-const catatKonfigurasi = jest.fn();
+const recordConfig = jest.fn();
 
 class FakePool {
   query = mockQuery;
   end = jest.fn();
 
   constructor(config: unknown) {
-    catatKonfigurasi(config);
+    recordConfig(config);
   }
 }
 
-const catatTypeParser = jest.fn();
+const recordTypeParser = jest.fn();
 
 // Pendaftaran parser terjadi sekali saat modul dimuat, jadi panggilannya
 // direkam di sini sebelum beforeEach mana pun sempat membersihkan mock
-const panggilanTypeParser: unknown[][] = [];
+const typeParserCalls: unknown[][] = [];
 
 jest.unstable_mockModule("pg", () => ({
   default: {
     Pool: FakePool,
     types: {
       setTypeParser: (...args: unknown[]) => {
-        panggilanTypeParser.push(args);
-        catatTypeParser(...args);
+        typeParserCalls.push(args);
+        recordTypeParser(...args);
       },
     },
   },
@@ -36,7 +36,7 @@ const { env } = await import("../../src/config/env.js");
 
 describe("pool", () => {
   it("dibuat memakai DATABASE_URL dari environment", () => {
-    const [config] = catatKonfigurasi.mock.calls[0] as [
+    const [config] = recordConfig.mock.calls[0] as [
       { connectionString: string },
     ];
 
@@ -44,7 +44,7 @@ describe("pool", () => {
   });
 
   it("hanya membuat satu pool untuk seluruh aplikasi", () => {
-    expect(catatKonfigurasi).toHaveBeenCalledTimes(1);
+    expect(recordConfig).toHaveBeenCalledTimes(1);
     expect(pool).toBeDefined();
   });
 });
@@ -80,11 +80,11 @@ describe("testConnection", () => {
 
 describe("penanganan kolom bertipe date", () => {
   it("mendaftarkan parser agar tanggal dikembalikan apa adanya", () => {
-    expect(panggilanTypeParser).toHaveLength(1);
+    expect(typeParserCalls).toHaveLength(1);
 
-    const [oid, parser] = panggilanTypeParser[0] as [
+    const [oid, parser] = typeParserCalls[0] as [
       number,
-      (nilai: string) => string,
+      (value: string) => string,
     ];
 
     // 1082 adalah OID tipe date pada PostgreSQL

@@ -26,8 +26,12 @@ const featureModel = await import("../../src/models/feature.js");
 const employeeModel = await import("../../src/models/employee.js");
 const dispatcher = await import("../../src/realtime/dispatcher.js");
 const { logger } = await import("../../src/config/logger.js");
-const { notifyLeaveSubmitted, notifyLeaveDecided, notifyAccountNeedsApproval } =
-  await import("../../src/helpers/notify.js");
+const {
+  notifyLeaveSubmitted,
+  notifyLeaveDecided,
+  notifyAccountNeedsApproval,
+  clearLeaveApproval,
+} = await import("../../src/helpers/notify.js");
 
 const MANAGER_EMPLOYEE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MANAGER_USER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -158,6 +162,16 @@ describe("notifikasi keputusan cuti", () => {
     } as never);
 
     await notifyLeaveDecided(decided);
+    await settle();
+
+    expect(notificationModel.deletePending).toHaveBeenCalledWith(
+      "leave_approval_needed",
+      REQUEST_ID,
+    );
+  });
+
+  it("pembatalan oleh pemohon juga menghapus antrean persetujuan atasan", async () => {
+    clearLeaveApproval(REQUEST_ID);
     await settle();
 
     expect(notificationModel.deletePending).toHaveBeenCalledWith(

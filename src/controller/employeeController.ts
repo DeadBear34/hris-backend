@@ -41,8 +41,15 @@ interface FieldError {
 
 // Memeriksa departemen, jabatan, dan manajer. Mengembalikan daftar masalah
 // beserta kolomnya, bukan melempar, agar bisa dilaporkan per baris
+// Cukup kolom relasi yang diperiksa. null berarti relasinya dilepas
+interface RelationFields {
+  department_id?: string | null;
+  position_id?: string | null;
+  manager_id?: string | null;
+}
+
 async function checkRelations(
-  data: Partial<CreateEmployeeInput>,
+  data: RelationFields,
   currentId?: string,
 ): Promise<FieldError[]> {
   const errors: FieldError[] = [];
@@ -99,10 +106,7 @@ async function checkRelations(
 }
 
 // Pembungkus untuk jalur yang cukup berhenti di masalah pertama
-async function assertRelationsExist(
-  data: Partial<CreateEmployeeInput>,
-  currentId?: string,
-) {
+async function assertRelationsExist(data: RelationFields, currentId?: string) {
   const errors = await checkRelations(data, currentId);
 
   if (errors[0]) throw BadRequest(errors[0].message);

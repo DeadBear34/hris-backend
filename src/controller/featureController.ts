@@ -30,7 +30,7 @@ function groupByCategory(features: Feature[]) {
     category,
     label: CATEGORY_LABEL[category],
     features: features.filter((f) => f.category === category),
-  })).filter((grup) => grup.features.length > 0);
+  })).filter((group) => group.features.length > 0);
 }
 
 export async function ListFeatureCatalogController(
@@ -94,12 +94,14 @@ export async function ReplacePositionFeatureController(
     const position = await positionModel.findById(id);
     if (!position) throw NotFound("Position not found");
 
-    const diminta = [...new Set(codes)];
-    const dikenal = await featureModel.findByCodes(diminta);
+    const requestedCodes = [...new Set(codes)];
+    const recognizedCodes = await featureModel.findByCodes(requestedCodes);
 
-    if (dikenal.length !== diminta.length) {
-      const knownCodes = new Set(dikenal.map((f) => f.code));
-      const unknownCodes = diminta.filter((code) => !knownCodes.has(code));
+    if (recognizedCodes.length !== requestedCodes.length) {
+      const knownCodes = new Set(recognizedCodes.map((f) => f.code));
+      const unknownCodes = requestedCodes.filter(
+        (code) => !knownCodes.has(code),
+      );
 
       throw BadRequest(`Unknown feature codes: ${unknownCodes.join(", ")}`, {
         unknown_codes: unknownCodes,
@@ -111,7 +113,7 @@ export async function ReplacePositionFeatureController(
     await featureModel.replacePositionFeatures(
       client,
       id,
-      dikenal.map((f) => f.id),
+      recognizedCodes.map((f) => f.id),
       req.user?.id ?? null,
     );
 
@@ -123,8 +125,8 @@ export async function ReplacePositionFeatureController(
       action: "position.features_replace",
       entity: "position",
       entity_id: id,
-      summary: `Features for position ${position.name} updated to ${plural(dikenal.length, "feature")}`,
-      metadata: { codes: dikenal.map((f) => f.code) },
+      summary: `Features for position ${position.name} updated to ${plural(recognizedCodes.length, "feature")}`,
+      metadata: { codes: recognizedCodes.map((f) => f.code) },
     });
 
     res.json({
@@ -132,8 +134,8 @@ export async function ReplacePositionFeatureController(
       message: `Features for position ${position.name} updated successfully`,
       data: {
         position_id: id,
-        codes: dikenal.map((f) => f.code),
-        total: dikenal.length,
+        codes: recognizedCodes.map((f) => f.code),
+        total: recognizedCodes.length,
       },
     });
   } catch (err) {

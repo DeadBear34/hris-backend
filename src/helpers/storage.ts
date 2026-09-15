@@ -4,7 +4,7 @@ import { env } from "../config/env.js";
 import type { AllowedMimeType } from "./fileType.js";
 import { extensionFor } from "./fileType.js";
 
-const SIGNED_URL_BERLAKU_DETIK = 15 * 60;
+const SIGNED_URL_TTL_SECONDS = 15 * 60;
 
 let client: SupabaseClient | null = null;
 
@@ -57,7 +57,7 @@ export async function createSignedUrl(storagePath: string): Promise<{
 }> {
   const { data, error } = await getStorageClient()
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_BERLAKU_DETIK);
+    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
 
   if (error || !data) {
     throw new Error(
@@ -65,7 +65,7 @@ export async function createSignedUrl(storagePath: string): Promise<{
     );
   }
 
-  return { url: data.signedUrl, expires_in: SIGNED_URL_BERLAKU_DETIK };
+  return { url: data.signedUrl, expires_in: SIGNED_URL_TTL_SECONDS };
 }
 
 export function buildPhotoPath(

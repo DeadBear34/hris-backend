@@ -64,7 +64,7 @@ const { app } = await import("../../src/app.js");
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const POSITION_ID = "33333333-3333-4333-8333-333333333333";
-const LAIN_ID = "44444444-4444-4444-8444-444444444444";
+const OTHER_ID = "44444444-4444-4444-8444-444444444444";
 
 const employeeToken = createToken({
   id: USER_ID,
@@ -76,7 +76,7 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
 ]);
-const BUKAN_GAMBAR = Buffer.from("halo ini teks biasa, bukan gambar");
+const NOT_AN_IMAGE = Buffer.from("halo ini teks biasa, bukan gambar");
 
 const fakeEmployee = {
   id: EMPLOYEE_ID,
@@ -98,7 +98,7 @@ beforeEach(() => {
   );
   (employeeModel.findById as jest.Mock).mockResolvedValue({
     ...fakeEmployee,
-    id: LAIN_ID,
+    id: OTHER_ID,
     full_name: "Sari Utami",
   } as never);
   (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
@@ -110,11 +110,11 @@ beforeEach(() => {
   );
 });
 
-function unggahSendiri(buffer: Buffer, field = "photo", nama = "foto.jpg") {
+function uploadOwn(buffer: Buffer, field = "photo", fileName = "foto.jpg") {
   return request(app)
     .post("/api/v1/auth/me/photo")
     .set("Authorization", `Bearer ${employeeToken}`)
-    .attach(field, buffer, nama);
+    .attach(field, buffer, fileName);
 }
 
 describe("unggah foto profil sendiri", () => {
@@ -131,13 +131,13 @@ describe("unggah foto profil sendiri", () => {
       [] as never,
     );
 
-    const res = await unggahSendiri(JPEG);
+    const res = await uploadOwn(JPEG);
 
     expect(res.status).toBe(200);
   });
 
   it("menyimpan foto lalu mengembalikan tautan publiknya", async () => {
-    const res = await unggahSendiri(JPEG);
+    const res = await uploadOwn(JPEG);
 
     expect(res.status).toBe(200);
     expect(mockUploadPhoto).toHaveBeenCalledWith(
@@ -149,7 +149,7 @@ describe("unggah foto profil sendiri", () => {
   });
 
   it("mencatat jalur foto pada data karyawan", async () => {
-    await unggahSendiri(PNG);
+    await uploadOwn(PNG);
 
     expect(employeeModel.updatePhotoPath).toHaveBeenCalledWith(
       EMPLOYEE_ID,
@@ -158,7 +158,7 @@ describe("unggah foto profil sendiri", () => {
   });
 
   it("menentukan jenis berkas dari isinya, bukan dari nama berkasnya", async () => {
-    const res = await unggahSendiri(PNG, "photo", "tipuan.jpg");
+    const res = await uploadOwn(PNG, "photo", "tipuan.jpg");
 
     expect(res.status).toBe(200);
     expect(mockUploadPhoto).toHaveBeenCalledWith(
@@ -169,7 +169,7 @@ describe("unggah foto profil sendiri", () => {
   });
 
   it("menolak berkas yang bukan gambar", async () => {
-    const res = await unggahSendiri(BUKAN_GAMBAR, "photo", "virus.jpg");
+    const res = await uploadOwn(NOT_AN_IMAGE, "photo", "virus.jpg");
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("JPEG, PNG, or WebP");
@@ -186,7 +186,7 @@ describe("unggah foto profil sendiri", () => {
   });
 
   it("menolak berkas yang dikirim pada field yang salah", async () => {
-    const res = await unggahSendiri(JPEG, "file");
+    const res = await uploadOwn(JPEG, "file");
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("photo");
@@ -195,7 +195,7 @@ describe("unggah foto profil sendiri", () => {
   it("menolak akun yang belum terhubung ke data karyawan", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await unggahSendiri(JPEG);
+    const res = await uploadOwn(JPEG);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("not linked to an employee record");
@@ -204,7 +204,7 @@ describe("unggah foto profil sendiri", () => {
   it("memberi tahu ketika penyimpanan belum dikonfigurasi", async () => {
     mockStorageConfigured.mockReturnValue(false as never);
 
-    const res = await unggahSendiri(JPEG);
+    const res = await uploadOwn(JPEG);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("not configured");
@@ -217,7 +217,7 @@ describe("unggah foto profil sendiri", () => {
       photo_path: `${EMPLOYEE_ID}/lama.jpg`,
     } as never);
 
-    await unggahSendiri(JPEG);
+    await uploadOwn(JPEG);
 
     expect(mockDeletePhoto).toHaveBeenCalledWith(`${EMPLOYEE_ID}/lama.jpg`);
   });
@@ -229,20 +229,20 @@ describe("unggah foto profil sendiri", () => {
     } as never);
     mockDeletePhoto.mockRejectedValue(new Error("berkas hilang") as never);
 
-    const res = await unggahSendiri(JPEG);
+    const res = await uploadOwn(JPEG);
 
     expect(res.status).toBe(200);
   });
 
   it("tidak mencoba menghapus apa pun bila belum punya foto", async () => {
-    await unggahSendiri(JPEG);
+    await uploadOwn(JPEG);
 
     expect(mockDeletePhoto).not.toHaveBeenCalled();
   });
 });
 
 describe("hapus foto profil sendiri", () => {
-  function hapus() {
+  function deleteOwnPhoto() {
     return request(app)
       .delete("/api/v1/auth/me/photo")
       .set("Authorization", `Bearer ${employeeToken}`);
@@ -254,7 +254,7 @@ describe("hapus foto profil sendiri", () => {
       photo_path: `${EMPLOYEE_ID}/lama.jpg`,
     } as never);
 
-    const res = await hapus();
+    const res = await deleteOwnPhoto();
 
     expect(res.status).toBe(200);
     expect(employeeModel.updatePhotoPath).toHaveBeenCalledWith(
@@ -265,7 +265,7 @@ describe("hapus foto profil sendiri", () => {
   });
 
   it("menolak ketika memang belum punya foto", async () => {
-    const res = await hapus();
+    const res = await deleteOwnPhoto();
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("no profile photo");
@@ -274,9 +274,9 @@ describe("hapus foto profil sendiri", () => {
 });
 
 describe("foto profil karyawan lain", () => {
-  function unggahLain() {
+  function uploadForOther() {
     return request(app)
-      .post(`/api/v1/employees/${LAIN_ID}/photo`)
+      .post(`/api/v1/employees/${OTHER_ID}/photo`)
       .set("Authorization", `Bearer ${employeeToken}`)
       .attach("photo", JPEG, "foto.jpg");
   }
@@ -286,19 +286,19 @@ describe("foto profil karyawan lain", () => {
       [] as never,
     );
 
-    const res = await unggahLain();
+    const res = await uploadForOther();
 
     expect(res.status).toBe(403);
     expect(res.body.details.required_feature).toBe("employee.update");
   });
 
   it("mengizinkan pemegang employee.update", async () => {
-    const res = await unggahLain();
+    const res = await uploadForOther();
 
     expect(res.status).toBe(200);
     expect(res.body.message).toContain("Sari Utami");
     expect(mockUploadPhoto).toHaveBeenCalledWith(
-      `${LAIN_ID}/foto.jpeg`,
+      `${OTHER_ID}/foto.jpeg`,
       expect.any(Buffer),
       "image/jpeg",
     );
@@ -307,7 +307,7 @@ describe("foto profil karyawan lain", () => {
   it("melaporkan karyawan yang tidak ditemukan", async () => {
     (employeeModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await unggahLain();
+    const res = await uploadForOther();
 
     expect(res.status).toBe(404);
     expect(mockUploadPhoto).not.toHaveBeenCalled();
@@ -325,16 +325,16 @@ describe("foto profil karyawan lain", () => {
   it("menghapus foto karyawan lain", async () => {
     (employeeModel.findById as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
-      id: LAIN_ID,
+      id: OTHER_ID,
       full_name: "Sari Utami",
-      photo_path: `${LAIN_ID}/lama.jpg`,
+      photo_path: `${OTHER_ID}/lama.jpg`,
     } as never);
 
     const res = await request(app)
-      .delete(`/api/v1/employees/${LAIN_ID}/photo`)
+      .delete(`/api/v1/employees/${OTHER_ID}/photo`)
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(200);
-    expect(employeeModel.updatePhotoPath).toHaveBeenCalledWith(LAIN_ID, null);
+    expect(employeeModel.updatePhotoPath).toHaveBeenCalledWith(OTHER_ID, null);
   });
 });

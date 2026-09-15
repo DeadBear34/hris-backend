@@ -39,15 +39,15 @@ const fakeEmployee = {
   position_id: POSITION_ID,
 };
 
-function siapkanReq(role: string): Request {
+function makeReq(role: string): Request {
   return { user: { id: USER_ID, email: "a@awan.io", role } } as Request;
 }
 
-function siapkanRes(): Response {
+function makeRes(): Response {
   return { locals: {} } as Response;
 }
 
-function ambilError(next: NextFunction) {
+function captureError(next: NextFunction) {
   const [err] = (next as jest.Mock).mock.calls[0] as [
     { statusCode: number; message: string; details?: unknown },
   ];
@@ -75,11 +75,7 @@ beforeEach(() => {
 
 describe("requireFeature untuk admin", () => {
   it("melewatkan admin tanpa memeriksa fitur", async () => {
-    await requireFeature("employee.delete")(
-      siapkanReq("admin"),
-      siapkanRes(),
-      next,
-    );
+    await requireFeature("employee.delete")(makeReq("admin"), makeRes(), next);
 
     expect(next).toHaveBeenCalledWith();
     expect(featureModel.findCodesByPosition).not.toHaveBeenCalled();
@@ -87,8 +83,8 @@ describe("requireFeature untuk admin", () => {
 
   it("tidak menyentuh tabel karyawan untuk admin", async () => {
     await requireFeature("system.manage_feature")(
-      siapkanReq("admin"),
-      siapkanRes(),
+      makeReq("admin"),
+      makeRes(),
       next,
     );
 
@@ -99,8 +95,8 @@ describe("requireFeature untuk admin", () => {
 describe("requireFeature untuk karyawan", () => {
   it("mengizinkan karyawan yang jabatannya punya fitur", async () => {
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
@@ -109,22 +105,22 @@ describe("requireFeature untuk karyawan", () => {
 
   it("menolak karyawan yang jabatannya tidak punya fitur", async () => {
     await requireFeature("employee.delete")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
-    expect(ambilError(next).statusCode).toBe(403);
+    expect(captureError(next).statusCode).toBe(403);
   });
 
   it("menyertakan kode fitur yang dibutuhkan pada details", async () => {
     await requireFeature("employee.delete")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
-    expect(ambilError(next).details).toEqual({
+    expect(captureError(next).details).toEqual({
       required_feature: "employee.delete",
     });
   });
@@ -136,12 +132,12 @@ describe("requireFeature untuk karyawan", () => {
     } as never);
 
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
-    const err = ambilError(next);
+    const err = captureError(next);
 
     expect(err.statusCode).toBe(403);
     expect(err.message).toContain("Your position has not been set");
@@ -152,30 +148,22 @@ describe("requireFeature untuk karyawan", () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue(null as never);
 
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
-    const err = ambilError(next);
+    const err = captureError(next);
 
     expect(err.statusCode).toBe(403);
     expect(err.message).toContain("not linked to an employee record");
   });
 
   it("menyimpan karyawan di res.locals agar tidak diquery berulang", async () => {
-    const res = siapkanRes();
+    const res = makeRes();
 
-    await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      res,
-      next,
-    );
-    await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      res,
-      next,
-    );
+    await requireFeature("employee.view_all")(makeReq("employee"), res, next);
+    await requireFeature("employee.view_all")(makeReq("employee"), res, next);
 
     expect(employeeModel.findByUserId).toHaveBeenCalledTimes(1);
   });
@@ -184,13 +172,13 @@ describe("requireFeature untuk karyawan", () => {
 describe("cache fitur per jabatan", () => {
   it("hanya memanggil database sekali untuk jabatan yang sama", async () => {
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
@@ -199,16 +187,16 @@ describe("cache fitur per jabatan", () => {
 
   it("memuat ulang setelah cache dibatalkan", async () => {
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
     invalidateFeatureCache(POSITION_ID);
 
     await requireFeature("employee.view_all")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
 
@@ -217,11 +205,11 @@ describe("cache fitur per jabatan", () => {
 
   it("perubahan fitur langsung terasa setelah cache dibatalkan", async () => {
     await requireFeature("employee.delete")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next,
     );
-    expect(ambilError(next).statusCode).toBe(403);
+    expect(captureError(next).statusCode).toBe(403);
 
     (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
       "employee.delete",
@@ -230,8 +218,8 @@ describe("cache fitur per jabatan", () => {
 
     const next2 = jest.fn() as unknown as NextFunction;
     await requireFeature("employee.delete")(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       next2,
     );
 
@@ -242,8 +230,8 @@ describe("cache fitur per jabatan", () => {
 describe("punyaFitur", () => {
   it("selalu true untuk admin", async () => {
     const result = await hasFeature(
-      siapkanReq("admin"),
-      siapkanRes(),
+      makeReq("admin"),
+      makeRes(),
       "leave.approve_all",
     );
 
@@ -252,8 +240,8 @@ describe("punyaFitur", () => {
 
   it("true bila jabatannya memiliki fitur", async () => {
     const result = await hasFeature(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       "employee.view_all",
     );
 
@@ -262,8 +250,8 @@ describe("punyaFitur", () => {
 
   it("false bila jabatannya tidak memiliki fitur", async () => {
     const result = await hasFeature(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       "leave.approve_all",
     );
 
@@ -277,8 +265,8 @@ describe("punyaFitur", () => {
     } as never);
 
     const result = await hasFeature(
-      siapkanReq("employee"),
-      siapkanRes(),
+      makeReq("employee"),
+      makeRes(),
       "employee.view_all",
     );
 
@@ -288,17 +276,14 @@ describe("punyaFitur", () => {
 
 describe("ambilKodeFiturPengguna", () => {
   it("mengembalikan seluruh kode untuk admin", async () => {
-    const codes = await getUserFeatureCodes(siapkanReq("admin"), siapkanRes());
+    const codes = await getUserFeatureCodes(makeReq("admin"), makeRes());
 
     expect(codes).toContain("system.manage_feature");
     expect(codes).toHaveLength(3);
   });
 
   it("mengembalikan fitur jabatan untuk karyawan", async () => {
-    const codes = await getUserFeatureCodes(
-      siapkanReq("employee"),
-      siapkanRes(),
-    );
+    const codes = await getUserFeatureCodes(makeReq("employee"), makeRes());
 
     expect(codes).toEqual(["employee.view_all"]);
   });
@@ -309,10 +294,7 @@ describe("ambilKodeFiturPengguna", () => {
       position_id: null,
     } as never);
 
-    const codes = await getUserFeatureCodes(
-      siapkanReq("employee"),
-      siapkanRes(),
-    );
+    const codes = await getUserFeatureCodes(makeReq("employee"), makeRes());
 
     expect(codes).toEqual([]);
   });
@@ -320,10 +302,7 @@ describe("ambilKodeFiturPengguna", () => {
   it("mengembalikan daftar kosong untuk akun tanpa data karyawan", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue(null as never);
 
-    const codes = await getUserFeatureCodes(
-      siapkanReq("employee"),
-      siapkanRes(),
-    );
+    const codes = await getUserFeatureCodes(makeReq("employee"), makeRes());
 
     expect(codes).toEqual([]);
   });

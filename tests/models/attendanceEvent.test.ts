@@ -29,8 +29,11 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-function panggilan(indeks = -1): [string, unknown[]] {
-  const [sql, values] = mockQuery.mock.calls.at(indeks) as [string, unknown[]];
+function calls(itemIndex = -1): [string, unknown[]] {
+  const [sql, values] = mockQuery.mock.calls.at(itemIndex) as [
+    string,
+    unknown[],
+  ];
 
   return [sql.replace(/\s+/g, " "), values];
 }
@@ -39,25 +42,25 @@ describe("recordEvent", () => {
   it("menyimpan waktu tekan dan waktu terima sebagai dua kolom terpisah", async () => {
     mockQuery.mockResolvedValue({ rows: [fakeEvent] } as never);
 
-    const ditekan = new Date("2026-03-10T00:58:00.123Z");
-    const diterima = new Date("2026-03-10T02:30:00.456Z");
+    const pressed = new Date("2026-03-10T00:58:00.123Z");
+    const accepted = new Date("2026-03-10T02:30:00.456Z");
 
     await eventModel.recordEvent({
       employee_id: EMPLOYEE_ID,
       kind: "check_in",
-      occurred_at: ditekan,
-      received_at: diterima,
+      occurred_at: pressed,
+      received_at: accepted,
       source: "offline_sync",
     });
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain("INSERT INTO attendance_events");
     expect(values).toEqual([
       EMPLOYEE_ID,
       "check_in",
-      ditekan,
-      diterima,
+      pressed,
+      accepted,
       "offline_sync",
       null,
     ]);
@@ -74,7 +77,7 @@ describe("recordEvent", () => {
       source: "online",
     });
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     // kejadian mentah tidak mengenal status maupun keterlambatan
     expect(sql).not.toContain("status");
@@ -102,7 +105,7 @@ describe("penautan dan penolakan", () => {
 
     await eventModel.linkToAttendance(EVENT_ID, ATTENDANCE_ID);
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain("SET attendance_id = $2::uuid");
     expect(values).toEqual([EVENT_ID, ATTENDANCE_ID]);
@@ -113,7 +116,7 @@ describe("penautan dan penolakan", () => {
 
     await eventModel.markRejected(EVENT_ID, "Tanggal tersebut hari libur");
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain("SET rejection_reason = $2");
     expect(values).toEqual([EVENT_ID, "Tanggal tersebut hari libur"]);
@@ -128,7 +131,7 @@ describe("listEvents", () => {
   it("menghitung jeda antara tekan dan terima dalam detik", async () => {
     await eventModel.listEvents({ page: 1, limit: 20 });
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     expect(sql).toContain(
       "EXTRACT(EPOCH FROM (ev.received_at - ev.occurred_at))::int AS delay_seconds",
@@ -138,7 +141,7 @@ describe("listEvents", () => {
   it("dapat dipersempit ke percobaan yang ditolak saja", async () => {
     await eventModel.listEvents({ only_rejected: true, page: 1, limit: 20 });
 
-    const [sql] = panggilan(0);
+    const [sql] = calls(0);
 
     expect(sql).toContain("ev.rejection_reason IS NOT NULL");
   });
@@ -151,7 +154,7 @@ describe("listEvents", () => {
       limit: 20,
     });
 
-    const [sql, values] = panggilan(0);
+    const [sql, values] = calls(0);
 
     expect(sql).toContain("ev.kind = $1::attendance_event_kind");
     expect(sql).toContain("ev.source = $2::attendance_source");
@@ -165,7 +168,7 @@ describe("listEvents", () => {
       limit: 20,
     });
 
-    const [sql] = panggilan(0);
+    const [sql] = calls(0);
 
     expect(sql).toContain("ev.occurred_at < $1::date + 1");
   });
@@ -173,7 +176,7 @@ describe("listEvents", () => {
   it("mengurutkan dari kejadian terbaru", async () => {
     await eventModel.listEvents({ page: 1, limit: 20 });
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     expect(sql).toContain("ORDER BY ev.occurred_at DESC");
   });

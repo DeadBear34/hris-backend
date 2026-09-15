@@ -10,6 +10,12 @@ function optionalField<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess(blankToUndefined, schema.optional());
 }
 
+// Khusus update: null berarti kosongkan kolomnya, sedangkan tidak dikirim
+// berarti biarkan nilai lama
+function clearableField<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(blankToUndefined, schema.nullable().optional());
+}
+
 // Batas kewajaran tanggal. Usia kerja minimal mengikuti UU Ketenagakerjaan
 export const MIN_WORKING_AGE = 15;
 export const MAX_AGE = 100;
@@ -158,7 +164,13 @@ export const updateEmployeeSchema = employeeDataSchema
   .partial()
   .extend({
     is_active: z.boolean().optional(),
-    resign_date: optionalField(z.iso.date("Invalid resign date")),
+    address: clearableField(
+      z.string().trim().max(500, "Address must be at most 500 characters"),
+    ),
+    department_id: clearableField(z.uuid("Invalid department")),
+    position_id: clearableField(z.uuid("Invalid position")),
+    manager_id: clearableField(z.uuid("Invalid manager")),
+    resign_date: clearableField(z.iso.date("Invalid resign date")),
   })
   .refine(datesMakeSense, datesMakeSenseMessage);
 

@@ -269,12 +269,30 @@ describe("model leaveRequest", () => {
       fakeDb as never,
       REQUEST_ID,
       EMPLOYEE_ID,
+      "approved",
     );
 
-    const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
+    const [sql] = (fakeDb.query as jest.Mock).mock.calls.at(-1) as [string];
 
     expect(sql).toContain("'pending'::leave_status");
     expect(sql).toContain("'approved'::leave_status");
+  });
+
+  it("pembatalan hanya berhasil bila status belum berubah sejak diperiksa", async () => {
+    await leaveRequestModel.cancelRequest(
+      fakeDb as never,
+      REQUEST_ID,
+      EMPLOYEE_ID,
+      "pending",
+    );
+
+    const [sql, values] = (fakeDb.query as jest.Mock).mock.calls.at(-1) as [
+      string,
+      unknown[],
+    ];
+
+    expect(sql).toContain("status = $3::leave_status");
+    expect(values).toEqual([REQUEST_ID, EMPLOYEE_ID, "pending"]);
   });
 
   it("menyaring daftar berdasarkan penyetuju tanpa menyertakan yang kosong", async () => {
@@ -365,7 +383,7 @@ describe("model leaveBalance", () => {
   it("menghitung saldo dari penjumlahan seluruh baris", async () => {
     mockQuery.mockResolvedValue({ rows: [{ balance: 9 }] } as never);
 
-    const saldo = await balanceModel.balanceFor(
+    const balance = await balanceModel.balanceFor(
       EMPLOYEE_ID,
       LEAVE_TYPE_ID,
       2026,
@@ -374,19 +392,19 @@ describe("model leaveBalance", () => {
     const [sql] = mockQuery.mock.calls[0] as [string];
 
     expect(sql).toContain("SUM(amount)");
-    expect(saldo).toBe(9);
+    expect(balance).toBe(9);
   });
 
   it("mengembalikan nol saat belum ada transaksi", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const saldo = await balanceModel.balanceFor(
+    const balanceValue = await balanceModel.balanceFor(
       EMPLOYEE_ID,
       LEAVE_TYPE_ID,
       2026,
     );
 
-    expect(saldo).toBe(0);
+    expect(balanceValue).toBe(0);
   });
 
   it("ringkasan hanya memuat jenis cuti yang memotong saldo", async () => {

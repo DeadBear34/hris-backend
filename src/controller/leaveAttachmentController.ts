@@ -1,5 +1,4 @@
 import type { Request, Response, NextFunction } from "express";
-import * as employeeModel from "../models/employee.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import * as attachmentModel from "../models/leaveAttachment.js";
 import type { LeaveRequest } from "../models/leaveRequest.js";
@@ -12,29 +11,15 @@ import {
   isStorageConfigured,
   uploadAttachment,
 } from "../helpers/storage.js";
-import {
-  BadRequest,
-  Forbidden,
-  NotFound,
-  Unauthorized,
-} from "../helpers/appError.js";
+import { BadRequest, Forbidden, NotFound } from "../helpers/appError.js";
+import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 
 async function assertMayAccess(
   req: Request,
   res: Response,
   request: LeaveRequest,
 ): Promise<string> {
-  if (!req.user)
-    throw Unauthorized("You are not logged in, please log in first");
-
-  const employee = await employeeModel.findByUserId(req.user.id);
-
-  if (!employee) {
-    throw BadRequest(
-      "Your account is not linked to an employee record yet, please contact an admin first",
-    );
-  }
-
+  const employee = await requireRequestEmployee(req, res);
   const canViewAll = await hasFeature(req, res, "leave.view_all");
 
   const allowed =
@@ -64,13 +49,13 @@ export async function UploadLeaveAttachmentController(
     }
 
     const { id } = res.locals.params as { id: string };
-    const berkas = req.file;
+    const uploadedFile = req.file;
 
-    if (!berkas) {
+    if (!uploadedFile) {
       throw BadRequest("An attachment must be uploaded in the 'file' field");
     }
 
-    if (berkas.size > MAX_FILE_SIZE) {
+    if (uploadedFile.size > MAX_FILE_SIZE) {
       throw BadRequest("File must be 5 MB or smaller");
     }
 
@@ -79,7 +64,7 @@ export async function UploadLeaveAttachmentController(
 
     const employeeId = await assertMayAccess(req, res, request);
 
-    const mime = detectImageMimeType(berkas.buffer);
+    const mime = detectImageMimeType(uploadedFile.buffer);
 
     if (!mime) {
       throw BadRequest("Attachment must be a valid JPEG, PNG, or WebP image");
@@ -87,15 +72,15 @@ export async function UploadLeaveAttachmentController(
 
     const storagePath = buildStoragePath(request.id, mime);
 
-    await uploadAttachment(storagePath, berkas.buffer, mime);
+    await uploadAttachment(storagePath, uploadedFile.buffer, mime);
 
     const attachment = await attachmentModel.createAttachment({
       leave_request_id: request.id,
       storage_path: storagePath,
-      file_name: berkas.originalname,
+      file_name: uploadedFile.originalname,
       mime_type: mime,
-      file_size: berkas.size,
-      checksum: checksumOf(berkas.buffer),
+      file_size: uploadedFile.size,
+      checksum: checksumOf(uploadedFile.buffer),
       uploaded_by: employeeId,
     });
 

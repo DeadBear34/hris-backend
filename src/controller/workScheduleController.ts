@@ -1,17 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 import * as workScheduleModel from "../models/workSchedule.js";
 import * as departmentModel from "../models/department.js";
-import * as employeeModel from "../models/employee.js";
 import type { WorkScheduleInput } from "../models/workSchedule.js";
 import { minutesFromClockTime } from "../helpers/timezone.js";
 import { startActivity } from "../helpers/activityLog.js";
-import {
-  BadRequest,
-  Conflict,
-  NotFound,
-  Unauthorized,
-} from "../helpers/appError.js";
+import { BadRequest, Conflict, NotFound } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 
 const SCHEDULE_DEFAULTS = {
   start_time: "08:00",
@@ -69,16 +64,7 @@ export async function MyWorkScheduleController(
   next: NextFunction,
 ) {
   try {
-    if (!req.user) {
-      throw Unauthorized("You are not logged in, please log in first");
-    }
-
-    const employee = await employeeModel.findByUserId(req.user.id);
-    if (!employee) {
-      throw BadRequest(
-        "Your account is not linked to an employee record yet, please contact an admin first",
-      );
-    }
+    const employee = await requireRequestEmployee(req, res);
 
     const schedule = await workScheduleModel.resolveForEmployee(employee.id);
     if (!schedule) {
@@ -251,12 +237,12 @@ export async function DeleteWorkScheduleController(
       );
     }
 
-    const terpakai = await workScheduleModel.countEmployees(id);
+    const usageCount = await workScheduleModel.countEmployees(id);
 
-    if (terpakai > 0) {
+    if (usageCount > 0) {
       throw Conflict(
-        `This work schedule is still used by ${plural(terpakai, "employee")}, move them to another schedule first`,
-        { employee_count: terpakai },
+        `This work schedule is still used by ${plural(usageCount, "employee")}, move them to another schedule first`,
+        { employee_count: usageCount },
       );
     }
 

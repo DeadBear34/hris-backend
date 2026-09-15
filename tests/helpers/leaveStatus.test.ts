@@ -6,7 +6,7 @@ import {
   type LeaveStatus,
 } from "../../src/helpers/leaveStatus.js";
 
-const SEMUA_STATUS: LeaveStatus[] = [
+const ALL_STATUSES: LeaveStatus[] = [
   "pending",
   "approved",
   "rejected",
@@ -41,25 +41,25 @@ describe("transisi yang ditolak", () => {
   });
 
   it("rejected adalah status akhir", () => {
-    for (const tujuan of SEMUA_STATUS) {
-      expect(canTransition("rejected", tujuan)).toBe(false);
+    for (const target of ALL_STATUSES) {
+      expect(canTransition("rejected", target)).toBe(false);
     }
   });
 
   it("cancelled adalah status akhir", () => {
-    for (const tujuan of SEMUA_STATUS) {
-      expect(canTransition("cancelled", tujuan)).toBe(false);
+    for (const target of ALL_STATUSES) {
+      expect(canTransition("cancelled", target)).toBe(false);
     }
   });
 
   it("tidak ada status yang boleh berpindah ke dirinya sendiri", () => {
-    for (const status of SEMUA_STATUS) {
+    for (const status of ALL_STATUSES) {
       expect(canTransition(status, status)).toBe(false);
     }
   });
 
   it("tidak ada status yang boleh kembali ke pending", () => {
-    for (const status of SEMUA_STATUS) {
+    for (const status of ALL_STATUSES) {
       expect(canTransition(status, "pending")).toBe(false);
     }
   });
@@ -84,8 +84,8 @@ describe("allowedTransitions", () => {
   });
 
   it("mengembalikan salinan sehingga aturan tidak dapat diubah dari luar", () => {
-    const daftar = allowedTransitions("pending");
-    daftar.push("pending");
+    const transitions = allowedTransitions("pending");
+    transitions.push("pending");
 
     expect(allowedTransitions("pending")).toHaveLength(3);
   });

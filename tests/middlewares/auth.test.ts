@@ -23,11 +23,11 @@ const payload = {
 
 const token = createToken(payload);
 
-function siapkanReq(authorization?: string) {
+function makeReq(authorization?: string) {
   return { headers: authorization ? { authorization } : {} } as Request;
 }
 
-function ambilError(next: NextFunction): AppErrorType {
+function captureError(next: NextFunction): AppErrorType {
   const [err] = (next as jest.Mock).mock.calls[0] as [AppErrorType];
   return err;
 }
@@ -42,7 +42,7 @@ describe("authenticate", () => {
   });
 
   it("meneruskan request dengan token yang valid", async () => {
-    const req = siapkanReq(`Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
 
     await authenticate(req, {} as Response, next);
 
@@ -50,7 +50,7 @@ describe("authenticate", () => {
   });
 
   it("menempelkan data pengguna ke request", async () => {
-    const req = siapkanReq(`Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
 
     await authenticate(req, {} as Response, next);
 
@@ -59,39 +59,35 @@ describe("authenticate", () => {
   });
 
   it("menolak request tanpa header Authorization", async () => {
-    await authenticate(siapkanReq(), {} as Response, next);
+    await authenticate(makeReq(), {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("menolak header tanpa awalan Bearer", async () => {
-    await authenticate(siapkanReq(token), {} as Response, next);
+    await authenticate(makeReq(token), {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("menolak header Bearer tanpa token", async () => {
-    await authenticate(siapkanReq("Bearer "), {} as Response, next);
+    await authenticate(makeReq("Bearer "), {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("menolak token yang diubah isinya", async () => {
-    await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}x`), {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("menolak token yang ditandatangani kunci lain", async () => {
-    const tokenPalsu = jwt.sign(payload, "kunci-lain-yang-panjang-sekali-32");
+    const forgedToken = jwt.sign(payload, "kunci-lain-yang-panjang-sekali-32");
 
-    await authenticate(
-      siapkanReq(`Bearer ${tokenPalsu}`),
-      {} as Response,
-      next,
-    );
+    await authenticate(makeReq(`Bearer ${forgedToken}`), {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("menolak token yang sudah kedaluwarsa", async () => {
@@ -99,23 +95,19 @@ describe("authenticate", () => {
       expiresIn: "-1s",
     });
 
-    await authenticate(
-      siapkanReq(`Bearer ${tokenExpired}`),
-      {} as Response,
-      next,
-    );
+    await authenticate(makeReq(`Bearer ${tokenExpired}`), {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("tidak membocorkan alasan teknis kegagalan token", async () => {
-    await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}x`), {} as Response, next);
 
-    expect(ambilError(next).message).toBe("Token is invalid or has expired");
+    expect(captureError(next).message).toBe("Token is invalid or has expired");
   });
 
   it("tidak mengisi req.user saat token ditolak", async () => {
-    const req = siapkanReq(`Bearer ${token}x`);
+    const req = makeReq(`Bearer ${token}x`);
 
     await authenticate(req, {} as Response, next);
 
@@ -123,7 +115,7 @@ describe("authenticate", () => {
   });
 
   it("tidak memeriksa database jika token sudah ditolak", async () => {
-    await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}x`), {} as Response, next);
 
     expect(userModel.findSessionInfo).not.toHaveBeenCalled();
   });
@@ -137,7 +129,7 @@ describe("authenticate terhadap perubahan password", () => {
     next = jest.fn() as unknown as NextFunction;
   });
 
-  function sesi(password_changed_at: Date | null) {
+  function session(password_changed_at: Date | null) {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
       id: payload.id,
       password_changed_at,
@@ -145,37 +137,37 @@ describe("authenticate terhadap perubahan password", () => {
   }
 
   it("menolak token yang diterbitkan sebelum password diubah", async () => {
-    sesi(new Date(Date.now() + 60_000));
+    session(new Date(Date.now() + 60_000));
 
-    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
-    const err = ambilError(next);
+    const err = captureError(next);
 
     expect(err.statusCode).toBe(401);
     expect(err.message).toContain("password was changed");
   });
 
   it("tidak mengisi req.user saat sesi sudah dibatalkan", async () => {
-    sesi(new Date(Date.now() + 60_000));
+    session(new Date(Date.now() + 60_000));
 
-    const req = siapkanReq(`Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
     await authenticate(req, {} as Response, next);
 
     expect(req.user).toBeUndefined();
   });
 
   it("menerima token yang diterbitkan setelah password diubah", async () => {
-    sesi(new Date(Date.now() - 60_000));
+    session(new Date(Date.now() - 60_000));
 
-    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
     expect(next).toHaveBeenCalledWith();
   });
 
   it("menerima token saat password belum pernah diubah", async () => {
-    sesi(null);
+    session(null);
 
-    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
     expect(next).toHaveBeenCalledWith();
   });
@@ -185,9 +177,9 @@ describe("authenticate terhadap perubahan password", () => {
       Buffer.from(token.split(".")[1]!, "base64").toString(),
     ) as { iat: number };
 
-    sesi(new Date(iat * 1000));
+    session(new Date(iat * 1000));
 
-    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
     expect(next).toHaveBeenCalledWith();
   });
@@ -195,7 +187,7 @@ describe("authenticate terhadap perubahan password", () => {
   it("membiarkan controller menangani user yang sudah dihapus", async () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
 
-    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
     expect(next).toHaveBeenCalledWith();
   });
@@ -205,7 +197,7 @@ describe("authenticate terhadap perubahan password", () => {
       new Error("koneksi putus") as never,
     );
 
-    await authenticate(siapkanReq(`Bearer ${token}`), {} as Response, next);
+    await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
     const [err] = (next as jest.Mock).mock.calls[0] as [Error];
 
@@ -241,7 +233,7 @@ describe("authorize", () => {
 
     authorize("hr", "admin")(req, {} as Response, next);
 
-    const err = ambilError(next);
+    const err = captureError(next);
 
     expect(err.statusCode).toBe(403);
     expect(err.code).toBe("FORBIDDEN");
@@ -250,7 +242,7 @@ describe("authorize", () => {
   it("menolak request yang belum melewati authenticate", () => {
     authorize("admin")({} as Request, {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(401);
+    expect(captureError(next).statusCode).toBe(401);
   });
 
   it("menolak semua role jika daftar izin kosong", () => {
@@ -258,7 +250,7 @@ describe("authorize", () => {
 
     authorize()(req, {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(403);
+    expect(captureError(next).statusCode).toBe(403);
   });
 
   it("membedakan role secara persis, bukan sebagian kata", () => {
@@ -266,6 +258,6 @@ describe("authorize", () => {
 
     authorize("admin")(req, {} as Response, next);
 
-    expect(ambilError(next).statusCode).toBe(403);
+    expect(captureError(next).statusCode).toBe(403);
   });
 });

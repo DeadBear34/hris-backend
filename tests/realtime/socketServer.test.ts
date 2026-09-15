@@ -100,9 +100,9 @@ describe("autentikasi soket", () => {
     await opened(socket);
     socket.send(JSON.stringify({ action: "auth", token }));
 
-    const pesan = await nextMessage(socket);
+    const message = await nextMessage(socket);
 
-    expect(pesan.event).toBe("ready");
+    expect(message.event).toBe("ready");
     expect(isConnected(USER_ID)).toBe(true);
   });
 
@@ -215,10 +215,10 @@ describe("autentikasi soket", () => {
     });
 
     // buka sampai melewati batas
-    const dibuka: InstanceType<typeof WebSocket>[] = [];
+    const openedSocket: InstanceType<typeof WebSocket>[] = [];
     for (let i = 0; i < 6; i++) {
       const s = connect();
-      dibuka.push(s);
+      openedSocket.push(s);
       await opened(s);
       s.send(JSON.stringify({ action: "auth", token }));
       await new Promise((done) => setTimeout(done, 120));
@@ -226,7 +226,7 @@ describe("autentikasi soket", () => {
 
     // yang keenam ditolak, lima pertama tetap hidup
     expect(connectionCount()).toBe(5);
-    expect(dibuka[5]!.readyState).not.toBe(WebSocket.OPEN);
+    expect(openedSocket[5]!.readyState).not.toBe(WebSocket.OPEN);
   });
 
   it("menolak pesan yang terlalu besar", async () => {
@@ -236,9 +236,9 @@ describe("autentikasi soket", () => {
     socket.send("x".repeat(8 * 1024));
 
     // ws menutup koneksi sendiri saat payload melebihi maxPayload
-    const kode = await closed(socket);
+    const closeCode = await closed(socket);
 
-    expect(kode).toBeGreaterThan(0);
+    expect(closeCode).toBeGreaterThan(0);
     expect(connectionCount()).toBe(0);
   });
 
@@ -248,18 +248,18 @@ describe("autentikasi soket", () => {
     });
     sockets.push(socket);
 
-    const galat = await new Promise<string>((done) => {
-      const batas = setTimeout(() => done("TIMEOUT"), 5000);
-      const selesai = (pesan: string) => {
-        clearTimeout(batas);
-        done(pesan);
+    const errorMessage = await new Promise<string>((done) => {
+      const timeoutTimer = setTimeout(() => done("TIMEOUT"), 5000);
+      const finish = (received: string) => {
+        clearTimeout(timeoutTimer);
+        done(received);
       };
 
-      socket.once("error", (err) => selesai(err.message));
-      socket.once("open", () => selesai("MALAH TERBUKA"));
+      socket.once("error", (err) => finish(err.message));
+      socket.once("open", () => finish("MALAH TERBUKA"));
     });
 
-    expect(galat).toContain("403");
+    expect(errorMessage).toContain("403");
     expect(connectionCount()).toBe(0);
 
     // soket yang ditolak tetap menyisakan handle kalau tidak ditutup
@@ -274,14 +274,14 @@ describe("autentikasi soket", () => {
 
     await expect(
       new Promise<string>((done) => {
-        const batas = setTimeout(() => done("TIMEOUT"), 5000);
-        const selesai = (pesan: string) => {
-          clearTimeout(batas);
-          done(pesan);
+        const timeoutTimer = setTimeout(() => done("TIMEOUT"), 5000);
+        const finish = (message: string) => {
+          clearTimeout(timeoutTimer);
+          done(message);
         };
 
-        socket.once("open", () => selesai("terbuka"));
-        socket.once("error", (err) => selesai(err.message));
+        socket.once("open", () => finish("terbuka"));
+        socket.once("error", (err) => finish(err.message));
       }),
     ).resolves.toBe("terbuka");
 

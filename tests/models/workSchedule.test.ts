@@ -12,7 +12,7 @@ const SCHEDULE_ID = "11111111-1111-4111-8111-111111111111";
 const DEPARTMENT_ID = "22222222-2222-4222-8222-222222222222";
 const EMPLOYEE_ID = "33333333-3333-4333-8333-333333333333";
 
-const jadwalUmum = {
+const generalSchedule = {
   id: SCHEDULE_ID,
   name: "Jadwal Kerja Umum",
   department_id: null,
@@ -38,19 +38,19 @@ beforeEach(() => {
 });
 
 /** Teks query terakhir, dirapatkan supaya perbandingannya tidak rapuh. */
-function sqlTerakhir(): string {
-  const teks = mockQuery.mock.calls.at(-1)?.[0] as string;
+function lastSql(): string {
+  const text = mockQuery.mock.calls.at(-1)?.[0] as string;
 
-  return teks.replace(/\s+/g, " ");
+  return text.replace(/\s+/g, " ");
 }
 
 describe("urutan penentuan jadwal karyawan", () => {
   it("mendahulukan jadwal milik karyawan, lalu departemen, lalu bawaan", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
 
-    const sql = sqlTerakhir();
+    const sql = lastSql();
 
     // urutan prioritas inilah yang menjadi aturan, jadi diperiksa langsung
     expect(sql).toContain("WHEN ws.id = e.work_schedule_id THEN 1");
@@ -61,37 +61,37 @@ describe("urutan penentuan jadwal karyawan", () => {
   });
 
   it("hanya mempertimbangkan jadwal aktif yang belum dihapus", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
 
-    expect(sqlTerakhir()).toContain(
+    expect(lastSql()).toContain(
       "ws.deleted_at IS NULL AND ws.is_active = true",
     );
   });
 
   it("mempertimbangkan jadwal bawaan sebagai cadangan terakhir", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
 
-    expect(sqlTerakhir()).toContain("OR ws.department_id IS NULL");
+    expect(lastSql()).toContain("OR ws.department_id IS NULL");
   });
 
   it("mengembalikan jadwal yang ditemukan", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
-    const jadwal = await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
+    const scheduleRow = await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
 
-    expect(jadwal?.name).toBe("Jadwal Kerja Umum");
+    expect(scheduleRow?.name).toBe("Jadwal Kerja Umum");
   });
 
   it("mengembalikan null bila karyawan tidak tercakup jadwal mana pun", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const jadwal = await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
+    const scheduleRow = await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
 
-    expect(jadwal).toBeNull();
+    expect(scheduleRow).toBeNull();
   });
 
   it("versi massal mengabaikan karyawan nonaktif dan yang mengundurkan diri", async () => {
@@ -99,7 +99,7 @@ describe("urutan penentuan jadwal karyawan", () => {
 
     await workScheduleModel.resolveForAllActive();
 
-    const sql = sqlTerakhir();
+    const sql = lastSql();
 
     expect(sql).toContain("e.is_active = true");
     expect(sql).toContain("e.employment_status <> 'resigned'");
@@ -107,7 +107,7 @@ describe("urutan penentuan jadwal karyawan", () => {
 
   it("versi massal memisahkan id karyawan dari kolom jadwal", async () => {
     mockQuery.mockResolvedValue({
-      rows: [{ employee_id: EMPLOYEE_ID, ...jadwalUmum }],
+      rows: [{ employee_id: EMPLOYEE_ID, ...generalSchedule }],
     } as never);
 
     const result = await workScheduleModel.resolveForAllActive();
@@ -120,15 +120,23 @@ describe("urutan penentuan jadwal karyawan", () => {
 
 describe("adalahHariKerja", () => {
   it("mengikuti kolom hari kerja pada jadwal", () => {
-    expect(workScheduleModel.isWorkingDay(jadwalUmum, "monday")).toBe(true);
-    expect(workScheduleModel.isWorkingDay(jadwalUmum, "saturday")).toBe(false);
-    expect(workScheduleModel.isWorkingDay(jadwalUmum, "sunday")).toBe(false);
+    expect(workScheduleModel.isWorkingDay(generalSchedule, "monday")).toBe(
+      true,
+    );
+    expect(workScheduleModel.isWorkingDay(generalSchedule, "saturday")).toBe(
+      false,
+    );
+    expect(workScheduleModel.isWorkingDay(generalSchedule, "sunday")).toBe(
+      false,
+    );
   });
 
   it("menghormati jadwal yang menetapkan Sabtu sebagai hari kerja", () => {
-    const jadwalSabtu = { ...jadwalUmum, works_saturday: true };
+    const saturdaySchedule = { ...generalSchedule, works_saturday: true };
 
-    expect(workScheduleModel.isWorkingDay(jadwalSabtu, "saturday")).toBe(true);
+    expect(workScheduleModel.isWorkingDay(saturdaySchedule, "saturday")).toBe(
+      true,
+    );
   });
 });
 
@@ -136,7 +144,7 @@ describe("tanggalKerjaDalamRentang", () => {
   it("membuang akhir pekan menurut jadwal", () => {
     // 2026-03-09 Senin sampai 2026-03-15 Minggu
     const result = workScheduleModel.workingDatesInRange(
-      jadwalUmum,
+      generalSchedule,
       "2026-03-09",
       "2026-03-15",
     );
@@ -152,7 +160,7 @@ describe("tanggalKerjaDalamRentang", () => {
 
   it("membuang hari libur yang jatuh pada hari kerja", () => {
     const result = workScheduleModel.workingDatesInRange(
-      jadwalUmum,
+      generalSchedule,
       "2026-03-09",
       "2026-03-13",
       ["2026-03-11"],
@@ -163,10 +171,10 @@ describe("tanggalKerjaDalamRentang", () => {
   });
 
   it("menyertakan Sabtu bagi jadwal yang bekerja pada hari Sabtu", () => {
-    const jadwalSabtu = { ...jadwalUmum, works_saturday: true };
+    const saturdaySchedule = { ...generalSchedule, works_saturday: true };
 
     const result = workScheduleModel.workingDatesInRange(
-      jadwalSabtu,
+      saturdaySchedule,
       "2026-03-13",
       "2026-03-15",
     );
@@ -176,7 +184,7 @@ describe("tanggalKerjaDalamRentang", () => {
 
   it("menghasilkan daftar kosong bila seluruh rentang bukan hari kerja", () => {
     const result = workScheduleModel.workingDatesInRange(
-      jadwalUmum,
+      generalSchedule,
       "2026-03-14",
       "2026-03-15",
     );
@@ -199,13 +207,13 @@ describe("countEmployees", () => {
 
     await workScheduleModel.countEmployees(SCHEDULE_ID);
 
-    expect(sqlTerakhir()).toContain("deleted_at IS NULL");
+    expect(lastSql()).toContain("deleted_at IS NULL");
   });
 });
 
 describe("penyimpanan jadwal", () => {
   it("membuat jadwal departemen dengan nilai bawaan bila tidak diisi", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.createSchedule({
       name: "Jadwal Operasional",
@@ -221,7 +229,7 @@ describe("penyimpanan jadwal", () => {
   });
 
   it("hanya menulis kolom yang diizinkan saat mengubah jadwal", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.updateSchedule(SCHEDULE_ID, {
       start_time: "09:00",
@@ -230,7 +238,7 @@ describe("penyimpanan jadwal", () => {
     } as never);
 
     // hanya bagian SET yang diperiksa, karena klausa WHERE memang memakai id
-    const set = sqlTerakhir().split(" WHERE ")[0]!;
+    const set = lastSql().split(" WHERE ")[0]!;
 
     expect(set).toContain("start_time = $1::time");
     expect(set).not.toContain("id = $");
@@ -238,19 +246,19 @@ describe("penyimpanan jadwal", () => {
   });
 
   it("tidak menjalankan update ketika tidak ada kolom yang berubah", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.updateSchedule(SCHEDULE_ID, {});
 
-    expect(sqlTerakhir()).toContain("SELECT");
+    expect(lastSql()).toContain("SELECT");
   });
 
   it("menghapus jadwal secara lunak sekaligus menonaktifkannya", async () => {
-    mockQuery.mockResolvedValue({ rows: [jadwalUmum] } as never);
+    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
 
     await workScheduleModel.softDeleteSchedule(SCHEDULE_ID);
 
-    const sql = sqlTerakhir();
+    const sql = lastSql();
 
     expect(sql).toContain("deleted_at = now()");
     expect(sql).toContain("is_active = false");

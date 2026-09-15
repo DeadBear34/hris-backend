@@ -835,17 +835,17 @@ describe("isDescendantOf", () => {
   it("mengembalikan true jika calon manajer masih bawahan karyawan", async () => {
     mockQuery.mockResolvedValue({ rows: [{ id: EMPLOYEE_ID }] } as never);
 
-    const siklus = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
+    const cycle = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
 
-    expect(siklus).toBe(true);
+    expect(cycle).toBe(true);
   });
 
   it("mengembalikan false jika tidak membentuk lingkaran", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const siklus = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
+    const cycle = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
 
-    expect(siklus).toBe(false);
+    expect(cycle).toBe(false);
   });
 
   it("mengabaikan karyawan yang sudah dihapus saat menelusuri", async () => {

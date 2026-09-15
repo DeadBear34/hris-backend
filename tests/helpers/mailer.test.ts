@@ -1,14 +1,14 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 const mockSend = jest.fn();
-const catatKunci = jest.fn();
+const recordApiKey = jest.fn();
 const mockLoggerInfo = jest.fn();
 
 class FakeResend {
   emails = { send: mockSend };
 
   constructor(apiKey: string) {
-    catatKunci(apiKey);
+    recordApiKey(apiKey);
   }
 }
 
@@ -27,13 +27,13 @@ const env = {
 
 jest.unstable_mockModule("../../src/config/env.js", () => ({ env }));
 
-const surat = {
+const mail = {
   to: "ismail@awan.io",
   subject: "Kode verifikasi HRIS: 123456",
   html: "<p>123456</p>",
 };
 
-async function muatMailer() {
+async function loadMailer() {
   jest.resetModules();
   return import("../../src/helpers/mailer.js");
 }
@@ -48,21 +48,21 @@ beforeEach(() => {
 
 describe("activeMailDriver", () => {
   it("memakai mode log di development jika tidak diatur", async () => {
-    const { activeMailDriver } = await muatMailer();
+    const { activeMailDriver } = await loadMailer();
 
     expect(activeMailDriver()).toBe("log");
   });
 
   it("memakai Resend di production jika tidak diatur", async () => {
     env.NODE_ENV = "production";
-    const { activeMailDriver } = await muatMailer();
+    const { activeMailDriver } = await loadMailer();
 
     expect(activeMailDriver()).toBe("resend");
   });
 
   it("mendahulukan MAIL_DRIVER daripada NODE_ENV", async () => {
     env.MAIL_DRIVER = "resend";
-    const { activeMailDriver } = await muatMailer();
+    const { activeMailDriver } = await loadMailer();
 
     expect(activeMailDriver()).toBe("resend");
   });
@@ -70,7 +70,7 @@ describe("activeMailDriver", () => {
   it("dapat mematikan pengiriman di production lewat MAIL_DRIVER", async () => {
     env.NODE_ENV = "production";
     env.MAIL_DRIVER = "log";
-    const { activeMailDriver } = await muatMailer();
+    const { activeMailDriver } = await loadMailer();
 
     expect(activeMailDriver()).toBe("log");
   });
@@ -78,7 +78,7 @@ describe("activeMailDriver", () => {
   it("tidak pernah mengirim saat pengujian meski MAIL_DRIVER diisi resend", async () => {
     env.NODE_ENV = "test";
     env.MAIL_DRIVER = "resend";
-    const { activeMailDriver } = await muatMailer();
+    const { activeMailDriver } = await loadMailer();
 
     expect(activeMailDriver()).toBe("log");
   });
@@ -86,21 +86,21 @@ describe("activeMailDriver", () => {
 
 describe("isSecretLoggingAllowed", () => {
   it("mengizinkan pencetakan rahasia di development", async () => {
-    const { isSecretLoggingAllowed } = await muatMailer();
+    const { isSecretLoggingAllowed } = await loadMailer();
 
     expect(isSecretLoggingAllowed()).toBe(true);
   });
 
   it("mengizinkan pencetakan rahasia saat pengujian", async () => {
     env.NODE_ENV = "test";
-    const { isSecretLoggingAllowed } = await muatMailer();
+    const { isSecretLoggingAllowed } = await loadMailer();
 
     expect(isSecretLoggingAllowed()).toBe(true);
   });
 
   it("melarang pencetakan rahasia di production", async () => {
     env.NODE_ENV = "production";
-    const { isSecretLoggingAllowed } = await muatMailer();
+    const { isSecretLoggingAllowed } = await loadMailer();
 
     expect(isSecretLoggingAllowed()).toBe(false);
   });
@@ -108,7 +108,7 @@ describe("isSecretLoggingAllowed", () => {
   it("tidak terpengaruh oleh MAIL_DRIVER", async () => {
     env.NODE_ENV = "production";
     env.MAIL_DRIVER = "log";
-    const { isSecretLoggingAllowed } = await muatMailer();
+    const { isSecretLoggingAllowed } = await loadMailer();
 
     expect(isSecretLoggingAllowed()).toBe(false);
   });
@@ -122,17 +122,17 @@ describe("pengiriman sungguhan di development", () => {
   });
 
   it("mengirim lewat Resend saat MAIL_DRIVER bernilai resend", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockSend).toHaveBeenCalledTimes(1);
   });
 
   it("tidak mencetak isi email ke log", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockLoggerInfo).not.toHaveBeenCalled();
   });
@@ -140,9 +140,9 @@ describe("pengiriman sungguhan di development", () => {
   it("tetap melempar error jika RESEND_API_KEY belum diisi", async () => {
     env.RESEND_API_KEY = undefined;
 
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await expect(sendMail(surat)).rejects.toThrow("RESEND_API_KEY");
+    await expect(sendMail(mail)).rejects.toThrow("RESEND_API_KEY");
   });
 });
 
@@ -152,9 +152,9 @@ describe("pengujian tidak pernah mengirim email", () => {
     env.MAIL_DRIVER = "resend";
     env.RESEND_API_KEY = "re_kunci_rahasia";
 
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockSend).not.toHaveBeenCalled();
     expect(mockLoggerInfo).toHaveBeenCalled();
@@ -163,36 +163,36 @@ describe("pengujian tidak pernah mengirim email", () => {
 
 describe("mode pengembangan", () => {
   it("tidak mengirim email lewat Resend", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockSend).not.toHaveBeenCalled();
   });
 
   it("mencetak isi email ke log", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     const [data] = mockLoggerInfo.mock.calls[0] as [Record<string, unknown>];
 
-    expect(data.to).toBe(surat.to);
-    expect(data.subject).toBe(surat.subject);
-    expect(data.html).toBe(surat.html);
+    expect(data.to).toBe(mail.to);
+    expect(data.subject).toBe(mail.subject);
+    expect(data.html).toBe(mail.html);
   });
 
   it("tetap berjalan tanpa RESEND_API_KEY", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await expect(sendMail(surat)).resolves.toBeUndefined();
+    await expect(sendMail(mail)).resolves.toBeUndefined();
   });
 
   it("mode test juga tidak mengirim email", async () => {
     env.NODE_ENV = "test";
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockSend).not.toHaveBeenCalled();
   });
@@ -205,51 +205,51 @@ describe("mode production", () => {
   });
 
   it("mengirim email lewat Resend", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockSend).toHaveBeenCalledTimes(1);
   });
 
   it("memakai kunci api dari environment", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
-    expect(catatKunci).toHaveBeenCalledWith("re_kunci_rahasia");
+    expect(recordApiKey).toHaveBeenCalledWith("re_kunci_rahasia");
   });
 
   it("mengirim dengan pengirim, tujuan, subjek, dan isi yang benar", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
-    const [kiriman] = mockSend.mock.calls[0] as [Record<string, unknown>];
+    const [sentPayload] = mockSend.mock.calls[0] as [Record<string, unknown>];
 
-    expect(kiriman).toEqual({
+    expect(sentPayload).toEqual({
       from: env.MAIL_FROM,
-      to: surat.to,
-      subject: surat.subject,
-      html: surat.html,
+      to: mail.to,
+      subject: mail.subject,
+      html: mail.html,
     });
   });
 
   it("tidak mencetak isi email ke log", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
+    await sendMail(mail);
 
     expect(mockLoggerInfo).not.toHaveBeenCalled();
   });
 
   it("memakai ulang satu klien Resend untuk beberapa email", async () => {
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await sendMail(surat);
-    await sendMail(surat);
+    await sendMail(mail);
+    await sendMail(mail);
 
-    expect(catatKunci).toHaveBeenCalledTimes(1);
+    expect(recordApiKey).toHaveBeenCalledTimes(1);
   });
 
   it("melempar error jika Resend menolak kiriman", async () => {
@@ -258,17 +258,17 @@ describe("mode production", () => {
       error: { message: "domain belum diverifikasi" },
     } as never);
 
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await expect(sendMail(surat)).rejects.toThrow("domain belum diverifikasi");
+    await expect(sendMail(mail)).rejects.toThrow("domain belum diverifikasi");
   });
 
   it("melempar error jika RESEND_API_KEY belum diatur", async () => {
     env.RESEND_API_KEY = undefined;
 
-    const { sendMail } = await muatMailer();
+    const { sendMail } = await loadMailer();
 
-    await expect(sendMail(surat)).rejects.toThrow("RESEND_API_KEY");
+    await expect(sendMail(mail)).rejects.toThrow("RESEND_API_KEY");
     expect(mockSend).not.toHaveBeenCalled();
   });
 });

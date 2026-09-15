@@ -5,35 +5,35 @@ import {
   MAX_SYNC_DELAY_MINUTES,
 } from "../../src/helpers/offlineAttendance.js";
 
-const MENIT_MASUK = 8 * 60;
+const START_MINUTES = 8 * 60;
 
 const wib = (date: string, hour: string) =>
   new Date(`${date}T${hour}:00+07:00`);
 
-const tolak = (offline: Date, server: Date) =>
-  rejectionReasonForOfflineTime(offline, server, MENIT_MASUK);
+const rejectionFor = (offline: Date, server: Date) =>
+  rejectionReasonForOfflineTime(offline, server, START_MINUTES);
 
 describe("alasanWaktuOfflineDitolak", () => {
   it("menerima absen offline yang disinkronkan tak lama setelahnya", () => {
     expect(
-      tolak(wib("2026-08-20", "07:55"), wib("2026-08-20", "09:12")),
+      rejectionFor(wib("2026-08-20", "07:55"), wib("2026-08-20", "09:12")),
     ).toBeNull();
   });
 
   it("menerima sinkronisasi yang datang seketika", () => {
     expect(
-      tolak(wib("2026-08-20", "07:55"), wib("2026-08-20", "07:55")),
+      rejectionFor(wib("2026-08-20", "07:55"), wib("2026-08-20", "07:55")),
     ).toBeNull();
   });
 
   it("menerima selisih jam perangkat yang sedikit mendahului server", () => {
     expect(
-      tolak(wib("2026-08-20", "08:01"), wib("2026-08-20", "08:00")),
+      rejectionFor(wib("2026-08-20", "08:01"), wib("2026-08-20", "08:00")),
     ).toBeNull();
   });
 
   it("menolak waktu absen yang berada di masa depan", () => {
-    const reason = tolak(
+    const reason = rejectionFor(
       wib("2026-08-20", "08:30"),
       wib("2026-08-20", "08:00"),
     );
@@ -45,7 +45,7 @@ describe("alasanWaktuOfflineDitolak", () => {
     const reason = rejectionReasonForOfflineTime(
       new Date("bukan tanggal"),
       wib("2026-08-20", "08:00"),
-      MENIT_MASUK,
+      START_MINUTES,
     );
 
     expect(reason).toContain("could not be read");
@@ -57,7 +57,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       offline.getTime() + MAX_SYNC_DELAY_MINUTES * 60_000,
     );
 
-    expect(tolak(offline, server)).toBeNull();
+    expect(rejectionFor(offline, server)).toBeNull();
   });
 
   it("menolak sinkronisasi yang melewati batas jeda", () => {
@@ -66,12 +66,12 @@ describe("alasanWaktuOfflineDitolak", () => {
       offline.getTime() + (MAX_SYNC_DELAY_MINUTES + 1) * 60_000,
     );
 
-    expect(tolak(offline, server)).toContain("up to");
+    expect(rejectionFor(offline, server)).toContain("up to");
   });
 
   it("menolak absen offline yang melewati pergantian hari", () => {
     // jedanya hanya dua jam, tetapi tanggal WIB-nya sudah berbeda
-    const reason = tolak(
+    const reason = rejectionFor(
       wib("2026-08-19", "23:00"),
       wib("2026-08-20", "01:00"),
     );
@@ -80,7 +80,7 @@ describe("alasanWaktuOfflineDitolak", () => {
   });
 
   it("absen kemarin tertahan batas jeda lebih dulu", () => {
-    const reason = tolak(
+    const reason = rejectionFor(
       wib("2026-08-19", "08:00"),
       wib("2026-08-20", "09:00"),
     );
@@ -89,7 +89,7 @@ describe("alasanWaktuOfflineDitolak", () => {
   });
 
   it("menolak waktu yang terlalu jauh sebelum jam masuk", () => {
-    const reason = tolak(
+    const reason = rejectionFor(
       wib("2026-08-20", "05:00"),
       wib("2026-08-20", "09:00"),
     );
@@ -99,7 +99,7 @@ describe("alasanWaktuOfflineDitolak", () => {
 
   it("menerima datang dua jam sebelum jam masuk", () => {
     expect(
-      tolak(wib("2026-08-20", "06:00"), wib("2026-08-20", "09:00")),
+      rejectionFor(wib("2026-08-20", "06:00"), wib("2026-08-20", "09:00")),
     ).toBeNull();
   });
 
@@ -110,7 +110,7 @@ describe("alasanWaktuOfflineDitolak", () => {
     const server = new Date("2026-08-20T02:00:00Z");
 
     expect(
-      rejectionReasonForOfflineTime(offline, server, MENIT_MASUK),
+      rejectionReasonForOfflineTime(offline, server, START_MINUTES),
     ).toBeNull();
   });
 });

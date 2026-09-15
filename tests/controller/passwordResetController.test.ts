@@ -47,7 +47,7 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
   findLatestActive: jest.fn(),
-  incrementAttempts: jest.fn(),
+  claimAttempt: jest.fn(),
   markConsumed: jest.fn(),
   invalidateActive: jest.fn(),
 }));
@@ -71,7 +71,7 @@ const employeeModel = await import("../../src/models/employee.js");
 const tokenModel = await import("../../src/models/verificationToken.js");
 const { hashPassword, verifyPassword } =
   await import("../../src/helpers/password.js");
-const { createToken: buatJwt } = await import("../../src/helpers/jwt.js");
+const { createToken: signJwt } = await import("../../src/helpers/jwt.js");
 const { env } = await import("../../src/config/env.js");
 const { app } = await import("../../src/app.js");
 
@@ -79,8 +79,8 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const TOKEN_ID = "99999999-9999-4999-8999-999999999999";
 const EMAIL = "ismail@awan.io";
-const NILAI_TOKEN = "a".repeat(64);
-const PASSWORD_BARU = "passwordbaru456";
+const TOKEN_VALUE = "a".repeat(64);
+const NEW_PASSWORD = "passwordbaru456";
 
 const fakeUser = {
   id: USER_ID,
@@ -112,7 +112,7 @@ const fakeEmployee = {
 let hashToken: string;
 
 beforeAll(async () => {
-  hashToken = await hashPassword(NILAI_TOKEN);
+  hashToken = await hashPassword(TOKEN_VALUE);
 });
 
 function fakeToken(override: Record<string, unknown> = {}) {
@@ -133,9 +133,9 @@ function fakeToken(override: Record<string, unknown> = {}) {
 
 const resetBody = {
   email: EMAIL,
-  token: NILAI_TOKEN,
-  password: PASSWORD_BARU,
-  password_confirmation: PASSWORD_BARU,
+  token: TOKEN_VALUE,
+  password: NEW_PASSWORD,
+  password_confirmation: NEW_PASSWORD,
 };
 
 beforeEach(() => {
@@ -146,9 +146,17 @@ beforeEach(() => {
   (tokenModel.markConsumed as jest.Mock).mockResolvedValue(
     fakeToken() as never,
   );
-  (tokenModel.incrementAttempts as jest.Mock).mockResolvedValue(
-    fakeToken({ attempts: 1 }) as never,
-  );
+  // Meniru query claimAttempt: jatah hanya diberikan selama percobaan token
+  // terakhir masih di bawah batas
+  (tokenModel.claimAttempt as jest.Mock).mockImplementation(async () => {
+    const results = (tokenModel.findLatest as jest.Mock).mock.results;
+    const token = (await results[results.length - 1]?.value) as
+      { attempts: number } | null | undefined;
+
+    return token && token.attempts < 5
+      ? { ...token, attempts: token.attempts + 1 }
+      : null;
+  });
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
   );
@@ -257,10 +265,10 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
-    const [surat] = mockSendMail.mock.calls[0] as unknown as [{ html: string }];
+    const [mail] = mockSendMail.mock.calls[0] as unknown as [{ html: string }];
 
-    expect(surat.html).toContain(`${env.APP_URL}/reset-password?token=`);
-    expect(surat.html).toContain(encodeURIComponent(EMAIL));
+    expect(mail.html).toContain(`${env.APP_URL}/reset-password?token=`);
+    expect(mail.html).toContain(encodeURIComponent(EMAIL));
   });
 
   it("mengirim token asli lewat email, bukan hashnya", async () => {
@@ -270,28 +278,28 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
-    const [surat] = mockSendMail.mock.calls[0] as unknown as [{ html: string }];
+    const [mail] = mockSendMail.mock.calls[0] as unknown as [{ html: string }];
     const [data] = (tokenModel.createToken as jest.Mock).mock.calls[0] as [
       { token_hash: string },
     ];
 
-    expect(surat.html).not.toContain(data.token_hash);
-    expect(surat.html).toMatch(/token=[0-9a-f]{64}/);
+    expect(mail.html).not.toContain(data.token_hash);
+    expect(mail.html).toMatch(/token=[0-9a-f]{64}/);
   });
 
   it("memberi respons identik untuk email yang tidak terdaftar", async () => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
-    const terdaftar = await request(app)
+    const registeredUser = await request(app)
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
-    const tidakTerdaftar = await request(app)
+    const unknownEmail = await request(app)
       .post("/api/v1/auth/forgot-password")
       .send({ email: "tidakada@awan.io" });
 
-    expect(terdaftar.status).toBe(tidakTerdaftar.status);
-    expect(terdaftar.body).toEqual(tidakTerdaftar.body);
+    expect(registeredUser.status).toBe(unknownEmail.status);
+    expect(registeredUser.body).toEqual(unknownEmail.body);
   });
 
   it("tidak menerbitkan token untuk email yang tidak terdaftar", async () => {
@@ -338,16 +346,16 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
-    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+    const fallback = mockLoggerWarn.mock.calls.find(([data]) =>
       Object.hasOwn(data as object, "reset_link"),
     ) as [{ email: string; reset_link: string }, string];
 
-    expect(cadangan).toBeDefined();
-    expect(cadangan[0].email).toBe(EMAIL);
-    expect(cadangan[0].reset_link).toContain(
+    expect(fallback).toBeDefined();
+    expect(fallback[0].email).toBe(EMAIL);
+    expect(fallback[0].reset_link).toContain(
       `${env.APP_URL}/reset-password?token=`,
     );
-    expect(cadangan[0].reset_link).toMatch(/token=[0-9a-f]{64}/);
+    expect(fallback[0].reset_link).toMatch(/token=[0-9a-f]{64}/);
   });
 
   it("tidak mencetak tautan reset saat pengiriman email berhasil", async () => {
@@ -357,11 +365,11 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
-    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+    const fallback = mockLoggerWarn.mock.calls.find(([data]) =>
       Object.hasOwn(data as object, "reset_link"),
     );
 
-    expect(cadangan).toBeUndefined();
+    expect(fallback).toBeUndefined();
   });
 
   it("tidak mencetak tautan untuk email yang tidak terdaftar", async () => {
@@ -372,11 +380,11 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .post("/api/v1/auth/forgot-password")
       .send({ email: "tidakada@awan.io" });
 
-    const cadangan = mockLoggerWarn.mock.calls.find(([data]) =>
+    const fallback = mockLoggerWarn.mock.calls.find(([data]) =>
       Object.hasOwn(data as object, "reset_link"),
     );
 
-    expect(cadangan).toBeUndefined();
+    expect(fallback).toBeUndefined();
   });
 
   it("tidak pernah menyertakan password di dalam email", async () => {
@@ -386,12 +394,12 @@ describe("POST /api/v1/auth/forgot-password", () => {
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
-    const [surat] = mockSendMail.mock.calls[0] as unknown as [
+    const [mail] = mockSendMail.mock.calls[0] as unknown as [
       { html: string; subject: string },
     ];
 
-    expect(surat.html).not.toContain("$argon2id$");
-    expect(surat.subject).not.toContain("password123");
+    expect(mail.html).not.toContain("$argon2id$");
+    expect(mail.subject).not.toContain("password123");
   });
 });
 
@@ -435,7 +443,7 @@ describe("POST /api/v1/auth/reset-password", () => {
       .calls[0] as [string, string];
 
     expect(id).toBe(USER_ID);
-    expect(stored).not.toBe(PASSWORD_BARU);
+    expect(stored).not.toBe(NEW_PASSWORD);
     expect(stored).toContain("$argon2id$");
   });
 
@@ -445,7 +453,7 @@ describe("POST /api/v1/auth/reset-password", () => {
     const [, stored] = (userModel.updatePassword as jest.Mock).mock
       .calls[0] as [string, string];
 
-    await expect(verifyPassword(stored, PASSWORD_BARU)).resolves.toBe(true);
+    await expect(verifyPassword(stored, NEW_PASSWORD)).resolves.toBe(true);
   });
 
   it("menandai token sebagai sudah terpakai", async () => {
@@ -466,13 +474,13 @@ describe("POST /api/v1/auth/reset-password", () => {
   it("mengirim pemberitahuan tanpa menyertakan password baru", async () => {
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
-    const [surat] = mockSendMail.mock.calls[0] as unknown as [
+    const [mail] = mockSendMail.mock.calls[0] as unknown as [
       { to: string; subject: string; html: string },
     ];
 
-    expect(surat.to).toBe(EMAIL);
-    expect(surat.html).not.toContain(PASSWORD_BARU);
-    expect(surat.subject).not.toContain(PASSWORD_BARU);
+    expect(mail.to).toBe(EMAIL);
+    expect(mail.html).not.toContain(NEW_PASSWORD);
+    expect(mail.subject).not.toContain(NEW_PASSWORD);
   });
 
   it("tetap berhasil meski pengiriman pemberitahuan gagal", async () => {
@@ -500,7 +508,7 @@ describe("POST /api/v1/auth/reset-password", () => {
       .post("/api/v1/auth/reset-password")
       .send({ ...resetBody, token: "b".repeat(64) });
 
-    expect(tokenModel.incrementAttempts).toHaveBeenCalledWith(TOKEN_ID);
+    expect(tokenModel.claimAttempt).toHaveBeenCalledWith(TOKEN_ID, 5);
   });
 
   it("menolak token yang sudah kedaluwarsa", async () => {
@@ -575,6 +583,28 @@ describe("POST /api/v1/auth/reset-password", () => {
     expect(message.size).toBe(1);
   });
 
+  it("menandai token terpakai sebelum mengganti password", async () => {
+    await request(app).post("/api/v1/auth/reset-password").send(resetBody);
+
+    const [consumedAt] = (tokenModel.markConsumed as jest.Mock).mock
+      .invocationCallOrder;
+    const [updatedAt] = (userModel.updatePassword as jest.Mock).mock
+      .invocationCallOrder;
+
+    expect(consumedAt).toBeLessThan(updatedAt!);
+  });
+
+  it("tidak mengganti password bila token sudah dipakai permintaan lain", async () => {
+    (tokenModel.markConsumed as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/reset-password")
+      .send(resetBody);
+
+    expect(res.status).toBe(400);
+    expect(userModel.updatePassword).not.toHaveBeenCalled();
+  });
+
   it("hanya memakai token dengan purpose password_reset", async () => {
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
@@ -583,7 +613,7 @@ describe("POST /api/v1/auth/reset-password", () => {
 });
 
 describe("sesi lama setelah password diubah", () => {
-  const tokenLama = buatJwt({
+  const oldToken = signJwt({
     id: USER_ID,
     email: EMAIL,
     role: "employee",
@@ -597,7 +627,7 @@ describe("sesi lama setelah password diubah", () => {
 
     const res = await request(app)
       .get("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${tokenLama}`);
+      .set("Authorization", `Bearer ${oldToken}`);
 
     expect(res.status).toBe(401);
     expect(res.body.message).toContain("password was changed");
@@ -611,7 +641,7 @@ describe("sesi lama setelah password diubah", () => {
 
     await request(app)
       .get("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${tokenLama}`);
+      .set("Authorization", `Bearer ${oldToken}`);
 
     expect(userModel.findById).not.toHaveBeenCalled();
   });
@@ -625,7 +655,7 @@ describe("sesi lama setelah password diubah", () => {
 
     const res = await request(app)
       .get("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${tokenLama}`);
+      .set("Authorization", `Bearer ${oldToken}`);
 
     expect(res.status).toBe(200);
   });

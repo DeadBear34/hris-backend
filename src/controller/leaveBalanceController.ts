@@ -7,24 +7,13 @@ import type { ListLedgerParams } from "../models/leaveBalance.js";
 import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { plural } from "../helpers/plural.js";
+import {
+  findRequestEmployee,
+  requireRequestEmployee,
+} from "../helpers/requestEmployee.js";
 
 function currentYear(): number {
   return new Date().getUTCFullYear();
-}
-
-async function getRequesterEmployee(req: Request) {
-  if (!req.user)
-    throw Unauthorized("You are not logged in, please log in first");
-
-  const employee = await employeeModel.findByUserId(req.user.id);
-
-  if (!employee) {
-    throw BadRequest(
-      "Your account is not linked to an employee record yet, please contact an admin first",
-    );
-  }
-
-  return employee;
 }
 
 export async function MyLeaveBalanceController(
@@ -33,7 +22,7 @@ export async function MyLeaveBalanceController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req);
+    const employee = await requireRequestEmployee(req, res);
     const { period_year } = res.locals.query as { period_year?: number };
     const period = period_year ?? currentYear();
 
@@ -83,7 +72,7 @@ export async function MyLeaveLedgerController(
   next: NextFunction,
 ) {
   try {
-    const employee = await getRequesterEmployee(req);
+    const employee = await requireRequestEmployee(req, res);
     const query = res.locals.query as Omit<ListLedgerParams, "employee_id">;
 
     const { rows, total } = await balanceModel.listLedger({
@@ -131,23 +120,42 @@ export async function AdjustLeaveBalanceController(
     const leaveType = await leaveTypeModel.findById(leave_type_id);
     if (!leaveType) throw BadRequest("Leave type not found");
 
-    const pelaku = await employeeModel.findByUserId(req.user.id);
+    const actor = await findRequestEmployee(req, res);
 
-    const transaksi = await balanceModel.createTransaction(pool, {
-      employee_id,
-      leave_type_id,
-      period_year,
-      amount,
-      type: "adjustment",
-      note,
-      created_by: pelaku?.id ?? null,
-    });
+    // Dikunci sama seperti pengajuan cuti, supaya penyesuaian dan pengajuan
+    // yang datang bersamaan tidak menghitung saldo dari angka lama
+    const client = await pool.connect();
+    let transaction: Awaited<ReturnType<typeof balanceModel.createTransaction>>;
+    let balance: number;
 
-    const saldo = await balanceModel.balanceFor(
-      employee_id,
-      leave_type_id,
-      period_year,
-    );
+    try {
+      await client.query("BEGIN");
+      await balanceModel.lockEmployeeBalance(client, employee_id);
+
+      transaction = await balanceModel.createTransaction(client, {
+        employee_id,
+        leave_type_id,
+        period_year,
+        amount,
+        type: "adjustment",
+        note,
+        created_by: actor?.id ?? null,
+      });
+
+      balance = await balanceModel.balanceFor(
+        employee_id,
+        leave_type_id,
+        period_year,
+        client,
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
 
     activity.success({
       action: "leave.balance_adjust",
@@ -160,7 +168,7 @@ export async function AdjustLeaveBalanceController(
     res.status(201).json({
       success: true,
       message: "Leave balance adjusted successfully",
-      data: { transaction: transaksi, balance: saldo },
+      data: { transaction, balance },
     });
   } catch (err) {
     next(err);

@@ -10,24 +10,9 @@ import {
   photoUrlFor,
   uploadPhoto,
 } from "../helpers/storage.js";
-import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
+import { BadRequest, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
-
-async function requesterEmployee(req: Request): Promise<Employee> {
-  if (!req.user) {
-    throw Unauthorized("You are not logged in, please log in first");
-  }
-
-  const employee = await employeeModel.findByUserId(req.user.id);
-
-  if (!employee) {
-    throw BadRequest(
-      "Your account is not linked to an employee record yet, please contact an admin first",
-    );
-  }
-
-  return employee;
-}
+import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 
 async function targetEmployee(id: string): Promise<Employee> {
   const employee = await employeeModel.findById(id);
@@ -60,19 +45,19 @@ async function discardOldPhoto(storagePath: string | null): Promise<void> {
 
 async function replacePhoto(
   employee: Employee,
-  berkas: Express.Multer.File | undefined,
+  uploadedFile: Express.Multer.File | undefined,
 ) {
   assertStorageReady();
 
-  if (!berkas) {
+  if (!uploadedFile) {
     throw BadRequest("A profile photo must be uploaded in the 'photo' field");
   }
 
-  if (berkas.size > MAX_FILE_SIZE) {
+  if (uploadedFile.size > MAX_FILE_SIZE) {
     throw BadRequest("Profile photo must be 5 MB or smaller");
   }
 
-  const mime = detectImageMimeType(berkas.buffer);
+  const mime = detectImageMimeType(uploadedFile.buffer);
 
   if (!mime) {
     throw BadRequest("Profile photo must be a valid JPEG, PNG, or WebP image");
@@ -80,7 +65,7 @@ async function replacePhoto(
 
   const storagePath = buildPhotoPath(employee.id, mime);
 
-  await uploadPhoto(storagePath, berkas.buffer, mime);
+  await uploadPhoto(storagePath, uploadedFile.buffer, mime);
 
   const updated = await employeeModel.updatePhotoPath(employee.id, storagePath);
 
@@ -115,7 +100,7 @@ export async function UploadOwnPhotoController(
   next: NextFunction,
 ) {
   try {
-    const employee = await requesterEmployee(req);
+    const employee = await requireRequestEmployee(req, res);
     const data = await replacePhoto(employee, req.file);
 
     res.json({
@@ -134,7 +119,7 @@ export async function DeleteOwnPhotoController(
   next: NextFunction,
 ) {
   try {
-    const employee = await requesterEmployee(req);
+    const employee = await requireRequestEmployee(req, res);
     await removePhoto(employee);
 
     res.json({ success: true, message: "Profile photo deleted successfully" });

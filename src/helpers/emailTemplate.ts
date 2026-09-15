@@ -3,15 +3,15 @@ export interface EmailContent {
   html: string;
 }
 
-const WARNA_UTAMA = "#0f172a";
-const WARNA_REDUP = "#64748b";
+const PRIMARY_COLOR = "#0f172a";
+const MUTED_COLOR = "#64748b";
 
 function wrap(title: string, body: string): string {
-  return `<div style="font-family: Arial, Helvetica, sans-serif; color: ${WARNA_UTAMA}; line-height: 1.6; max-width: 560px;">
+  return `<div style="font-family: Arial, Helvetica, sans-serif; color: ${PRIMARY_COLOR}; line-height: 1.6; max-width: 560px;">
   <h2 style="margin-bottom: 16px;">${title}</h2>
   ${body}
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-  <p style="color: ${WARNA_REDUP}; font-size: 13px;">
+  <p style="color: ${MUTED_COLOR}; font-size: 13px;">
     This email was sent automatically by the Awanio HRIS system. Please do not reply to this email.
   </p>
 </div>`;
@@ -51,12 +51,12 @@ export function passwordResetEmail(
       `${greeting(name)}
   <p>We received a request to reset the password for your HRIS account.</p>
   <p style="margin: 24px 0;">
-    <a href="${link}" style="background-color: ${WARNA_UTAMA}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
+    <a href="${link}" style="background-color: ${PRIMARY_COLOR}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
       Reset Password
     </a>
   </p>
   <p>If the button above doesn't work, copy this link into your browser:</p>
-  <p style="word-break: break-all; color: ${WARNA_REDUP}; font-size: 13px;">${link}</p>
+  <p style="word-break: break-all; color: ${MUTED_COLOR}; font-size: 13px;">${link}</p>
   <p>This link is valid for ${validMinutes} minutes and can only be used once.</p>
   <p>If you didn't request this, ignore this email. Your password will not change.</p>`,
     ),
@@ -86,7 +86,7 @@ export function accountApprovedEmail(
       `${greeting(name)}
   <p>Good news, your HRIS account has been approved by the HR team and is ready to use.</p>
   <p style="margin: 24px 0;">
-    <a href="${loginLink}" style="background-color: ${WARNA_UTAMA}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
+    <a href="${loginLink}" style="background-color: ${PRIMARY_COLOR}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
       Log in to HRIS
     </a>
   </p>

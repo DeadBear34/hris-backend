@@ -49,63 +49,68 @@ describe("jamMenit", () => {
 });
 
 describe("tentukanStatusKedatangan", () => {
-  const MASUK = 8 * 60;
-  const TOLERANSI = 5;
-  const TUTUP = 8 * 60 + 10;
+  const START_MINUTES = 8 * 60;
+  const TOLERANCE = 5;
+  const CUTOFF = 8 * 60 + 10;
 
-  const putuskan = (hour: number, minute: number) =>
-    decideArrivalStatus(hour * 60 + minute, MASUK, TOLERANSI, TUTUP);
+  const decide = (hour: number, minute: number) =>
+    decideArrivalStatus(hour * 60 + minute, START_MINUTES, TOLERANCE, CUTOFF);
 
   it("datang sebelum jam masuk tetap hadir", () => {
-    expect(putuskan(7, 30)).toBe("present");
+    expect(decide(7, 30)).toBe("present");
   });
 
   it("tepat pada jam masuk hadir", () => {
-    expect(putuskan(8, 0)).toBe("present");
+    expect(decide(8, 0)).toBe("present");
   });
 
   it("tepat pada batas toleransi masih hadir", () => {
-    expect(putuskan(8, 5)).toBe("present");
+    expect(decide(8, 5)).toBe("present");
   });
 
   it("satu menit setelah toleransi menjadi terlambat", () => {
-    expect(putuskan(8, 6)).toBe("late");
+    expect(decide(8, 6)).toBe("late");
   });
 
   it("tepat pada batas absen masih terlambat", () => {
-    expect(putuskan(8, 10)).toBe("late");
+    expect(decide(8, 10)).toBe("late");
   });
 
   it("satu menit setelah batas absen ditolak", () => {
-    expect(putuskan(8, 11)).toBe("rejected");
+    expect(decide(8, 11)).toBe("rejected");
   });
 
   it("datang jauh setelah batas absen ditolak", () => {
-    expect(putuskan(14, 0)).toBe("rejected");
+    expect(decide(14, 0)).toBe("rejected");
   });
 
   it("tidak menyisakan menit tanpa keputusan sepanjang hari", () => {
     for (let minute = 0; minute < 1440; minute++) {
-      const result = decideArrivalStatus(minute, MASUK, TOLERANSI, TUTUP);
+      const result = decideArrivalStatus(
+        minute,
+        START_MINUTES,
+        TOLERANCE,
+        CUTOFF,
+      );
 
       expect(["present", "late", "rejected"]).toContain(result);
     }
   });
 
   it("toleransi nol membuat satu menit terlambat langsung terhitung", () => {
-    expect(decideArrivalStatus(481, MASUK, 0, TUTUP)).toBe("late");
-    expect(decideArrivalStatus(480, MASUK, 0, TUTUP)).toBe("present");
+    expect(decideArrivalStatus(481, START_MINUTES, 0, CUTOFF)).toBe("late");
+    expect(decideArrivalStatus(480, START_MINUTES, 0, CUTOFF)).toBe("present");
   });
 });
 
 describe("tentukanPenandaHarian", () => {
-  const state = (ubah: Partial<Parameters<typeof decideDailyMarker>[0]>) =>
+  const state = (overrides: Partial<Parameters<typeof decideDailyMarker>[0]>) =>
     decideDailyMarker({
       alreadyRecorded: false,
       isHoliday: false,
       onLeave: false,
       isWorkday: true,
-      ...ubah,
+      ...overrides,
     });
 
   it("melewati karyawan yang sudah punya absensi", () => {
@@ -150,10 +155,10 @@ describe("tentukanPenandaHarian", () => {
         for (const onLeave of value)
           for (const isWorkday of value) {
             const result = decideDailyMarker({
-              sudahAdaAbsensi: alreadyRecorded,
-              hariLibur: isHoliday,
-              sedangCuti: onLeave,
-              hariKerja: isWorkday,
+              recordedFlag: alreadyRecorded,
+              holidayFlag: isHoliday,
+              onLeaveFlag: onLeave,
+              workdayFlag: isWorkday,
             });
 
             expect(["holiday", "leave", "absent", "skip"]).toContain(result);

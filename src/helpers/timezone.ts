@@ -50,8 +50,8 @@ function getFormatter(zone: string): Intl.DateTimeFormat {
 export function toLocalTime(at: Date = new Date()): LocalTime {
   const parts = getFormatter(env.TIMEZONE).formatToParts(at);
 
-  const read = (tipe: string) =>
-    parts.find((b) => b.type === tipe)?.value ?? "";
+  const read = (partType: string) =>
+    parts.find((b) => b.type === partType)?.value ?? "";
 
   const year = read("year");
   const month = read("month");
@@ -104,9 +104,9 @@ export function dayNameOf(date: IsoDate): DayName {
     throw new Error(`Invalid date: ${date}`);
   }
 
-  const indeks = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  const itemIndex = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
-  return DAY_NAMES[indeks]!;
+  return DAY_NAMES[itemIndex]!;
 }
 
 export function lateMinutesFrom(

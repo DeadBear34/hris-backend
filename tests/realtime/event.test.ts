@@ -41,21 +41,21 @@ describe("bentuk yang dilihat penerima", () => {
 
 describe("penyaringan pesan dari luar proses", () => {
   it("menerima notification.created yang benar", () => {
-    const hasil = parseEvent({
+    const parsed = parseEvent({
       event: "notification.created",
       data: toView(row),
     });
 
-    expect(hasil?.event).toBe("notification.created");
+    expect(parsed?.event).toBe("notification.created");
   });
 
   it("menerima notification.cleared yang benar", () => {
-    const hasil = parseEvent({
+    const parsed = parseEvent({
       event: "notification.cleared",
       ids: ["n1", "n2"],
     });
 
-    expect(hasil).toEqual({
+    expect(parsed).toEqual({
       event: "notification.cleared",
       ids: ["n1", "n2"],
     });
@@ -70,7 +70,7 @@ describe("penyaringan pesan dari luar proses", () => {
     ["cleared tanpa ids", { event: "notification.cleared" }],
     ["ids bukan array", { event: "notification.cleared", ids: "n1" }],
     ["ids berisi angka", { event: "notification.cleared", ids: [1, 2] }],
-  ])("menolak %s", (_label, masukan) => {
-    expect(parseEvent(masukan)).toBeNull();
+  ])("menolak %s", (_label, input) => {
+    expect(parseEvent(input)).toBeNull();
   });
 });

@@ -108,12 +108,12 @@ describe("header keamanan", () => {
 });
 
 describe("aturan akses tiap route", () => {
-  const rutePublik = [
+  const publicRoute = [
     ["post", "/api/v1/auth/register"],
     ["post", "/api/v1/auth/login"],
   ] as const;
 
-  const ruteLogin = [
+  const loginRoute = [
     ["get", "/api/v1/auth/me"],
     ["patch", "/api/v1/auth/password"],
     ["get", "/api/v1/departments"],
@@ -122,7 +122,7 @@ describe("aturan akses tiap route", () => {
     ["get", `/api/v1/positions/${TARGET_ID}`],
   ] as const;
 
-  const ruteHr = [
+  const hrRoute = [
     ["get", "/api/v1/users/pending"],
     ["patch", `/api/v1/users/${TARGET_ID}/approve`],
     ["patch", `/api/v1/users/${TARGET_ID}/status`],
@@ -139,7 +139,7 @@ describe("aturan akses tiap route", () => {
     ["delete", `/api/v1/positions/${TARGET_ID}`],
   ] as const;
 
-  it.each(rutePublik)(
+  it.each(publicRoute)(
     "%s %s terpasang tanpa perlu login",
     async (method, path) => {
       const res = await request(app)[method](path).send({});
@@ -149,13 +149,13 @@ describe("aturan akses tiap route", () => {
     },
   );
 
-  it.each(ruteLogin)("%s %s menolak tamu", async (method, path) => {
+  it.each(loginRoute)("%s %s menolak tamu", async (method, path) => {
     const res = await request(app)[method](path).send({});
 
     expect(res.status).toBe(401);
   });
 
-  it.each(ruteLogin)(
+  it.each(loginRoute)(
     "%s %s dapat diakses karyawan biasa",
     async (method, path) => {
       const res = await request(app)
@@ -168,13 +168,13 @@ describe("aturan akses tiap route", () => {
     },
   );
 
-  it.each(ruteHr)("%s %s menolak tamu", async (method, path) => {
+  it.each(hrRoute)("%s %s menolak tamu", async (method, path) => {
     const res = await request(app)[method](path).send({});
 
     expect(res.status).toBe(401);
   });
 
-  it.each(ruteHr)("%s %s menolak karyawan biasa", async (method, path) => {
+  it.each(hrRoute)("%s %s menolak karyawan biasa", async (method, path) => {
     const res = await request(app)
       [method](path)
       .set("Authorization", `Bearer ${employeeToken}`)

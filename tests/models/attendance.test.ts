@@ -34,8 +34,11 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-function panggilan(indeks = -1): [string, unknown[]] {
-  const [sql, values] = mockQuery.mock.calls.at(indeks) as [string, unknown[]];
+function calls(itemIndex = -1): [string, unknown[]] {
+  const [sql, values] = mockQuery.mock.calls.at(itemIndex) as [
+    string,
+    unknown[],
+  ];
 
   return [sql.replace(/\s+/g, " "), values];
 }
@@ -46,7 +49,7 @@ describe("pembacaan absensi", () => {
 
     await attendanceModel.findByEmployeeAndDate(EMPLOYEE_ID, "2026-03-10");
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     expect(sql).toContain("attendance_date::text AS attendance_date");
   });
@@ -59,7 +62,7 @@ describe("pembacaan absensi", () => {
       "2026-03-10",
     );
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain(
       "employee_id = $1::uuid AND attendance_date = $2::date",
@@ -86,25 +89,25 @@ describe("pencatatan absen masuk dan pulang", () => {
 
     const at = new Date("2026-03-10T01:30:00Z");
 
-    const diterima = new Date("2026-03-10T01:31:00Z");
+    const accepted = new Date("2026-03-10T01:31:00Z");
 
     await attendanceModel.createCheckIn({
       employee_id: EMPLOYEE_ID,
       attendance_date: "2026-03-10",
       check_in_at: at,
-      check_in_recorded_at: diterima,
+      check_in_recorded_at: accepted,
       check_in_source: "offline_sync",
       status: "late",
       late_minutes: 30,
     });
 
-    const [, values] = panggilan();
+    const [, values] = calls();
 
     expect(values).toEqual([
       EMPLOYEE_ID,
       "2026-03-10",
       at,
-      diterima,
+      accepted,
       "offline_sync",
       "late",
       30,
@@ -139,7 +142,7 @@ describe("pencatatan absen masuk dan pulang", () => {
       540,
     );
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     // syarat ini yang mencegah dua permintaan bersamaan sama-sama berhasil
     expect(sql).toContain("check_out_at IS NULL");
@@ -175,7 +178,7 @@ describe("penyaringan daftar absensi", () => {
       limit: 10,
     });
 
-    const [sql] = panggilan(0);
+    const [sql] = calls(0);
 
     expect(sql).toContain("e.manager_id = $1::uuid");
   });
@@ -190,7 +193,7 @@ describe("penyaringan daftar absensi", () => {
       limit: 10,
     });
 
-    const [sql, values] = panggilan(0);
+    const [sql, values] = calls(0);
 
     expect(sql).toContain("e.department_id = $1::uuid");
     expect(sql).toContain("a.status = $2::attendance_status");
@@ -213,7 +216,7 @@ describe("penyaringan daftar absensi", () => {
       limit: 10,
     });
 
-    const [sql, values] = panggilan(0);
+    const [sql, values] = calls(0);
 
     expect(sql).toContain("e.full_name ILIKE $1");
     expect(sql).toContain("e.employee_number ILIKE $1");
@@ -223,7 +226,7 @@ describe("penyaringan daftar absensi", () => {
   it("mengabaikan karyawan yang sudah dihapus", async () => {
     await attendanceModel.listAttendances({ page: 1, limit: 10 });
 
-    const [sql] = panggilan(0);
+    const [sql] = calls(0);
 
     expect(sql).toContain("e.deleted_at IS NULL");
   });
@@ -231,7 +234,7 @@ describe("penyaringan daftar absensi", () => {
   it("menghitung offset dari halaman yang diminta", async () => {
     await attendanceModel.listAttendances({ page: 3, limit: 20 });
 
-    const [, values] = panggilan();
+    const [, values] = calls();
 
     expect(values.slice(-2)).toEqual([20, 40]);
   });
@@ -267,13 +270,13 @@ describe("rekap kehadiran", () => {
       ],
     } as never);
 
-    const rekap = await attendanceModel.summaryFor(
+    const summary = await attendanceModel.summaryFor(
       EMPLOYEE_ID,
       "2026-03-01",
       "2026-03-31",
     );
 
-    expect(rekap).toEqual({
+    expect(summary).toEqual({
       present: 18,
       late: 2,
       absent: 1,
@@ -287,14 +290,14 @@ describe("rekap kehadiran", () => {
   it("menghasilkan nol untuk periode tanpa data", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const rekap = await attendanceModel.summaryFor(
+    const summary = await attendanceModel.summaryFor(
       EMPLOYEE_ID,
       "2026-03-01",
       "2026-03-31",
     );
 
-    expect(rekap.present).toBe(0);
-    expect(rekap.total_work_minutes).toBe(0);
+    expect(summary.present).toBe(0);
+    expect(summary.total_work_minutes).toBe(0);
   });
 
   it("laporan bulanan tetap memuat karyawan yang tidak pernah hadir", async () => {
@@ -302,7 +305,7 @@ describe("rekap kehadiran", () => {
 
     await attendanceModel.monthlyReport("2026-03-01", "2026-03-31");
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     // LEFT JOIN yang menjaga karyawan tanpa baris absensi tetap muncul
     expect(sql).toContain("FROM employees e LEFT JOIN");
@@ -347,7 +350,7 @@ describe("rekap kehadiran", () => {
       DEPARTMENT_ID,
     );
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain("e.department_id = $3::uuid");
     expect(values[2]).toBe(DEPARTMENT_ID);
@@ -377,7 +380,7 @@ describe("penandaan hari cuti", () => {
       LEAVE_REQUEST_ID,
     );
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain(
       "ON CONFLICT (employee_id, attendance_date) DO UPDATE",
@@ -396,7 +399,7 @@ describe("penandaan hari cuti", () => {
       LEAVE_REQUEST_ID,
     );
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     expect(sql).toContain("status = 'leave'::attendance_status");
     expect(count).toBe(2);
@@ -422,7 +425,7 @@ describe("penanda job penutup hari", () => {
       { employee_id: EMPLOYEE_ID, status: "absent" },
     ]);
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     // inilah yang membuat job aman dijalankan berulang kali
     expect(sql).toContain(
@@ -442,7 +445,7 @@ describe("penanda job penutup hari", () => {
       { employee_id: ATTENDANCE_ID, status: "absent" },
     ]);
 
-    const [, values] = panggilan();
+    const [, values] = calls();
 
     expect(values[0]).toEqual([EMPLOYEE_ID, ATTENDANCE_ID]);
     expect(values[1]).toBe("2026-03-10");
@@ -483,7 +486,7 @@ describe("koreksi absensi", () => {
       note: "Dikoreksi karena salah input",
     });
 
-    const [sql, values] = panggilan();
+    const [sql, values] = calls();
 
     expect(sql).toContain("status = $2::attendance_status");
     expect(sql).toContain("check_in_at = $3::timestamptz");
@@ -516,7 +519,7 @@ describe("audit absensi offline", () => {
       limit: 20,
     });
 
-    const [sql] = panggilan(0);
+    const [sql] = calls(0);
 
     expect(sql).toContain("a.check_in_source = 'offline_sync'");
     expect(sql).toContain("a.check_out_source = 'offline_sync'");
@@ -529,7 +532,7 @@ describe("audit absensi offline", () => {
       limit: 20,
     });
 
-    const [sql] = panggilan();
+    const [sql] = calls();
 
     expect(sql).toContain("ORDER BY GREATEST(");
   });
@@ -568,7 +571,7 @@ describe("audit absensi offline", () => {
       limit: 20,
     });
 
-    const [sql, values] = panggilan(0);
+    const [sql, values] = calls(0);
 
     expect(sql).toContain("a.employee_id = $2::uuid");
     expect(values[0]).toBe(5);

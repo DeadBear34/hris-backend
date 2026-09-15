@@ -78,9 +78,18 @@ export interface CreateEmployeeInput {
   join_date?: string;
 }
 
-export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
+// null berarti nilainya dikosongkan, tidak dikirim berarti dibiarkan
+type ClearableColumn =
+  "address" | "department_id" | "position_id" | "manager_id";
+
+export type UpdateEmployeeInput = Omit<
+  Partial<CreateEmployeeInput>,
+  ClearableColumn
+> & {
+  [K in ClearableColumn]?: string | null;
+} & {
   is_active?: boolean;
-  resign_date?: string;
+  resign_date?: string | null;
 };
 
 export interface UpdateOwnProfileInput {

@@ -83,23 +83,23 @@ describe("pengiriman pesan", () => {
   });
 
   it("tidak mengirim ke pengguna lain", () => {
-    const milikOrangLain = fakeSocket();
+    const someoneElses = fakeSocket();
 
     register("u1", fakeSocket());
-    register("u2", milikOrangLain);
+    register("u2", someoneElses);
 
     pushToLocal("u1", { event: "ready", unread: 1 });
 
-    expect(milikOrangLain.send).not.toHaveBeenCalled();
+    expect(someoneElses.send).not.toHaveBeenCalled();
   });
 
   it("melewati soket yang sedang menutup", () => {
-    const menutup = fakeSocket(CLOSING);
+    const closing = fakeSocket(CLOSING);
 
-    register("u1", menutup);
+    register("u1", closing);
 
     expect(pushToLocal("u1", { event: "ready", unread: 0 })).toBe(0);
-    expect(menutup.send).not.toHaveBeenCalled();
+    expect(closing.send).not.toHaveBeenCalled();
   });
 
   it("aman dipanggil untuk pengguna yang sedang tidak tersambung", () => {
@@ -107,12 +107,12 @@ describe("pengiriman pesan", () => {
   });
 
   it("tidak melempar walau pengiriman gagal", () => {
-    const rusak = fakeSocket();
-    rusak.send.mockImplementation(() => {
+    const broken = fakeSocket();
+    broken.send.mockImplementation(() => {
       throw new Error("soket rusak");
     });
 
-    register("u1", rusak);
+    register("u1", broken);
 
     expect(() =>
       pushToLocal("u1", { event: "ready", unread: 0 }),

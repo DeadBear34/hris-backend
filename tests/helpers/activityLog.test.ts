@@ -164,12 +164,12 @@ describe("recordActivity", () => {
       occurred_at: new Date(),
     });
 
-    const [muatan, message] = mockInfo.mock.calls[0] as [
+    const [payload, message] = mockInfo.mock.calls[0] as [
       { activity: { action: string } },
       string,
     ];
 
-    expect(muatan.activity.action).toBe("employee.create");
+    expect(payload.activity.action).toBe("employee.create");
     expect(message).toBe("Karyawan Andi ditambahkan");
   });
 
@@ -184,15 +184,15 @@ describe("recordActivity", () => {
       occurred_at: new Date(),
     });
 
-    const [muatan] = mockInfo.mock.calls[0] as [{ activity: unknown }];
+    const [payload] = mockInfo.mock.calls[0] as [{ activity: unknown }];
 
-    expect(muatan.activity).toBe(entry);
+    expect(payload.activity).toBe(entry);
   });
 });
 
 describe("waktu pada catatan", () => {
   it("mencatat kapan peristiwa terjadi, terpisah dari kapan catatan dibuat", () => {
-    const mulai = new Date(Date.now() - 500);
+    const startedAt = new Date(Date.now() - 500);
 
     const entry = buildActivityLog({
       action: "employee.create",
@@ -200,15 +200,17 @@ describe("waktu pada catatan", () => {
       context,
       entity: "employee",
       summary: "cek waktu",
-      occurred_at: mulai,
+      occurred_at: startedAt,
     });
 
-    expect(entry.occurred_at).toBe(mulai);
-    expect(entry.created_at.getTime()).toBeGreaterThanOrEqual(mulai.getTime());
+    expect(entry.occurred_at).toBe(startedAt);
+    expect(entry.created_at.getTime()).toBeGreaterThanOrEqual(
+      startedAt.getTime(),
+    );
   });
 
   it("menghitung lama proses dari selisih keduanya", () => {
-    const mulai = new Date(Date.now() - 500);
+    const startedAt = new Date(Date.now() - 500);
 
     const entry = buildActivityLog({
       action: "employee.create",
@@ -216,7 +218,7 @@ describe("waktu pada catatan", () => {
       context,
       entity: "employee",
       summary: "cek durasi",
-      occurred_at: mulai,
+      occurred_at: startedAt,
     });
 
     expect(entry.duration_ms).toBe(
@@ -265,7 +267,7 @@ describe("ringkasDaftar", () => {
 
 describe("durasi tidak pernah negatif", () => {
   it("jam sistem yang mundur tetap menghasilkan nol, bukan angka negatif", () => {
-    const masaDepan = new Date(Date.now() + 60_000);
+    const future = new Date(Date.now() + 60_000);
 
     const entry = buildActivityLog({
       action: "employee.create",
@@ -273,7 +275,7 @@ describe("durasi tidak pernah negatif", () => {
       context,
       entity: "employee",
       summary: "jam mundur",
-      occurred_at: masaDepan,
+      occurred_at: future,
     });
 
     expect(entry.duration_ms).toBe(0);
@@ -335,13 +337,13 @@ describe("penyimpanan ke tabel activity_logs", () => {
   });
 
   it("penyimpanan tidak ditunggu sehingga respons tidak melambat", () => {
-    let selesai = false;
+    let finish = false;
 
     (logModel.insertLog as jest.Mock).mockImplementation(
       () =>
         new Promise((resolve) => {
           setTimeout(() => {
-            selesai = true;
+            finish = true;
             resolve(undefined);
           }, 50);
         }) as never,
@@ -357,6 +359,6 @@ describe("penyimpanan ke tabel activity_logs", () => {
     });
 
     // pemanggil sudah lanjut walau penyimpanannya belum selesai
-    expect(selesai).toBe(false);
+    expect(finish).toBe(false);
   });
 });

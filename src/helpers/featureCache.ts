@@ -1,29 +1,29 @@
-const MASA_BERLAKU_MS = 60_000;
+const CACHE_TTL_MS = 60_000;
 
-interface Entri {
+interface CacheEntry {
   codes: string[];
   expiresAt: number;
 }
 
-const cache = new Map<string, Entri>();
+const cache = new Map<string, CacheEntry>();
 
 export function readFromCache(position_id: string): string[] | null {
-  const entri = cache.get(position_id);
+  const entry = cache.get(position_id);
 
-  if (!entri) return null;
+  if (!entry) return null;
 
-  if (Date.now() >= entri.expiresAt) {
+  if (Date.now() >= entry.expiresAt) {
     cache.delete(position_id);
     return null;
   }
 
-  return entri.codes;
+  return entry.codes;
 }
 
 export function writeToCache(position_id: string, codes: string[]): void {
   cache.set(position_id, {
     codes,
-    expiresAt: Date.now() + MASA_BERLAKU_MS,
+    expiresAt: Date.now() + CACHE_TTL_MS,
   });
 }
 

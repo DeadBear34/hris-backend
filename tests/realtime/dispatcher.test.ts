@@ -10,7 +10,7 @@ const { registerTransport, dispatch, resetTransports, transportNames } =
 
 const EVENT = { event: "notification.cleared", ids: ["n1"] } as const;
 
-function jalur(name: string) {
+function transport(name: string) {
   const send = jest.fn();
 
   return { transport: { name, send }, send };
@@ -23,8 +23,8 @@ beforeEach(() => {
 
 describe("pendaftaran jalur", () => {
   it("mencatat jalur yang didaftarkan", () => {
-    registerTransport(jalur("a").transport);
-    registerTransport(jalur("b").transport);
+    registerTransport(transport("a").transport);
+    registerTransport(transport("b").transport);
 
     expect(transportNames()).toEqual(["a", "b"]);
   });
@@ -32,8 +32,8 @@ describe("pendaftaran jalur", () => {
 
 describe("penyaluran pesan", () => {
   it("mengirim ke semua jalur yang terdaftar", () => {
-    const a = jalur("a");
-    const b = jalur("b");
+    const a = transport("a");
+    const b = transport("b");
 
     registerTransport(a.transport);
     registerTransport(b.transport);
@@ -44,7 +44,7 @@ describe("penyaluran pesan", () => {
   });
 
   it("membuang penerima kembar sebelum menyalurkan", () => {
-    const a = jalur("a");
+    const a = transport("a");
 
     registerTransport(a.transport);
     dispatch(["u1", "u1", "u2"], EVENT);
@@ -53,7 +53,7 @@ describe("penyaluran pesan", () => {
   });
 
   it("tidak memanggil jalur mana pun untuk daftar kosong", () => {
-    const a = jalur("a");
+    const a = transport("a");
 
     registerTransport(a.transport);
     dispatch([], EVENT);
@@ -62,18 +62,18 @@ describe("penyaluran pesan", () => {
   });
 
   it("satu jalur gagal tidak menghentikan jalur lain", () => {
-    const rusak = jalur("rusak");
-    const sehat = jalur("sehat");
+    const broken = transport("rusak");
+    const healthy = transport("sehat");
 
-    rusak.send.mockImplementation(() => {
+    broken.send.mockImplementation(() => {
       throw new Error("jalur mati");
     });
 
-    registerTransport(rusak.transport);
-    registerTransport(sehat.transport);
+    registerTransport(broken.transport);
+    registerTransport(healthy.transport);
     dispatch(["u1"], EVENT);
 
-    expect(sehat.send).toHaveBeenCalled();
+    expect(healthy.send).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 

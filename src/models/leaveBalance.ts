@@ -76,12 +76,12 @@ export async function createTransaction(
     ],
   );
 
-  const transaksi = result.rows[0];
-  if (!transaksi) {
+  const transaction = result.rows[0];
+  if (!transaction) {
     throw new Error("Failed to save leave balance transaction");
   }
 
-  return transaksi;
+  return transaction;
 }
 
 export async function summaryFor(

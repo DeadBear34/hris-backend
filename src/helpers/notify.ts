@@ -174,3 +174,9 @@ export async function notifyAccountNeedsApproval(
 export function clearAccountApproval(user_id: string): void {
   clearPending("account_approval_needed", user_id);
 }
+
+// Pemohon membatalkan sendiri, jadi notifikasi "perlu disetujui" milik atasan
+// sudah tidak punya tindakan yang bisa dikerjakan
+export function clearLeaveApproval(request_id: string): void {
+  clearPending("leave_approval_needed", request_id);
+}

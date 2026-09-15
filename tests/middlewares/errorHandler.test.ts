@@ -13,12 +13,12 @@ const { errorHandler, notFoundHandler } =
 const { AppError, BadRequest, NotFound, Conflict } =
   await import("../../src/helpers/appError.js");
 
-interface HasilRespons {
+interface ResponseResult {
   status: number;
   body: Record<string, unknown>;
 }
 
-function siapkanRes(result: HasilRespons) {
+function makeRes(result: ResponseResult) {
   const res = {
     status(code: number) {
       result.status = code;
@@ -33,20 +33,20 @@ function siapkanRes(result: HasilRespons) {
   return res as unknown as Response;
 }
 
-function jalankan(err: unknown): HasilRespons {
-  const result: HasilRespons = { status: 200, body: {} };
+function runHandler(err: unknown): ResponseResult {
+  const result: ResponseResult = { status: 200, body: {} };
 
   errorHandler(
     err,
     {} as Request,
-    siapkanRes(result),
+    makeRes(result),
     jest.fn() as unknown as NextFunction,
   );
 
   return result;
 }
 
-function buatZodError() {
+function makeZodError() {
   const schema = z.object({
     email: z.email("Invalid email format"),
     password: z.string().min(8, "Password must be at least 8 characters"),
@@ -61,22 +61,22 @@ function buatZodError() {
 
 describe("notFoundHandler", () => {
   it("mengembalikan status 404", () => {
-    const result: HasilRespons = { status: 200, body: {} };
+    const result: ResponseResult = { status: 200, body: {} };
 
     notFoundHandler(
       { method: "GET", originalUrl: "/api/v1/tidakada" } as Request,
-      siapkanRes(result),
+      makeRes(result),
     );
 
     expect(result.status).toBe(404);
   });
 
   it("menyebutkan metode dan alamat yang diminta", () => {
-    const result: HasilRespons = { status: 200, body: {} };
+    const result: ResponseResult = { status: 200, body: {} };
 
     notFoundHandler(
       { method: "POST", originalUrl: "/api/v1/tidakada" } as Request,
-      siapkanRes(result),
+      makeRes(result),
     );
 
     expect(result.body.success).toBe(false);
@@ -91,34 +91,34 @@ describe("errorHandler untuk error validasi", () => {
   });
 
   it("mengembalikan status 400", () => {
-    const result = jalankan(buatZodError());
+    const result = runHandler(makeZodError());
 
     expect(result.status).toBe(400);
   });
 
   it("memakai kode VALIDATION_ERROR", () => {
-    const result = jalankan(buatZodError());
+    const result = runHandler(makeZodError());
 
     expect(result.body.code).toBe("VALIDATION_ERROR");
     expect(result.body.success).toBe(false);
   });
 
   it("merinci setiap field yang bermasalah", () => {
-    const result = jalankan(buatZodError());
+    const result = runHandler(makeZodError());
     const errors = result.body.errors as { field: string; message: string }[];
 
     expect(errors.map((e) => e.field)).toEqual(["email", "password"]);
   });
 
   it("menyertakan pesan kesalahan tiap field", () => {
-    const result = jalankan(buatZodError());
+    const result = runHandler(makeZodError());
     const errors = result.body.errors as { field: string; message: string }[];
 
     expect(errors[0]?.message).toBe("Invalid email format");
   });
 
   it("tidak mencatat error validasi ke log", () => {
-    jalankan(buatZodError());
+    runHandler(makeZodError());
 
     expect(mockLoggerError).not.toHaveBeenCalled();
   });
@@ -133,14 +133,40 @@ describe("errorHandler untuk JSON yang rusak", () => {
     const err = new SyntaxError("Unexpected token } in JSON");
     Object.assign(err, { body: "{rusak" });
 
-    const result = jalankan(err);
+    const result = runHandler(err);
 
     expect(result.status).toBe(400);
     expect(result.body.code).toBe("INVALID_JSON");
   });
 
   it("memperlakukan SyntaxError biasa sebagai error server", () => {
-    const result = jalankan(new SyntaxError("kesalahan lain"));
+    const result = runHandler(new SyntaxError("kesalahan lain"));
+
+    expect(result.status).toBe(500);
+  });
+});
+
+describe("errorHandler untuk data kembar dari database", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("mengubah pelanggaran UNIQUE menjadi 409", () => {
+    const err = Object.assign(new Error("duplicate key value"), {
+      code: "23505",
+    });
+
+    const result = runHandler(err);
+
+    expect(result.status).toBe(409);
+    expect(result.body.code).toBe("CONFLICT");
+    expect(mockLoggerError).not.toHaveBeenCalled();
+  });
+
+  it("tetap memperlakukan error database lain sebagai error server", () => {
+    const err = Object.assign(new Error("connection lost"), { code: "08006" });
+
+    const result = runHandler(err);
 
     expect(result.status).toBe(500);
   });
@@ -152,7 +178,7 @@ describe("errorHandler untuk AppError", () => {
   });
 
   it("memakai status dan kode dari error yang dilempar", () => {
-    const result = jalankan(NotFound("Employee not found"));
+    const result = runHandler(NotFound("Employee not found"));
 
     expect(result.status).toBe(404);
     expect(result.body.code).toBe("NOT_FOUND");
@@ -160,14 +186,14 @@ describe("errorHandler untuk AppError", () => {
   });
 
   it("meneruskan status konflik", () => {
-    const result = jalankan(Conflict("Email is already registered"));
+    const result = runHandler(Conflict("Email is already registered"));
 
     expect(result.status).toBe(409);
     expect(result.body.code).toBe("CONFLICT");
   });
 
   it("menyertakan detail tambahan jika tersedia", () => {
-    const result = jalankan(
+    const result = runHandler(
       BadRequest("Masih punya bawahan", { subordinates: [{ id: "1" }] }),
     );
 
@@ -176,20 +202,20 @@ describe("errorHandler untuk AppError", () => {
   });
 
   it("tidak menyertakan properti details jika tidak ada", () => {
-    const result = jalankan(BadRequest("Invalid request"));
+    const result = runHandler(BadRequest("Invalid request"));
 
     expect(result.body).not.toHaveProperty("details");
   });
 
   it("meneruskan status khusus yang ditulis manual", () => {
-    const result = jalankan(new AppError(418, "Teko kopi", "TEAPOT"));
+    const result = runHandler(new AppError(418, "Teko kopi", "TEAPOT"));
 
     expect(result.status).toBe(418);
     expect(result.body.code).toBe("TEAPOT");
   });
 
   it("tidak mencatat AppError ke log karena sudah ditangani", () => {
-    jalankan(NotFound());
+    runHandler(NotFound());
 
     expect(mockLoggerError).not.toHaveBeenCalled();
   });
@@ -201,20 +227,20 @@ describe("errorHandler untuk error tak terduga", () => {
   });
 
   it("mengembalikan status 500", () => {
-    const result = jalankan(new Error("relation users does not exist"));
+    const result = runHandler(new Error("relation users does not exist"));
 
     expect(result.status).toBe(500);
     expect(result.body.success).toBe(false);
   });
 
   it("tidak membocorkan pesan asli error", () => {
-    const result = jalankan(new Error("relation users does not exist"));
+    const result = runHandler(new Error("relation users does not exist"));
 
     expect(result.body.message).toBe("An error occurred on the server");
   });
 
   it("tidak menyertakan stack trace dalam respons", () => {
-    const result = jalankan(new Error("gagal"));
+    const result = runHandler(new Error("gagal"));
 
     expect(result.body).not.toHaveProperty("stack");
   });
@@ -222,13 +248,13 @@ describe("errorHandler untuk error tak terduga", () => {
   it("mencatat error ke log agar bisa ditelusuri", () => {
     const err = new Error("gagal");
 
-    jalankan(err);
+    runHandler(err);
 
     expect(mockLoggerError).toHaveBeenCalledWith(err);
   });
 
   it("menangani nilai yang dilempar selain Error", () => {
-    const result = jalankan("kesalahan berupa teks");
+    const result = runHandler("kesalahan berupa teks");
 
     expect(result.status).toBe(500);
     expect(result.body.message).toBe("An error occurred on the server");

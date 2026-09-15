@@ -147,7 +147,7 @@ describe("GET /api/v1/leave-balances/me", () => {
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum terhubung ke data karyawan");
+    expect(res.body.message).toContain("not linked to an employee record");
   });
 });
 
@@ -297,7 +297,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
       .send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("Karyawan tidak ditemukan");
+    expect(res.body.message).toBe("Employee not found");
   });
 
   it("menolak jenis cuti yang tidak ada", async () => {
@@ -309,7 +309,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
       .send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("Jenis cuti tidak ditemukan");
+    expect(res.body.message).toBe("Leave type not found");
   });
 
   it("mengembalikan saldo terbaru setelah penyesuaian", async () => {

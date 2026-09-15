@@ -112,7 +112,7 @@ describe("registerSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain("8 karakter");
+      expect(result.error.issues[0]?.message).toContain("8 characters");
     }
   });
 
@@ -462,7 +462,7 @@ describe("verifyEmailSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain("6 digit angka");
+      expect(result.error.issues[0]?.message).toContain("6 digits");
     }
   });
 
@@ -579,7 +579,7 @@ describe("resetPasswordSchema", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.path).toContain("password_confirmation");
-      expect(result.error.issues[0]?.message).toContain("tidak sama");
+      expect(result.error.issues[0]?.message).toContain("does not match");
     }
   });
 

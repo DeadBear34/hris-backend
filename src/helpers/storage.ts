@@ -11,7 +11,7 @@ let client: SupabaseClient | null = null;
 function getStorageClient(): SupabaseClient {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-      "SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY belum diatur, penyimpanan lampiran tidak tersedia",
+      "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not set, attachment storage is unavailable",
     );
   }
 
@@ -47,7 +47,7 @@ export async function uploadAttachment(
     .upload(storagePath, buffer, { contentType, upsert: false });
 
   if (error) {
-    throw new Error(`Gagal mengunggah lampiran: ${error.message}`);
+    throw new Error(`Failed to upload attachment: ${error.message}`);
   }
 }
 
@@ -61,7 +61,7 @@ export async function createSignedUrl(storagePath: string): Promise<{
 
   if (error || !data) {
     throw new Error(
-      `Gagal membuat tautan lampiran: ${error?.message ?? "tidak diketahui"}`,
+      `Failed to create attachment link: ${error?.message ?? "unknown"}`,
     );
   }
 
@@ -85,7 +85,7 @@ export async function uploadPhoto(
     .upload(storagePath, buffer, { contentType, upsert: false });
 
   if (error) {
-    throw new Error(`Gagal mengunggah foto profil: ${error.message}`);
+    throw new Error(`Failed to upload profile photo: ${error.message}`);
   }
 }
 
@@ -95,7 +95,7 @@ export async function deletePhoto(storagePath: string): Promise<void> {
     .remove([storagePath]);
 
   if (error) {
-    throw new Error(`Gagal menghapus foto profil: ${error.message}`);
+    throw new Error(`Failed to delete profile photo: ${error.message}`);
   }
 }
 

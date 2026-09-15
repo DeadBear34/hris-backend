@@ -65,7 +65,7 @@ export async function LoginController(
         entity_id: user_id ?? null,
         actor_user_id: user_id ?? null,
         actor_email: email,
-        summary: `Login gagal untuk ${email}`,
+        summary: `Login failed for ${email}`,
         metadata: { reason },
       });
 
@@ -75,35 +75,35 @@ export async function LoginController(
     const user = await userModel.findByEmail(email);
 
     if (!user) {
-      throw reject("email_tidak_terdaftar", "Email atau password salah");
+      throw reject("email_not_registered", "Incorrect email or password");
     }
 
     const valid = await verifyPassword(user.password, password);
 
     if (!valid) {
-      throw reject("password_salah", "Email atau password salah", user.id);
+      throw reject("wrong_password", "Incorrect email or password", user.id);
     }
 
     if (!user.email_verified_at) {
       throw reject(
-        "email_belum_diverifikasi",
-        "Email belum diverifikasi. Silakan masukkan kode verifikasi yang kami kirim ke email kamu.",
+        "email_not_verified",
+        "Your email is not verified yet. Please enter the verification code we sent to your email.",
         user.id,
       );
     }
 
     if (!user.approved_at) {
       throw reject(
-        "belum_disetujui",
-        "Akun kamu masih menunggu persetujuan admin",
+        "not_approved",
+        "Your account is still waiting for admin approval",
         user.id,
       );
     }
 
     if (!user.is_active) {
       throw reject(
-        "akun_nonaktif",
-        "Akun kamu dinonaktifkan, silakan hubungi admin",
+        "account_inactive",
+        "Your account has been deactivated, please contact an admin",
         user.id,
       );
     }
@@ -125,7 +125,7 @@ export async function LoginController(
       actor_user_id: user.id,
       actor_email: user.email,
       actor_name: employee?.full_name ?? null,
-      summary: `${employee?.full_name ?? user.email} berhasil login`,
+      summary: `${employee?.full_name ?? user.email} logged in`,
       metadata: { role: user.role },
     });
 
@@ -156,13 +156,13 @@ export async function MeController(
 ) {
   try {
     if (!req.user) {
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
     }
 
     const user = await userModel.findById(req.user.id);
 
     if (!user) {
-      throw NotFound("User tidak ditemukan");
+      throw NotFound("User not found");
     }
 
     const employee = await employeeModel.findByUserId(user.id);
@@ -192,16 +192,16 @@ export async function UpdateMeController(
 ) {
   try {
     if (!req.user)
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
 
     const user = await userModel.findById(req.user.id);
-    if (!user) throw NotFound("User tidak ditemukan");
+    if (!user) throw NotFound("User not found");
 
     const employee = await employeeModel.findByUserId(user.id);
 
     if (!employee) {
       throw BadRequest(
-        "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+        "Your account is not linked to an employee record yet, please contact an admin first",
       );
     }
 
@@ -216,7 +216,7 @@ export async function UpdateMeController(
 
     res.json({
       success: true,
-      message: "Profil berhasil diperbarui",
+      message: "Profile updated successfully",
       data: buildProfile(
         user,
         updated ?? employee,
@@ -236,22 +236,22 @@ export async function ChangePasswordController(
 ) {
   try {
     if (!req.user)
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
 
     const { current_password, new_password } = req.body;
 
     const user = await userModel.findByEmail(req.user.email);
-    if (!user) throw NotFound("User tidak ditemukan");
+    if (!user) throw NotFound("User not found");
 
     const valid = await verifyPassword(user.password, current_password);
-    if (!valid) throw Unauthorized("Password saat ini salah");
+    if (!valid) throw Unauthorized("Current password is incorrect");
 
     const hashed = await hashPassword(new_password);
     await userModel.updatePassword(user.id, hashed);
 
     res.json({
       success: true,
-      message: "Password berhasil diubah. Silakan login kembali.",
+      message: "Password changed successfully. Please log in again.",
     });
   } catch (err) {
     next(err);

@@ -125,7 +125,7 @@ describe("pencatatan absen masuk dan pulang", () => {
         status: "present",
         late_minutes: 0,
       }),
-    ).rejects.toThrow("Gagal menyimpan absensi masuk");
+    ).rejects.toThrow("Failed to save check-in");
   });
 
   it("hanya mengisi jam pulang yang masih kosong", async () => {

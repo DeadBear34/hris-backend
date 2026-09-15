@@ -2,10 +2,11 @@ import type { Request, Response, NextFunction } from "express";
 import * as notificationModel from "../models/notification.js";
 import { toView } from "../realtime/event.js";
 import { Unauthorized, NotFound } from "../helpers/appError.js";
+import { plural } from "../helpers/plural.js";
 
 function requireUserId(req: Request): string {
   if (!req.user) {
-    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+    throw Unauthorized("You are not logged in, please log in first");
   }
 
   return req.user.id;
@@ -62,12 +63,12 @@ export async function MarkNotificationReadController(
     // null berarti bukan milik dia, tidak ada, atau memang sudah dibaca.
     // Ketiganya dijawab sama supaya id orang lain tidak bisa ditebak
     if (!updated) {
-      throw NotFound("Notifikasi tidak ditemukan atau sudah dibaca");
+      throw NotFound("Notification not found or already read");
     }
 
     res.json({
       success: true,
-      message: "Notifikasi ditandai sudah dibaca",
+      message: "Notification marked as read",
       data: toView(updated),
       meta: { unread: await notificationModel.countUnread(recipient_user_id) },
     });
@@ -87,7 +88,7 @@ export async function MarkAllNotificationReadController(
 
     res.json({
       success: true,
-      message: `${affected} notifikasi ditandai sudah dibaca`,
+      message: `${plural(affected, "notification")} marked as read`,
       meta: { updated: affected, unread: 0 },
     });
   } catch (err) {

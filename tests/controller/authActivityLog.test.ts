@@ -175,7 +175,7 @@ describe("catatan aktivitas login", () => {
     expect(note.actor_user_id).toBeNull();
     expect(note.actor_email).toBe("tidakada@awan.io");
     expect((note.metadata as { reason: string }).reason).toBe(
-      "email_tidak_terdaftar",
+      "email_not_registered",
     );
   });
 
@@ -185,18 +185,18 @@ describe("catatan aktivitas login", () => {
     const res = await login("passwordsalah");
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toBe("Email atau password salah");
+    expect(res.body.message).toBe("Incorrect email or password");
 
     const note = catatanTerakhir(logger.warn as jest.Mock);
 
-    expect((note.metadata as { reason: string }).reason).toBe("password_salah");
+    expect((note.metadata as { reason: string }).reason).toBe("wrong_password");
     expect(note.actor_user_id).toBe(USER_ID);
   });
 
   it.each([
-    [{ email_verified_at: null }, "email_belum_diverifikasi"],
-    [{ approved_at: null }, "belum_disetujui"],
-    [{ is_active: false }, "akun_nonaktif"],
+    [{ email_verified_at: null }, "email_not_verified"],
+    [{ approved_at: null }, "not_approved"],
+    [{ is_active: false }, "account_inactive"],
   ])("mencatat sebab %#", async (override, reason) => {
     await siapkanLogin(override);
 
@@ -281,7 +281,7 @@ describe("catatan aktivitas register", () => {
     expect(note.action).toBe("auth.register");
     expect(note.status).toBe("failed");
     expect((note.metadata as { reason: string }).reason).toBe(
-      "email_sudah_terdaftar",
+      "email_already_registered",
     );
     expect(userModel.insertUser).not.toHaveBeenCalled();
   });

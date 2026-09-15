@@ -93,9 +93,9 @@ describe("allowedTransitions", () => {
 
 describe("statusLabel", () => {
   it("memberi label bahasa Indonesia untuk setiap status", () => {
-    expect(statusLabel("pending")).toBe("menunggu persetujuan");
-    expect(statusLabel("approved")).toBe("disetujui");
-    expect(statusLabel("rejected")).toBe("ditolak");
-    expect(statusLabel("cancelled")).toBe("dibatalkan");
+    expect(statusLabel("pending")).toBe("pending approval");
+    expect(statusLabel("approved")).toBe("approved");
+    expect(statusLabel("rejected")).toBe("rejected");
+    expect(statusLabel("cancelled")).toBe("cancelled");
   });
 });

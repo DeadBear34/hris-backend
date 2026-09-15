@@ -16,10 +16,10 @@ export function allowedTransitions(from: LeaveStatus): LeaveStatus[] {
 }
 
 const LABEL: Record<LeaveStatus, string> = {
-  pending: "menunggu persetujuan",
-  approved: "disetujui",
-  rejected: "ditolak",
-  cancelled: "dibatalkan",
+  pending: "pending approval",
+  approved: "approved",
+  rejected: "rejected",
+  cancelled: "cancelled",
 };
 
 export function statusLabel(status: LeaveStatus): string {

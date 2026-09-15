@@ -121,7 +121,7 @@ describe("GET /api/v1/positions/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
-    expect(res.body.message).toBe("Jabatan tidak ditemukan");
+    expect(res.body.message).toBe("Position not found");
   });
 
   it("mengembalikan detail jabatan", async () => {
@@ -350,7 +350,7 @@ describe("PATCH /api/v1/positions/:id", () => {
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("4 karyawan");
+    expect(res.body.message).toContain("4 employees");
     expect(res.body.details.employee_count).toBe(4);
     expect(positionModel.updatePosition).not.toHaveBeenCalled();
   });
@@ -448,7 +448,7 @@ describe("DELETE /api/v1/positions/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toContain("berhasil dihapus");
+    expect(res.body.message).toContain("deleted successfully");
     expect(positionModel.softDeletePosition).toHaveBeenCalledWith(POSITION_ID);
   });
 });

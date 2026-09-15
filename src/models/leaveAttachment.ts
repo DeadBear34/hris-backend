@@ -46,7 +46,7 @@ export async function createAttachment(
 
   const attachment = result.rows[0];
   if (!attachment) {
-    throw new Error("Gagal menyimpan lampiran");
+    throw new Error("Failed to save attachment");
   }
 
   return attachment;

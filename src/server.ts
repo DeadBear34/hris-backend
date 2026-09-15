@@ -17,14 +17,14 @@ import {
 async function start() {
   try {
     await testConnection();
-    logger.info("Database terhubung");
+    logger.info("Database connected");
   } catch (err) {
-    logger.error(err, "Gagal terhubung ke database");
+    logger.error(err, "Failed to connect to the database");
     process.exit(1);
   }
 
   const server = app.listen(env.PORT, () => {
-    logger.info(`Server berjalan di http://localhost:${env.PORT}`);
+    logger.info(`Server running at http://localhost:${env.PORT}`);
   });
 
   // app.listen mengembalikan http.Server, dan WebSocket menempel di situ
@@ -45,7 +45,7 @@ async function start() {
   });
 
   process.on("SIGINT", () => {
-    logger.info("Server dimatikan");
+    logger.info("Server shut down");
 
     void stopCrossInstance();
 

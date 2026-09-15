@@ -106,7 +106,7 @@ describe("insertUser", () => {
         "employee",
         new Date(),
       ),
-    ).rejects.toThrow("Gagal menyimpan user");
+    ).rejects.toThrow("Failed to save user");
   });
 
   it("dapat dijalankan memakai client transaksi", async () => {
@@ -221,7 +221,7 @@ describe("insertUserByAdmin", () => {
         "employee",
         ADMIN_ID,
       ),
-    ).rejects.toThrow("Gagal menyimpan akun");
+    ).rejects.toThrow("Failed to save account");
   });
 });
 

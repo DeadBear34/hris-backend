@@ -44,6 +44,7 @@ import {
   NotFound,
   Unauthorized,
 } from "../helpers/appError.js";
+import { plural } from "../helpers/plural.js";
 
 const CRON_HEADER = "x-cron-secret";
 
@@ -63,14 +64,14 @@ async function getRequesterEmployee(
   res: Response,
 ): Promise<Employee> {
   if (!req.user) {
-    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+    throw Unauthorized("You are not logged in, please log in first");
   }
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+      "Your account is not linked to an employee record yet, please contact an admin first",
     );
   }
 
@@ -82,14 +83,12 @@ async function getRequesterEmployee(
 function assertMayCheckIn(employee: Employee): void {
   if (!employee.is_active) {
     throw Forbidden(
-      "Data karyawan kamu berstatus tidak aktif sehingga tidak dapat melakukan absensi, hubungi admin",
+      "Your employee record is inactive, so you cannot record attendance. Please contact an admin",
     );
   }
 
   if (employee.employment_status === "resigned") {
-    throw Forbidden(
-      "Karyawan yang sudah mengundurkan diri tidak dapat melakukan absensi",
-    );
+    throw Forbidden("Employees who have resigned cannot record attendance");
   }
 }
 
@@ -98,7 +97,7 @@ async function getSchedule(employee_id: string): Promise<WorkSchedule> {
 
   if (!schedule) {
     throw BadRequest(
-      "Belum ada jadwal kerja yang berlaku untukmu, hubungi admin untuk mengatur jadwal kerja",
+      "No work schedule applies to you yet, please contact an admin to set one up",
     );
   }
 
@@ -139,18 +138,18 @@ async function blockedReasonForDate(
   const day = dayNameOf(date);
 
   if (!isWorkingDay(schedule, day)) {
-    return `Tanggal ${date} bukan hari kerja menurut jadwal ${schedule.name}`;
+    return `${date} is not a workday according to the ${schedule.name} schedule`;
   }
 
   const holiday = await holidayModel.findByDate(date);
   if (holiday) {
-    return `Tanggal ${date} adalah hari libur ${holiday.name}`;
+    return `${date} is a holiday: ${holiday.name}`;
   }
 
   const leave = await leaveRequestModel.findApprovedCovering(employee_id, date);
 
   if (leave) {
-    return `Kamu sedang menjalani cuti yang disetujui pada tanggal ${date}`;
+    return `You are on approved leave on ${date}`;
   }
 
   return null;
@@ -166,7 +165,7 @@ function rejectEvent(
     .catch((err) =>
       logger.warn(
         { err, eventId },
-        "Gagal menandai kejadian absensi yang ditolak",
+        "Failed to mark the rejected attendance event",
       ),
     );
 
@@ -218,9 +217,9 @@ function blockedReasonForTime(
   schedule: WorkSchedule,
   currentMinutes: number,
 ): string | null {
-  if (arrivalDecision(schedule, currentMinutes) !== "ditolak") return null;
+  if (arrivalDecision(schedule, currentMinutes) !== "rejected") return null;
 
-  return `Absensi masuk sudah ditutup pukul ${shortTime(schedule.absent_cutoff_time)}, kamu tercatat tidak hadir hari ini`;
+  return `Check-in closed at ${shortTime(schedule.absent_cutoff_time)}, you are marked absent today`;
 }
 
 export async function CheckInController(
@@ -264,8 +263,8 @@ export async function CheckInController(
 
     if (existing) {
       const message = existing.check_in_at
-        ? `Kamu sudah melakukan absensi masuk hari ini pukul ${clockTimeOf(new Date(existing.check_in_at))}`
-        : `Absensi tanggal ${date} sudah tercatat dengan status ${statusLabel(existing.status)}`;
+        ? `You already checked in today at ${clockTimeOf(new Date(existing.check_in_at))}`
+        : `Attendance for ${date} is already recorded with status ${statusLabel(existing.status)}`;
 
       await eventModel.markRejected(event.id, message);
 
@@ -304,8 +303,8 @@ export async function CheckInController(
     res.status(201).json({
       success: true,
       message: terlambat
-        ? `Absensi masuk tercatat pukul ${recordedClockTime}, terlambat ${diffMinutes} menit dari jam masuk ${shortTime(schedule.start_time)}`
-        : `Absensi masuk tercatat pukul ${recordedClockTime}`,
+        ? `Check-in recorded at ${recordedClockTime}, ${plural(diffMinutes, "minute")} late for the ${shortTime(schedule.start_time)} start time`
+        : `Check-in recorded at ${recordedClockTime}`,
       data: attendance,
     });
   } catch (err) {
@@ -348,13 +347,13 @@ export async function CheckOutController(
     if (!existing || !existing.check_in_at) {
       throw rejectEvent(
         event.id,
-        "Kamu belum melakukan absensi masuk hari ini sehingga belum dapat absen pulang",
+        "You haven't checked in today, so you can't check out yet",
         BadRequest,
       );
     }
 
     if (existing.check_out_at) {
-      const message = `Kamu sudah melakukan absensi pulang hari ini pukul ${clockTimeOf(new Date(existing.check_out_at))}`;
+      const message = `You already checked out today at ${clockTimeOf(new Date(existing.check_out_at))}`;
 
       await eventModel.markRejected(event.id, message);
 
@@ -366,7 +365,7 @@ export async function CheckOutController(
     if (local.minutesSinceMidnight < startMinutes) {
       throw rejectEvent(
         event.id,
-        `Absensi pulang belum dapat dilakukan sebelum jam kerja dimulai pukul ${shortTime(schedule.start_time)}`,
+        `You can't check out before work starts at ${shortTime(schedule.start_time)}`,
         BadRequest,
       );
     }
@@ -377,7 +376,7 @@ export async function CheckOutController(
     if (workedMinutes <= 0) {
       throw rejectEvent(
         event.id,
-        `Jam pulang harus setelah jam masuk pukul ${clockTimeOf(checkIn)}`,
+        `Check-out time must be after the check-in time of ${clockTimeOf(checkIn)}`,
         BadRequest,
       );
     }
@@ -392,7 +391,7 @@ export async function CheckOutController(
 
     if (!attendance) {
       throw Conflict(
-        "Absensi pulang sudah tercatat dari permintaan lain, silakan muat ulang",
+        "Check-out was already recorded by another request, please reload",
       );
     }
 
@@ -400,7 +399,7 @@ export async function CheckOutController(
 
     res.json({
       success: true,
-      message: `Absensi pulang tercatat pukul ${clockTimeOf(attendanceAt.at)}, total kerja ${formatDuration(workedMinutes)}`,
+      message: `Check-out recorded at ${clockTimeOf(attendanceAt.at)}, total work time ${formatDuration(workedMinutes)}`,
       data: attendance,
     });
   } catch (err) {
@@ -433,7 +432,7 @@ export async function TodayAttendanceController(
               schedule,
               toLocalTime(now).minutesSinceMidnight,
             )))
-      : "Belum ada jadwal kerja yang berlaku untukmu, hubungi admin";
+      : "No work schedule applies to you yet, please contact an admin";
 
     res.json({
       success: true,
@@ -581,7 +580,7 @@ function buildCorrectionNote(
 ): string {
   const date = todayInOfficeZone(at);
 
-  return `[Dikoreksi oleh ${pengoreksi.full_name} (${pengoreksi.employee_number}) pada ${date} ${clockTimeOf(at)}] ${reason}`;
+  return `[Corrected by ${pengoreksi.full_name} (${pengoreksi.employee_number}) on ${date} ${clockTimeOf(at)}] ${reason}`;
 }
 
 interface TimeWitness {
@@ -626,13 +625,13 @@ export async function CorrectAttendanceController(
     };
 
     const existing = await attendanceModel.findById(id);
-    if (!existing) throw NotFound("Data absensi tidak ditemukan");
+    if (!existing) throw NotFound("Attendance record not found");
 
     const checkIn = data.check_in_at ? new Date(data.check_in_at) : null;
     const checkOut = data.check_out_at ? new Date(data.check_out_at) : null;
 
     if (checkOut && !checkIn) {
-      throw BadRequest("Jam pulang tidak dapat diisi tanpa jam masuk");
+      throw BadRequest("Check-out time cannot be set without a check-in time");
     }
 
     let lateMinutes = 0;
@@ -694,7 +693,7 @@ export async function CorrectAttendanceController(
       action: "attendance.correct",
       entity: "attendance",
       entity_id: id,
-      summary: `Absensi ${existing.attendance_date} dikoreksi menjadi ${statusLabel(data.status)}`,
+      summary: `Attendance for ${existing.attendance_date} corrected to ${statusLabel(data.status)}`,
       metadata: {
         employee_id: existing.employee_id,
         from_status: existing.status,
@@ -705,7 +704,7 @@ export async function CorrectAttendanceController(
 
     res.json({
       success: true,
-      message: `Absensi tanggal ${existing.attendance_date} berhasil dikoreksi menjadi ${statusLabel(data.status)}`,
+      message: `Attendance for ${existing.attendance_date} was corrected to ${statusLabel(data.status)}`,
       data: attendance,
     });
   } catch (err) {
@@ -718,13 +717,13 @@ export async function CorrectAttendanceController(
 function assertCronAuthorized(req: Request): void {
   if (!env.CRON_SECRET) {
     throw Forbidden(
-      "CRON_SECRET belum diatur di server sehingga job penutup hari dinonaktifkan",
+      "CRON_SECRET is not set on the server, so the day-closing job is disabled",
     );
   }
 
   if (req.header(CRON_HEADER) !== env.CRON_SECRET) {
     throw Unauthorized(
-      `Header ${CRON_HEADER} tidak cocok, job penutup hari ditolak`,
+      `Header ${CRON_HEADER} does not match, day-closing job rejected`,
     );
   }
 }
@@ -864,13 +863,13 @@ export async function CloseDayController(
     activity.success({
       action: "attendance.close_day",
       entity: "attendance",
-      summary: `Penutupan hari ${date}: ${stored} baris dibuat, ${skipped} dilewati`,
+      summary: `Day closing for ${date}: ${plural(stored, "row")} created, ${skipped} skipped`,
       metadata: { date, created: stored, skipped, marked },
     });
 
     res.json({
       success: true,
-      message: `Penutupan hari ${date} selesai, ${stored} baris absensi baru dibuat`,
+      message: `Day closing for ${date} finished, ${stored} new attendance rows created`,
       data: {
         date,
         is_holiday: Boolean(facts.holiday),

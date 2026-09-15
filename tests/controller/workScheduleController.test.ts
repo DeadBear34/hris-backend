@@ -276,7 +276,7 @@ describe("membuat jadwal kerja", () => {
     const res = await buat({ name: "Jadwal Bawaan Lain" });
 
     expect(res.status).toBe(409);
-    expect(res.body.message).toContain("hanya boleh ada satu jadwal bawaan");
+    expect(res.body.message).toContain("only one default schedule is allowed");
   });
 
   it("menolak jam pulang yang tidak melewati jam masuk", async () => {
@@ -335,7 +335,7 @@ describe("mengubah jadwal kerja", () => {
     const res = await ubah({ start_time: "18:00" });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Jam pulang");
+    expect(res.body.message).toContain("End time");
     expect(workScheduleModel.updateSchedule).not.toHaveBeenCalled();
   });
 
@@ -347,7 +347,7 @@ describe("mengubah jadwal kerja", () => {
     const res = await ubah({ department_id: DEPARTMENT_ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Jadwal bawaan");
+    expect(res.body.message).toContain("default schedule");
   });
 
   it("menolak menonaktifkan jadwal bawaan", async () => {
@@ -358,7 +358,7 @@ describe("mengubah jadwal kerja", () => {
     const res = await ubah({ is_active: false });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("cadangan terakhir");
+    expect(res.body.message).toContain("fallback");
   });
 
   it("menolak memindahkan jadwal ke departemen yang sudah punya jadwal", async () => {
@@ -417,7 +417,7 @@ describe("menghapus jadwal kerja", () => {
     const res = await hapus();
 
     expect(res.status).toBe(409);
-    expect(res.body.message).toContain("4 karyawan");
+    expect(res.body.message).toContain("4 employees");
     expect(res.body.details.employee_count).toBe(4);
     expect(workScheduleModel.softDeleteSchedule).not.toHaveBeenCalled();
   });
@@ -430,7 +430,7 @@ describe("menghapus jadwal kerja", () => {
     const res = await hapus();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("cadangan terakhir");
+    expect(res.body.message).toContain("fallback");
     expect(workScheduleModel.softDeleteSchedule).not.toHaveBeenCalled();
   });
 
@@ -479,7 +479,7 @@ describe("keselarasan batas absen dengan jam kerja", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("toleransi keterlambatan");
+    expect(res.body.message).toContain("late tolerance");
     expect(workScheduleModel.createSchedule).not.toHaveBeenCalled();
   });
 
@@ -506,14 +506,14 @@ describe("keselarasan batas absen dengan jam kerja", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("jam pulang");
+    expect(res.body.message).toContain("end time");
   });
 
   it("memakai toleransi lama saat hanya batas absen yang diubah", async () => {
     const res = await ubah({ absent_cutoff_time: "08:02" });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("toleransi keterlambatan");
+    expect(res.body.message).toContain("late tolerance");
     expect(workScheduleModel.updateSchedule).not.toHaveBeenCalled();
   });
 

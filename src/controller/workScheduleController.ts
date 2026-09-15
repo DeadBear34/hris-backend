@@ -11,6 +11,7 @@ import {
   NotFound,
   Unauthorized,
 } from "../helpers/appError.js";
+import { plural } from "../helpers/plural.js";
 
 const SCHEDULE_DEFAULTS = {
   start_time: "08:00",
@@ -27,7 +28,7 @@ function assertScheduleTimesMakeSense(hour: {
 }): void {
   if (hour.end_time <= hour.start_time) {
     throw BadRequest(
-      `Jam pulang ${hour.end_time} harus lebih besar daripada jam masuk ${hour.start_time}`,
+      `End time ${hour.end_time} must be later than start time ${hour.start_time}`,
     );
   }
 
@@ -37,13 +38,13 @@ function assertScheduleTimesMakeSense(hour: {
 
   if (cutoffMinutes <= toleranceEnd) {
     throw BadRequest(
-      `Batas absen ${hour.absent_cutoff_time} harus melewati akhir toleransi keterlambatan, yaitu ${hour.late_tolerance_minutes} menit setelah jam masuk ${hour.start_time}`,
+      `Absence cutoff ${hour.absent_cutoff_time} must be after the late tolerance ends, which is ${plural(hour.late_tolerance_minutes, "minute")} after the ${hour.start_time} start time`,
     );
   }
 
   if (cutoffMinutes > minutesFromClockTime(hour.end_time)) {
     throw BadRequest(
-      `Batas absen ${hour.absent_cutoff_time} tidak boleh melewati jam pulang ${hour.end_time}`,
+      `Absence cutoff ${hour.absent_cutoff_time} cannot be later than end time ${hour.end_time}`,
     );
   }
 }
@@ -69,20 +70,20 @@ export async function MyWorkScheduleController(
 ) {
   try {
     if (!req.user) {
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
     }
 
     const employee = await employeeModel.findByUserId(req.user.id);
     if (!employee) {
       throw BadRequest(
-        "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+        "Your account is not linked to an employee record yet, please contact an admin first",
       );
     }
 
     const schedule = await workScheduleModel.resolveForEmployee(employee.id);
     if (!schedule) {
       throw NotFound(
-        "Belum ada jadwal kerja yang berlaku untukmu, hubungi admin",
+        "No work schedule applies to you yet, please contact an admin",
       );
     }
 
@@ -101,7 +102,7 @@ export async function DetailWorkScheduleController(
     const { id } = res.locals.params as { id: string };
 
     const schedule = await workScheduleModel.findById(id);
-    if (!schedule) throw NotFound("Jadwal kerja tidak ditemukan");
+    if (!schedule) throw NotFound("Work schedule not found");
 
     res.json({ success: true, data: schedule });
   } catch (err) {
@@ -120,7 +121,7 @@ export async function CreateWorkScheduleController(
 
     if (data.department_id) {
       const department = await departmentModel.findById(data.department_id);
-      if (!department) throw BadRequest("Departemen tidak ditemukan");
+      if (!department) throw BadRequest("Department not found");
 
       const existing = await workScheduleModel.findByDepartment(
         data.department_id,
@@ -128,7 +129,7 @@ export async function CreateWorkScheduleController(
 
       if (existing) {
         throw Conflict(
-          `Departemen ${department.name} sudah memiliki jadwal kerja bernama ${existing.name}, ubah jadwal tersebut alih-alih membuat yang baru`,
+          `Department ${department.name} already has a work schedule named ${existing.name}, update that schedule instead of creating a new one`,
         );
       }
     } else {
@@ -136,7 +137,7 @@ export async function CreateWorkScheduleController(
 
       if (existing) {
         throw Conflict(
-          `Jadwal bawaan sudah ada dengan nama ${existing.name}, hanya boleh ada satu jadwal bawaan`,
+          `A default schedule named ${existing.name} already exists, only one default schedule is allowed`,
         );
       }
     }
@@ -156,7 +157,7 @@ export async function CreateWorkScheduleController(
       action: "schedule.create",
       entity: "work_schedule",
       entity_id: schedule.id,
-      summary: `Jadwal kerja ${schedule.name} dibuat`,
+      summary: `Work schedule ${schedule.name} created`,
     });
 
     res.status(201).json({ success: true, data: schedule });
@@ -176,25 +177,25 @@ export async function UpdateWorkScheduleController(
     const data = req.body as Partial<WorkScheduleInput>;
 
     const existing = await workScheduleModel.findById(id);
-    if (!existing) throw NotFound("Jadwal kerja tidak ditemukan");
+    if (!existing) throw NotFound("Work schedule not found");
 
     if (existing.department_id === null) {
       if (data.department_id) {
         throw BadRequest(
-          "Jadwal bawaan tidak dapat dipindahkan ke satu departemen, buat jadwal baru untuk departemen tersebut",
+          "The default schedule cannot be moved to a department, create a new schedule for that department",
         );
       }
 
       if (data.is_active === false) {
         throw BadRequest(
-          "Jadwal bawaan tidak dapat dinonaktifkan karena menjadi cadangan terakhir bagi karyawan tanpa jadwal khusus",
+          "The default schedule cannot be deactivated because it is the fallback for employees without their own schedule",
         );
       }
     }
 
     if (data.department_id && data.department_id !== existing.department_id) {
       const department = await departmentModel.findById(data.department_id);
-      if (!department) throw BadRequest("Departemen tidak ditemukan");
+      if (!department) throw BadRequest("Department not found");
 
       const duplicate = await workScheduleModel.findByDepartment(
         data.department_id,
@@ -202,7 +203,7 @@ export async function UpdateWorkScheduleController(
 
       if (duplicate) {
         throw Conflict(
-          `Departemen ${department.name} sudah memiliki jadwal kerja bernama ${duplicate.name}`,
+          `Department ${department.name} already has a work schedule named ${duplicate.name}`,
         );
       }
     }
@@ -222,7 +223,7 @@ export async function UpdateWorkScheduleController(
       action: "schedule.update",
       entity: "work_schedule",
       entity_id: id,
-      summary: `Jadwal kerja ${existing.name} diubah`,
+      summary: `Work schedule ${existing.name} updated`,
       metadata: { fields: Object.keys(data) },
     });
 
@@ -242,11 +243,11 @@ export async function DeleteWorkScheduleController(
     const { id } = res.locals.params as { id: string };
 
     const existing = await workScheduleModel.findById(id);
-    if (!existing) throw NotFound("Jadwal kerja tidak ditemukan");
+    if (!existing) throw NotFound("Work schedule not found");
 
     if (existing.department_id === null) {
       throw BadRequest(
-        "Jadwal bawaan tidak dapat dihapus karena menjadi cadangan terakhir bagi karyawan tanpa jadwal khusus",
+        "The default schedule cannot be deleted because it is the fallback for employees without their own schedule",
       );
     }
 
@@ -254,7 +255,7 @@ export async function DeleteWorkScheduleController(
 
     if (terpakai > 0) {
       throw Conflict(
-        `Jadwal kerja ini masih dipakai ${terpakai} karyawan, pindahkan mereka ke jadwal lain terlebih dahulu`,
+        `This work schedule is still used by ${plural(terpakai, "employee")}, move them to another schedule first`,
         { employee_count: terpakai },
       );
     }
@@ -265,10 +266,10 @@ export async function DeleteWorkScheduleController(
       action: "schedule.delete",
       entity: "work_schedule",
       entity_id: id,
-      summary: `Jadwal kerja ${existing.name} dihapus`,
+      summary: `Work schedule ${existing.name} deleted`,
     });
 
-    res.json({ success: true, message: "Jadwal kerja berhasil dihapus" });
+    res.json({ success: true, message: "Work schedule deleted successfully" });
   } catch (err) {
     next(err);
   }

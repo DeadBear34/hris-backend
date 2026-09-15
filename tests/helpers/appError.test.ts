@@ -46,7 +46,7 @@ describe("factory error", () => {
   });
 
   it("menerima pesan kustom", () => {
-    const err = NotFound("Karyawan tidak ditemukan");
-    expect(err.message).toBe("Karyawan tidak ditemukan");
+    const err = NotFound("Employee not found");
+    expect(err.message).toBe("Employee not found");
   });
 });

@@ -72,14 +72,14 @@ export function requireFeature(code: string) {
 
       if (!employee) {
         throw Forbidden(
-          "Akun kamu belum terhubung ke data karyawan sehingga belum memiliki akses apa pun, hubungi admin",
+          "Your account is not linked to an employee record, so it has no access yet. Please contact an admin",
           { required_feature: code },
         );
       }
 
       if (!employee.position_id) {
         throw Forbidden(
-          "Jabatan kamu belum ditentukan sehingga belum ada fitur yang dapat diakses, hubungi admin",
+          "Your position has not been set, so no features are available yet. Please contact an admin",
           { required_feature: code },
         );
       }
@@ -88,7 +88,7 @@ export function requireFeature(code: string) {
 
       if (!codes.includes(code)) {
         throw Forbidden(
-          "Jabatan kamu tidak memiliki akses ke fitur yang diminta",
+          "Your position does not have access to the requested feature",
           { required_feature: code },
         );
       }

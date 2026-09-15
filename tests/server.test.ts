@@ -105,7 +105,7 @@ describe("server berhasil dijalankan", () => {
     await jalankanServer();
     await tunggu(() => mockListen.mock.calls.length > 0);
 
-    expect(mockLoggerInfo).toHaveBeenCalledWith("Database terhubung");
+    expect(mockLoggerInfo).toHaveBeenCalledWith("Database connected");
   });
 
   it("mencatat alamat server saat sudah siap", async () => {
@@ -162,7 +162,7 @@ describe("server gagal terhubung ke database", () => {
 
     expect(mockLoggerError).toHaveBeenCalledWith(
       expect.any(Error),
-      "Gagal terhubung ke database",
+      "Failed to connect to the database",
     );
   });
 
@@ -170,6 +170,6 @@ describe("server gagal terhubung ke database", () => {
     await jalankanServer();
     await tunggu(() => keluarDenganKode.length > 0);
 
-    expect(mockLoggerInfo).not.toHaveBeenCalledWith("Database terhubung");
+    expect(mockLoggerInfo).not.toHaveBeenCalledWith("Database connected");
   });
 });

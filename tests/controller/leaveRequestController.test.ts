@@ -299,7 +299,7 @@ describe("POST /api/v1/leave-requests", () => {
     const res = await ajukan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("tidak memuat satu pun hari kerja");
+    expect(res.body.message).toContain("contains no workdays");
   });
 });
 
@@ -381,7 +381,7 @@ describe("validasi pengajuan", () => {
     const res = await ajukan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("tidak mencukupi");
+    expect(res.body.message).toContain("Insufficient");
     expect(res.body.details).toEqual({ balance: 2, requested: TOTAL_HARI });
     expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
   });
@@ -419,7 +419,7 @@ describe("validasi pengajuan", () => {
     const res = await ajukan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("tidak tersedia untuk gender kamu");
+    expect(res.body.message).toContain("not available for your gender");
     expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
   });
 
@@ -447,7 +447,7 @@ describe("validasi pengajuan", () => {
     const res = await ajukan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("maksimal 2 hari kerja");
+    expect(res.body.message).toContain("at most 2 workdays");
   });
 
   it("menolak pengajuan yang tidak memenuhi minimal pemberitahuan", async () => {
@@ -459,7 +459,7 @@ describe("validasi pengajuan", () => {
     const res = await ajukan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("minimal 90 hari sebelum");
+    expect(res.body.message).toContain("at least 90 days before");
   });
 
   it("menolak tanggal lampau untuk jenis cuti selain sakit", async () => {
@@ -472,7 +472,7 @@ describe("validasi pengajuan", () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("hanya diperbolehkan untuk cuti sakit");
+    expect(res.body.message).toContain("only allowed for sick leave");
   });
 
   it("mengizinkan tanggal lampau untuk cuti sakit", async () => {
@@ -503,7 +503,7 @@ describe("validasi pengajuan", () => {
     const res = await ajukan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("sedang tidak aktif");
+    expect(res.body.message).toContain("currently inactive");
   });
 
   it("menolak tanggal selesai yang mendahului tanggal mulai", async () => {
@@ -596,7 +596,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     const res = await setujui();
 
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain("bukan penyetuju");
+    expect(res.body.message).toContain("not the approver");
     expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
   });
 
@@ -653,7 +653,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     const res = await setujui(adminToken);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("disetujui tidak dapat disetujui");
+    expect(res.body.message).toContain("status approved cannot be approved");
   });
 
   it("menolak pengajuan yang sudah ditolak", async () => {
@@ -719,7 +719,7 @@ describe("kewajiban lampiran saat persetujuan", () => {
     const res = await setujui();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("wajib melampirkan bukti");
+    expect(res.body.message).toContain("needs supporting evidence");
     expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
   });
 
@@ -855,7 +855,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     const res = await batalkan();
 
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain("membatalkan pengajuan cuti sendiri");
+    expect(res.body.message).toContain("cancel your own leave requests");
     expect(leaveRequestModel.cancelRequest).not.toHaveBeenCalled();
   });
 
@@ -899,7 +899,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     const res = await batalkan();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("sudah berjalan tidak dapat dibatalkan");
+    expect(res.body.message).toContain("already started cannot be cancelled");
   });
 
   it("menolak pembatalan pengajuan yang sudah ditolak", async () => {

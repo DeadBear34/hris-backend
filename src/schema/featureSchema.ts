@@ -4,11 +4,11 @@ export const replacePositionFeaturesSchema = z.object({
   codes: z
     .array(
       z
-        .string({ message: "Kode fitur harus berupa teks" })
+        .string({ message: "Feature code must be text" })
         .trim()
-        .min(1, "Kode fitur tidak boleh kosong")
-        .max(60, "Kode fitur maksimal 60 karakter"),
-      { message: "Daftar kode fitur wajib diisi" },
+        .min(1, "Feature code cannot be empty")
+        .max(60, "Feature code must be at most 60 characters"),
+      { message: "Feature code list is required" },
     )
-    .max(200, "Terlalu banyak kode fitur dalam satu permintaan"),
+    .max(200, "Too many feature codes in one request"),
 });

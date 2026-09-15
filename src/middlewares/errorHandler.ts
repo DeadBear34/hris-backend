@@ -6,7 +6,7 @@ import { logger } from "../config/logger.js";
 export function notFoundHandler(req: Request, res: Response) {
   res.status(404).json({
     success: false,
-    message: `Route ${req.method} ${req.originalUrl} tidak ditemukan`,
+    message: `Route ${req.method} ${req.originalUrl} not found`,
   });
 }
 
@@ -19,7 +19,7 @@ export function errorHandler(
   if (err instanceof ZodError) {
     return res.status(400).json({
       success: false,
-      message: "Validasi gagal",
+      message: "Validation failed",
       code: "VALIDATION_ERROR",
       errors: err.issues.map((issue) => ({
         field: issue.path.join("."),
@@ -31,7 +31,7 @@ export function errorHandler(
   if (err instanceof SyntaxError && "body" in err) {
     return res.status(400).json({
       success: false,
-      message: "Format JSON tidak valid",
+      message: "Invalid JSON format",
       code: "INVALID_JSON",
     });
   }
@@ -48,6 +48,6 @@ export function errorHandler(
   logger.error(err);
   return res.status(500).json({
     success: false,
-    message: "Terjadi kesalahan pada server",
+    message: "An error occurred on the server",
   });
 }

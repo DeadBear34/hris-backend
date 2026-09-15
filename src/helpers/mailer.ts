@@ -12,7 +12,7 @@ let resend: Resend | null = null;
 
 function getResend(): Resend {
   if (!env.RESEND_API_KEY) {
-    throw new Error("RESEND_API_KEY belum diatur, email tidak dapat dikirim");
+    throw new Error("RESEND_API_KEY is not set, email cannot be sent");
   }
 
   resend ??= new Resend(env.RESEND_API_KEY);
@@ -44,7 +44,7 @@ export async function sendMail(mail: MailInput): Promise<void> {
     case "log":
       logger.info(
         { to: mail.to, subject: mail.subject, html: mail.html },
-        "Email tidak dikirim, MAIL_DRIVER sedang memakai mode log",
+        "Email not sent, MAIL_DRIVER is in log mode",
       );
       return;
 
@@ -57,7 +57,7 @@ export async function sendMail(mail: MailInput): Promise<void> {
       });
 
       if (error) {
-        throw new Error(`Gagal mengirim email: ${error.message}`);
+        throw new Error(`Failed to send email: ${error.message}`);
       }
 
       return;

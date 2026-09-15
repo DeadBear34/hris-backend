@@ -144,7 +144,7 @@ describe("requireFeature untuk karyawan", () => {
     const err = ambilError(next);
 
     expect(err.statusCode).toBe(403);
-    expect(err.message).toContain("Jabatan kamu belum ditentukan");
+    expect(err.message).toContain("Your position has not been set");
     expect(err.details).toEqual({ required_feature: "employee.view_all" });
   });
 
@@ -160,7 +160,7 @@ describe("requireFeature untuk karyawan", () => {
     const err = ambilError(next);
 
     expect(err.statusCode).toBe(403);
-    expect(err.message).toContain("belum terhubung ke data karyawan");
+    expect(err.message).toContain("not linked to an employee record");
   });
 
   it("menyimpan karyawan di res.locals agar tidak diquery berulang", async () => {

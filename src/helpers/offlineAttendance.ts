@@ -17,23 +17,23 @@ export function rejectionReasonForOfflineTime(
   startMinutes: number,
 ): string | null {
   if (Number.isNaN(offlineTime.getTime())) {
-    return "Waktu absen offline tidak dapat dibaca";
+    return "Offline attendance time could not be read";
   }
 
   const delayMinutes = minutesBetween(offlineTime, serverTime);
 
   if (delayMinutes < -DEVICE_CLOCK_SKEW_MINUTES) {
-    return "Waktu absen offline berada di masa depan, periksa pengaturan jam pada perangkatmu";
+    return "Offline attendance time is in the future, check your device's clock settings";
   }
 
   if (delayMinutes > MAX_SYNC_DELAY_MINUTES) {
     const hour = MAX_SYNC_DELAY_MINUTES / 60;
 
-    return `Absen offline hanya dapat dikirim paling lambat ${hour} jam setelah waktu absennya, hubungi atasanmu untuk mengoreksi absensi ini`;
+    return `Offline attendance can only be sent up to ${hour} hours after it was recorded, contact your manager to correct this attendance`;
   }
 
   if (todayInOfficeZone(offlineTime) !== todayInOfficeZone(serverTime)) {
-    return "Absen offline hanya dapat dikirim pada hari yang sama, hubungi atasanmu untuk mengoreksi absensi hari sebelumnya";
+    return "Offline attendance can only be sent on the same day, contact your manager to correct a previous day's attendance";
   }
 
   const local = toLocalTime(offlineTime);
@@ -42,7 +42,7 @@ export function rejectionReasonForOfflineTime(
   if (local.minutesSinceMidnight < earliestAllowed) {
     const hour = MAX_EARLY_MINUTES / 60;
 
-    return `Waktu absen offline terlalu jauh sebelum jam masuk, paling awal ${hour} jam sebelumnya`;
+    return `Offline attendance time is too early, at most ${hour} hours before the start time`;
   }
 
   return null;
@@ -53,7 +53,7 @@ export function buildOfflineNote(
   serverTime: Date,
   noteField: string | null,
 ): string {
-  const markers = `[Absen offline pukul ${clockTimeOf(offlineTime)}, diterima server ${clockTimeOf(serverTime)}]`;
+  const markers = `[Offline attendance at ${clockTimeOf(offlineTime)}, received by server at ${clockTimeOf(serverTime)}]`;
 
   return noteField ? `${markers} ${noteField}` : markers;
 }

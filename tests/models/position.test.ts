@@ -166,7 +166,7 @@ describe("createPosition", () => {
 
     await expect(
       positionModel.createPosition({ code: "SWE", name: "Software Engineer" }),
-    ).rejects.toThrow("Gagal menyimpan jabatan");
+    ).rejects.toThrow("Failed to save position");
   });
 });
 

@@ -91,8 +91,8 @@ export function attachSocketServer(server: Server): WebSocketServer {
         return;
       }
 
-      logger.warn({ origin }, "Koneksi soket dari asal tidak dikenal ditolak");
-      done(false, 403, "Origin tidak diizinkan");
+      logger.warn({ origin }, "Socket connection from unknown origin rejected");
+      done(false, 403, "Origin not allowed");
     },
 
     // Klien hanya perlu mengirim satu pesan auth yang kecil. Batas ini
@@ -107,7 +107,8 @@ export function attachSocketServer(server: Server): WebSocketServer {
     socket.on("pong", () => alive.add(socket));
 
     const timeout = setTimeout(() => {
-      if (!user_id) socket.close(CLOSE_AUTH_TIMEOUT, "Autentikasi kedaluwarsa");
+      if (!user_id)
+        socket.close(CLOSE_AUTH_TIMEOUT, "Authentication timed out");
     }, AUTH_TIMEOUT_MS);
 
     socket.on("message", (raw) => {
@@ -119,12 +120,12 @@ export function attachSocketServer(server: Server): WebSocketServer {
         const authenticated = await authenticateSocket(socket, String(raw));
 
         if (!authenticated) {
-          socket.close(CLOSE_UNAUTHORIZED, "Token tidak valid");
+          socket.close(CLOSE_UNAUTHORIZED, "Invalid token");
           return;
         }
 
         if (countFor(authenticated) >= MAX_SOCKETS_PER_USER) {
-          socket.close(CLOSE_TOO_MANY, "Terlalu banyak koneksi");
+          socket.close(CLOSE_TOO_MANY, "Too many connections");
           return;
         }
 
@@ -138,7 +139,7 @@ export function attachSocketServer(server: Server): WebSocketServer {
           const unread = await notificationModel.countUnread(user_id);
           pushToLocal(user_id, { event: "ready", unread });
         } catch (err) {
-          logger.error({ err, user_id }, "Gagal mengirim keadaan awal soket");
+          logger.error({ err, user_id }, "Failed to send initial socket state");
           pushToLocal(user_id, { event: "ready", unread: 0 });
         }
       })();
@@ -150,7 +151,7 @@ export function attachSocketServer(server: Server): WebSocketServer {
     });
 
     socket.on("error", (err) => {
-      logger.error({ err }, "Galat pada koneksi soket");
+      logger.error({ err }, "Socket connection error");
     });
   });
 
@@ -171,7 +172,7 @@ export function attachSocketServer(server: Server): WebSocketServer {
   heartbeat.unref();
   wss.on("close", () => clearInterval(heartbeat));
 
-  logger.info("WebSocket siap di /ws");
+  logger.info("WebSocket ready at /ws");
 
   return wss;
 }

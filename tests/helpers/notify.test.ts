@@ -113,7 +113,7 @@ describe("notifikasi pengajuan cuti", () => {
     await settle();
 
     expect(firstBatch()![0]!.message).toBe(
-      "Yusuf Ramadhan mengajukan Cuti Duka 1 hari pada 2027-07-12",
+      "Yusuf Ramadhan requested 1 day of Cuti Duka for 2027-07-12",
     );
   });
 
@@ -129,7 +129,7 @@ describe("notifikasi pengajuan cuti", () => {
     });
     await settle();
 
-    expect(firstBatch()![0]!.message).toContain("2027-07-12 sampai 2027-07-14");
+    expect(firstBatch()![0]!.message).toContain("2027-07-12 to 2027-07-14");
   });
 
   it("tidak melempar walau pencarian penerima gagal", async () => {
@@ -178,7 +178,7 @@ describe("notifikasi keputusan cuti", () => {
 
     expect(rows[0]!.recipient_user_id).toBe(REQUESTER_USER);
     expect(rows[0]!.type).toBe("leave_status_changed");
-    expect(rows[0]!.message).toContain("disetujui");
+    expect(rows[0]!.message).toContain("approved");
   });
 
   it("menyertakan catatan penolakan kalau ada", async () => {
@@ -194,7 +194,7 @@ describe("notifikasi keputusan cuti", () => {
     await settle();
 
     expect(firstBatch()![0]!.message).toContain(
-      "Catatan: Sedang musim tutup buku",
+      "Note: Sedang musim tutup buku",
     );
   });
 
@@ -246,7 +246,7 @@ describe("notifikasi pendaftaran akun", () => {
     await settle();
 
     expect(firstBatch()![0]!.message).toBe(
-      "Uji Notifikasi (uji@awan.io) mendaftar dan menunggu persetujuan",
+      "Uji Notifikasi (uji@awan.io) registered and is waiting for approval",
     );
   });
 
@@ -274,7 +274,7 @@ describe("dorongan realtime", () => {
         id: "n1",
         recipient_user_id: MANAGER_USER,
         type: "leave_approval_needed",
-        title: "Pengajuan cuti baru",
+        title: "New leave request",
         message: "pesan",
         link: "/leave-management",
         entity: "leave_request",

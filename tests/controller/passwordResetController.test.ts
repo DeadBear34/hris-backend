@@ -600,7 +600,7 @@ describe("sesi lama setelah password diubah", () => {
       .set("Authorization", `Bearer ${tokenLama}`);
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("password telah diubah");
+    expect(res.body.message).toContain("password was changed");
   });
 
   it("tidak menjalankan controller saat sesi sudah dibatalkan", async () => {

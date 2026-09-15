@@ -13,8 +13,8 @@ export const envSchema = z.object({
   // dijalankan di beberapa laptop
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-  DATABASE_URL: z.string().min(1, "DATABASE_URL wajib diisi"),
-  JWT_SECRET: z.string().min(32, "JWT_SECRET minimal 32 karakter"),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("24h"),
   RESEND_API_KEY: z.preprocess(blankToUndefined, z.string().min(1).optional()),
 
@@ -40,7 +40,7 @@ export const envSchema = z.object({
 
   CRON_SECRET: z.preprocess(
     blankToUndefined,
-    z.string().min(16, "CRON_SECRET minimal 16 karakter").optional(),
+    z.string().min(16, "CRON_SECRET must be at least 16 characters").optional(),
   ),
 
   SUPABASE_STORAGE_BUCKET: z.preprocess(
@@ -57,7 +57,7 @@ export const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error("Environment variable tidak valid:");
+  console.error("Invalid environment variables:");
   console.error(parsed.error.issues);
   process.exit(1);
 }

@@ -1,11 +1,12 @@
 import type { AttendanceStatus } from "../models/attendance.js";
+import { plural } from "./plural.js";
 
 const LABEL: Record<AttendanceStatus, string> = {
-  present: "hadir",
-  late: "terlambat",
-  absent: "tidak hadir",
-  leave: "cuti",
-  holiday: "libur",
+  present: "present",
+  late: "late",
+  absent: "absent",
+  leave: "on leave",
+  holiday: "holiday",
 };
 
 export function statusLabel(status: AttendanceStatus): string {
@@ -29,13 +30,13 @@ export function formatDuration(minute: number): string {
   const hour = Math.floor(minute / 60);
   const remainder = minute % 60;
 
-  if (hour === 0) return `${remainder} menit`;
-  if (remainder === 0) return `${hour} jam`;
+  if (hour === 0) return `${plural(remainder, "minute")}`;
+  if (remainder === 0) return `${plural(hour, "hour")}`;
 
-  return `${hour} jam ${remainder} menit`;
+  return `${plural(hour, "hour")} ${plural(remainder, "minute")}`;
 }
 
-export type ArrivalOutcome = "present" | "late" | "ditolak";
+export type ArrivalOutcome = "present" | "late" | "rejected";
 
 export function decideArrivalStatus(
   arrivalMinutes: number,
@@ -45,7 +46,7 @@ export function decideArrivalStatus(
 ): ArrivalOutcome {
   switch (true) {
     case arrivalMinutes > cutoffMinutes:
-      return "ditolak";
+      return "rejected";
 
     case arrivalMinutes - startMinutes > toleranceMinutes:
       return "late";

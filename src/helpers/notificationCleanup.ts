@@ -11,12 +11,12 @@ export async function runCleanup(): Promise<number> {
     const removed = await deleteReadOlderThan(RETENTION_DAYS);
 
     if (removed > 0) {
-      logger.info({ removed }, "Notifikasi lama dibersihkan");
+      logger.info({ removed }, "Old notifications cleaned up");
     }
 
     return removed;
   } catch (err) {
-    logger.error({ err }, "Gagal membersihkan notifikasi lama");
+    logger.error({ err }, "Failed to clean up old notifications");
     return 0;
   }
 }

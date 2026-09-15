@@ -30,16 +30,16 @@ export async function ApproveUserController(
 ) {
   try {
     if (!req.user)
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
 
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await userModel.findById(id);
-    if (!existing) throw NotFound("User tidak ditemukan");
+    if (!existing) throw NotFound("User not found");
 
     if (existing.approved_at) {
-      throw BadRequest("Akun ini sudah pernah disetujui");
+      throw BadRequest("This account has already been approved");
     }
 
     const user = await userModel.approveUser(id, req.user.id);
@@ -57,7 +57,7 @@ export async function ApproveUserController(
           subject: body.subject,
           html: body.html,
         }),
-      "Gagal mengirim email persetujuan akun",
+      "Failed to send account approval email",
       { email: existing.email },
     );
 
@@ -69,12 +69,12 @@ export async function ApproveUserController(
       action: "user.approve",
       entity: "user",
       entity_id: id,
-      summary: `Pendaftaran ${existing.email} disetujui`,
+      summary: `Registration for ${existing.email} approved`,
     });
 
     res.json({
       success: true,
-      message: "Akun berhasil disetujui dan sekarang dapat digunakan",
+      message: "Account approved and ready to use",
       data: {
         id: user?.id,
         email: user?.email,
@@ -95,22 +95,22 @@ export async function SetUserActiveController(
 ) {
   try {
     if (!req.user)
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
 
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
     const { is_active } = req.body as { is_active: boolean };
 
     if (id === req.user.id) {
-      throw BadRequest("Kamu tidak dapat mengubah status akun sendiri");
+      throw BadRequest("You cannot change your own account status");
     }
 
     const existing = await userModel.findById(id);
-    if (!existing) throw NotFound("User tidak ditemukan");
+    if (!existing) throw NotFound("User not found");
 
     if (!existing.approved_at && is_active) {
       throw BadRequest(
-        "Akun ini belum pernah disetujui, gunakan endpoint persetujuan terlebih dahulu",
+        "This account has never been approved, use the approval endpoint first",
       );
     }
 
@@ -120,15 +120,15 @@ export async function SetUserActiveController(
       action: "user.set_active",
       entity: "user",
       entity_id: id,
-      summary: `Akun ${existing.email} ${is_active ? "diaktifkan" : "dinonaktifkan"}`,
+      summary: `Account ${existing.email} ${is_active ? "activated" : "deactivated"}`,
       metadata: { is_active },
     });
 
     res.json({
       success: true,
       message: is_active
-        ? "Akun berhasil diaktifkan"
-        : "Akun berhasil dinonaktifkan",
+        ? "Account activated successfully"
+        : "Account deactivated successfully",
       data: {
         id: user?.id,
         email: user?.email,

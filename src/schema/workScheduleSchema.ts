@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const hour = z
   .string()
-  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Format jam harus HH:MM");
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Time format must be HH:MM");
 
 const isWorkday = {
   works_monday: z.boolean().optional(),
@@ -16,21 +16,21 @@ const isWorkday = {
 
 const scheduleBase = z.object({
   name: z
-    .string({ message: "Nama jadwal wajib diisi" })
+    .string({ message: "Schedule name is required" })
     .trim()
-    .min(3, "Nama jadwal minimal 3 karakter")
-    .max(100, "Nama jadwal maksimal 100 karakter"),
+    .min(3, "Schedule name must be at least 3 characters")
+    .max(100, "Schedule name must be at most 100 characters"),
 
-  department_id: z.uuid("ID departemen tidak valid").nullish(),
+  department_id: z.uuid("Invalid department ID").nullish(),
 
   start_time: hour.optional(),
   end_time: hour.optional(),
 
   late_tolerance_minutes: z
     .number()
-    .int("Toleransi keterlambatan harus bilangan bulat")
-    .min(0, "Toleransi keterlambatan tidak boleh negatif")
-    .max(240, "Toleransi keterlambatan maksimal 240 menit")
+    .int("Late tolerance must be an integer")
+    .min(0, "Late tolerance cannot be negative")
+    .max(240, "Late tolerance must be at most 240 minutes")
     .optional(),
 
   absent_cutoff_time: hour.optional(),
@@ -45,7 +45,7 @@ const endAfterStart = (data: {
 }) => !data.start_time || !data.end_time || data.end_time > data.start_time;
 
 const endAfterStartMessage = {
-  message: "Jam pulang harus lebih besar daripada jam masuk",
+  message: "End time must be later than start time",
   path: ["end_time"],
 };
 

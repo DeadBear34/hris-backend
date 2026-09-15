@@ -36,13 +36,13 @@ describe("seluruh template email", () => {
     ];
 
     for (const template of tanpaNama) {
-      expect(template.html).toContain("Halo,");
+      expect(template.html).toContain("Hi,");
     }
   });
 
   it("ditulis dalam bahasa Indonesia", () => {
     for (const template of SEMUA_TEMPLATE) {
-      expect(template.html).toContain("HRIS Awanio");
+      expect(template.html).toContain("Awanio HRIS");
     }
   });
 });
@@ -58,7 +58,7 @@ describe("verificationCodeEmail", () => {
   it("menyebutkan masa berlaku kode", () => {
     const template = verificationCodeEmail("123456", 10);
 
-    expect(template.html).toContain("10 menit");
+    expect(template.html).toContain("10 minutes");
   });
 });
 
@@ -74,13 +74,13 @@ describe("passwordResetEmail", () => {
   it("menyebutkan masa berlaku tautan", () => {
     const template = passwordResetEmail("https://hris.test/reset", 15);
 
-    expect(template.html).toContain("15 menit");
+    expect(template.html).toContain("15 minutes");
   });
 
   it("memberi tahu bahwa password tidak berubah jika bukan pengguna yang meminta", () => {
     const template = passwordResetEmail("https://hris.test/reset", 15);
 
-    expect(template.html).toContain("tidak akan berubah");
+    expect(template.html).toContain("will not change");
   });
 });
 
@@ -107,7 +107,7 @@ describe("kerahasiaan isi email", () => {
   it("pemberitahuan reset tidak memuat password baru", () => {
     const template = passwordResetSuccessEmail("Ismail");
 
-    expect(template.html.toLowerCase()).not.toContain("password baru kamu:");
-    expect(template.html).toContain("login kembali");
+    expect(template.html.toLowerCase()).not.toContain("your new password:");
+    expect(template.html).toContain("log in again");
   });
 });

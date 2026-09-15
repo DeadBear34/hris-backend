@@ -121,7 +121,7 @@ describe("GET /api/v1/departments/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
-    expect(res.body.message).toBe("Departemen tidak ditemukan");
+    expect(res.body.message).toBe("Department not found");
   });
 
   it("mengembalikan detail departemen", async () => {
@@ -338,7 +338,7 @@ describe("PATCH /api/v1/departments/:id", () => {
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("5 karyawan");
+    expect(res.body.message).toContain("5 employees");
     expect(res.body.details.employee_count).toBe(5);
     expect(departmentModel.updateDepartment).not.toHaveBeenCalled();
   });
@@ -447,7 +447,7 @@ describe("DELETE /api/v1/departments/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toContain("berhasil dihapus");
+    expect(res.body.message).toContain("deleted successfully");
     expect(departmentModel.softDeleteDepartment).toHaveBeenCalledWith(
       DEPARTMENT_ID,
     );

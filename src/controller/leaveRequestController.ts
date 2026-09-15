@@ -31,6 +31,7 @@ import {
   NotFound,
   Unauthorized,
 } from "../helpers/appError.js";
+import { plural } from "../helpers/plural.js";
 
 const SICK_LEAVE_CODE = "SICK";
 
@@ -42,13 +43,13 @@ interface Requester {
 
 async function getRequester(req: Request, res: Response): Promise<Requester> {
   if (!req.user)
-    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+    throw Unauthorized("You are not logged in, please log in first");
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+      "Your account is not linked to an employee record yet, please contact an admin first",
     );
   }
 
@@ -102,17 +103,13 @@ function validateLeaveDates(
   totalDays: number,
 ): void {
   if (totalDays <= 0) {
-    throw BadRequest(
-      "Rentang tanggal tersebut tidak memuat satu pun hari kerja",
-    );
+    throw BadRequest("That date range contains no workdays");
   }
 
   const canGoBack = leaveType.code === SICK_LEAVE_CODE;
 
   if (!canGoBack && isPastDate(start_date)) {
-    throw BadRequest(
-      "Pengajuan untuk tanggal yang sudah lewat hanya diperbolehkan untuk cuti sakit",
-    );
+    throw BadRequest("Requests for past dates are only allowed for sick leave");
   }
 
   if (
@@ -120,7 +117,7 @@ function validateLeaveDates(
     totalDays > leaveType.max_days_per_request
   ) {
     throw BadRequest(
-      `Jenis cuti ini maksimal ${leaveType.max_days_per_request} hari kerja per pengajuan, sedangkan pengajuanmu ${totalDays} hari`,
+      `This leave type allows at most ${plural(leaveType.max_days_per_request, "workday")} per request, but your request is ${plural(totalDays, "day")}`,
     );
   }
 
@@ -129,7 +126,7 @@ function validateLeaveDates(
 
     if (jarak < leaveType.min_notice_days) {
       throw BadRequest(
-        `Jenis cuti ini harus diajukan minimal ${leaveType.min_notice_days} hari sebelum tanggal mulai`,
+        `This leave type must be requested at least ${plural(leaveType.min_notice_days, "day")} before the start date`,
       );
     }
   }
@@ -140,9 +137,7 @@ function validasiGender(leaveType: LeaveType, employee: Employee): void {
     leaveType.gender_restriction &&
     leaveType.gender_restriction !== employee.gender
   ) {
-    throw BadRequest(
-      `Jenis cuti ${leaveType.name} tidak tersedia untuk gender kamu`,
-    );
+    throw BadRequest(`${leaveType.name} is not available for your gender`);
   }
 }
 
@@ -166,7 +161,7 @@ async function validasiSaldo(
 
   if (saldo < totalDays) {
     throw BadRequest(
-      `Saldo ${leaveType.name} tidak mencukupi. Tersisa ${saldo} hari, sedangkan pengajuanmu ${totalDays} hari`,
+      `Insufficient ${leaveType.name} balance. You have ${plural(saldo, "day")} left, but your request is ${plural(totalDays, "day")}`,
       { balance: saldo, requested: totalDays },
     );
   }
@@ -262,10 +257,10 @@ export async function DetailLeaveRequestController(
     const { id } = res.locals.params as { id: string };
 
     const request = await leaveRequestModel.findDetailById(id);
-    if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!request) throw NotFound("Leave request not found");
 
     if (!canView(request, requester)) {
-      throw Forbidden("Kamu tidak punya akses ke pengajuan cuti ini");
+      throw Forbidden("You don't have access to this leave request");
     }
 
     const attachments = await attachmentModel.findByRequest(id);
@@ -291,9 +286,9 @@ export async function CreateLeaveRequestController(
     };
 
     const leaveType = await leaveTypeModel.findById(leave_type_id);
-    if (!leaveType) throw BadRequest("Jenis cuti tidak ditemukan");
+    if (!leaveType) throw BadRequest("Leave type not found");
     if (!leaveType.is_active) {
-      throw BadRequest("Jenis cuti tersebut sedang tidak aktif");
+      throw BadRequest("That leave type is currently inactive");
     }
 
     const totalDays = await countWorkdaysFor(start_date, end_date);
@@ -314,7 +309,7 @@ export async function CreateLeaveRequestController(
 
     if (bentrok) {
       throw Conflict(
-        `Kamu sudah punya pengajuan cuti ${statusLabel(bentrok.status)} pada ${bentrok.start_date} sampai ${bentrok.end_date}`,
+        `You already have a leave request with status ${statusLabel(bentrok.status)} from ${bentrok.start_date} to ${bentrok.end_date}`,
         { conflicting_request_id: bentrok.id },
       );
     }
@@ -354,7 +349,7 @@ export async function CreateLeaveRequestController(
           amount: -totalDays,
           type: "hold",
           leave_request_id: request.id,
-          note: "Penahanan saldo untuk pengajuan cuti",
+          note: "Balance hold for leave request",
           created_by: requester.employee.id,
         });
       }
@@ -380,7 +375,7 @@ export async function CreateLeaveRequestController(
 
     res.status(201).json({
       success: true,
-      message: "Pengajuan cuti berhasil dibuat dan menunggu persetujuan",
+      message: "Leave request created and waiting for approval",
       data: {
         ...request,
         attachment_required: attachmentRequired(leaveType, totalDays),
@@ -435,27 +430,27 @@ export async function ApproveLeaveRequestController(
     const { decision_note } = req.body as { decision_note?: string };
 
     const existing = await leaveRequestModel.findById(id);
-    if (!existing) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!existing) throw NotFound("Leave request not found");
 
     if (!canDecide(existing, requester)) {
-      throw Forbidden("Kamu bukan penyetuju pengajuan cuti ini");
+      throw Forbidden("You are not the approver for this leave request");
     }
 
     if (!canTransition(existing.status, "approved")) {
       throw BadRequest(
-        `Pengajuan berstatus ${statusLabel(existing.status)} tidak dapat disetujui`,
+        `Requests with status ${statusLabel(existing.status)} cannot be approved`,
       );
     }
 
     const leaveType = await leaveTypeModel.findById(existing.leave_type_id);
-    if (!leaveType) throw BadRequest("Jenis cuti tidak ditemukan");
+    if (!leaveType) throw BadRequest("Leave type not found");
 
     if (attachmentRequired(leaveType, existing.total_days)) {
       const count = await attachmentModel.countByRequest(id);
 
       if (count === 0) {
         throw BadRequest(
-          `Pengajuan ${leaveType.name} selama ${existing.total_days} hari wajib melampirkan bukti sebelum dapat disetujui`,
+          `A ${existing.total_days}-day ${leaveType.name} request needs supporting evidence before it can be approved`,
         );
       }
     }
@@ -470,7 +465,7 @@ export async function ApproveLeaveRequestController(
     );
 
     if (!request) {
-      throw Conflict("Status pengajuan sudah berubah, silakan muat ulang");
+      throw Conflict("The request status has changed, please reload");
     }
 
     if (leaveType.deducts_balance) {
@@ -485,7 +480,7 @@ export async function ApproveLeaveRequestController(
       action: "leave.approve",
       entity: "leave_request",
       entity_id: id,
-      summary: `Pengajuan cuti ${existing.start_date} sampai ${existing.end_date} disetujui`,
+      summary: `Leave request ${existing.start_date} to ${existing.end_date} approved`,
       metadata: {
         employee_id: existing.employee_id,
         total_days: existing.total_days,
@@ -504,7 +499,7 @@ export async function ApproveLeaveRequestController(
 
     res.json({
       success: true,
-      message: "Pengajuan cuti berhasil disetujui",
+      message: "Leave request approved successfully",
       data: request,
     });
   } catch (err) {
@@ -529,15 +524,15 @@ export async function RejectLeaveRequestController(
     const { decision_note } = req.body as { decision_note?: string };
 
     const existing = await leaveRequestModel.findById(id);
-    if (!existing) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!existing) throw NotFound("Leave request not found");
 
     if (!canDecide(existing, requester)) {
-      throw Forbidden("Kamu bukan penyetuju pengajuan cuti ini");
+      throw Forbidden("You are not the approver for this leave request");
     }
 
     if (!canTransition(existing.status, "rejected")) {
       throw BadRequest(
-        `Pengajuan berstatus ${statusLabel(existing.status)} tidak dapat ditolak`,
+        `Requests with status ${statusLabel(existing.status)} cannot be rejected`,
       );
     }
 
@@ -553,7 +548,7 @@ export async function RejectLeaveRequestController(
     );
 
     if (!request) {
-      throw Conflict("Status pengajuan sudah berubah, silakan muat ulang");
+      throw Conflict("The request status has changed, please reload");
     }
 
     if (leaveType?.deducts_balance) {
@@ -564,7 +559,7 @@ export async function RejectLeaveRequestController(
         amount: existing.total_days,
         type: "refund",
         leave_request_id: id,
-        note: "Pengembalian saldo karena pengajuan ditolak",
+        note: "Balance refund because the request was rejected",
         created_by: requester.employee.id,
       });
     }
@@ -575,7 +570,7 @@ export async function RejectLeaveRequestController(
       action: "leave.reject",
       entity: "leave_request",
       entity_id: id,
-      summary: `Pengajuan cuti ${existing.start_date} sampai ${existing.end_date} ditolak`,
+      summary: `Leave request ${existing.start_date} to ${existing.end_date} rejected`,
       metadata: { employee_id: existing.employee_id },
     });
 
@@ -584,7 +579,7 @@ export async function RejectLeaveRequestController(
       requester_employee_id: existing.employee_id,
       decision: "rejected",
       // jenis cuti boleh saja sudah dihapus, judulnya tetap harus terbaca
-      leave_type_name: leaveType?.name ?? "Cuti",
+      leave_type_name: leaveType?.name ?? "Leave",
       start_date: existing.start_date,
       end_date: existing.end_date,
       decision_note: decision_note ?? null,
@@ -592,7 +587,7 @@ export async function RejectLeaveRequestController(
 
     res.json({
       success: true,
-      message: "Pengajuan cuti berhasil ditolak",
+      message: "Leave request rejected successfully",
       data: request,
     });
   } catch (err) {
@@ -615,21 +610,21 @@ export async function CancelLeaveRequestController(
     const { id } = res.locals.params as { id: string };
 
     const existing = await leaveRequestModel.findById(id);
-    if (!existing) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!existing) throw NotFound("Leave request not found");
 
     if (existing.employee_id !== requester.employee.id) {
-      throw Forbidden("Kamu hanya dapat membatalkan pengajuan cuti sendiri");
+      throw Forbidden("You can only cancel your own leave requests");
     }
 
     if (!canTransition(existing.status, "cancelled")) {
       throw BadRequest(
-        `Pengajuan berstatus ${statusLabel(existing.status)} tidak dapat dibatalkan`,
+        `Requests with status ${statusLabel(existing.status)} cannot be cancelled`,
       );
     }
 
     if (existing.status === "approved" && isPastDate(existing.start_date)) {
       throw BadRequest(
-        "Cuti yang sudah disetujui dan sudah berjalan tidak dapat dibatalkan",
+        "Approved leave that has already started cannot be cancelled",
       );
     }
 
@@ -644,7 +639,7 @@ export async function CancelLeaveRequestController(
     );
 
     if (!request) {
-      throw Conflict("Status pengajuan sudah berubah, silakan muat ulang");
+      throw Conflict("The request status has changed, please reload");
     }
 
     if (leaveType?.deducts_balance) {
@@ -655,7 +650,7 @@ export async function CancelLeaveRequestController(
         amount: existing.total_days,
         type: "refund",
         leave_request_id: id,
-        note: "Pengembalian saldo karena pengajuan dibatalkan",
+        note: "Balance refund because the request was cancelled",
         created_by: requester.employee.id,
       });
     }
@@ -668,7 +663,7 @@ export async function CancelLeaveRequestController(
 
     res.json({
       success: true,
-      message: "Pengajuan cuti berhasil dibatalkan",
+      message: "Leave request cancelled successfully",
       data: request,
     });
   } catch (err) {

@@ -644,7 +644,7 @@ describe("POST /api/v1/auth/resend-verification", () => {
       .post("/api/v1/auth/resend-verification")
       .send({ email: EMAIL });
 
-    expect(res.body.message).toMatch(/\d+ detik/);
+    expect(res.body.message).toMatch(/\d+ seconds?/);
   });
 
   it("mengizinkan permintaan setelah jeda terlewati", async () => {
@@ -740,7 +740,7 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
     const res = await login();
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("Email belum diverifikasi");
+    expect(res.body.message).toContain("email is not verified");
   });
 
   it("menolak akun terverifikasi yang belum disetujui HR", async () => {
@@ -749,7 +749,7 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
     const res = await login();
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("menunggu persetujuan");
+    expect(res.body.message).toContain("waiting for admin approval");
   });
 
   it("menolak akun yang dinonaktifkan", async () => {
@@ -762,7 +762,7 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
     const res = await login();
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("dinonaktifkan");
+    expect(res.body.message).toContain("deactivated");
   });
 
   it("memberi tiga pesan yang berbeda untuk tiga kondisi", async () => {
@@ -795,7 +795,7 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
       .post("/api/v1/auth/login")
       .send({ email: EMAIL, password: "passwordsalah" });
 
-    expect(res.body.message).toBe("Email atau password salah");
+    expect(res.body.message).toBe("Incorrect email or password");
   });
 
   it("meloloskan akun yang terverifikasi, disetujui, dan aktif", async () => {
@@ -845,7 +845,7 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
     ];
 
     expect(surat.to).toBe(EMAIL);
-    expect(surat.subject).toContain("disetujui");
+    expect(surat.subject).toContain("approved");
   });
 
   it("tetap menyetujui akun meski pengiriman email gagal", async () => {

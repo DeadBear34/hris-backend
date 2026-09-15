@@ -40,12 +40,12 @@ async function connectListener(): Promise<void> {
 
       handler(parsed.user_ids, parsed.message);
     } catch (err) {
-      logger.error({ err }, "Pengumuman antar-instance tidak dapat dibaca");
+      logger.error({ err }, "Cross-instance announcement could not be read");
     }
   });
 
   client.on("error", (err) => {
-    logger.error({ err }, "Koneksi pendengar antar-instance terputus");
+    logger.error({ err }, "Cross-instance listener connection lost");
     listener = null;
     scheduleReconnect();
   });
@@ -54,7 +54,7 @@ async function connectListener(): Promise<void> {
   await client.query(`LISTEN ${CHANNEL}`);
 
   listener = client;
-  logger.info("Pendengar notifikasi antar-instance siap");
+  logger.info("Cross-instance notification listener ready");
 }
 
 function scheduleReconnect(): void {
@@ -64,7 +64,7 @@ function scheduleReconnect(): void {
     reconnectTimer = null;
 
     void connectListener().catch((err) => {
-      logger.error({ err }, "Gagal menyambung ulang pendengar antar-instance");
+      logger.error({ err }, "Failed to reconnect the cross-instance listener");
       scheduleReconnect();
     });
   }, 5000);
@@ -80,7 +80,7 @@ export async function startCrossInstance(onMessage: Handler): Promise<void> {
   } catch (err) {
     // Kegagalan di sini tidak boleh menahan server. Notifikasi tetap sampai
     // ke soket instance ini, hanya instance lain yang tidak diberi tahu
-    logger.error({ err }, "Pendengar antar-instance gagal dimulai");
+    logger.error({ err }, "Cross-instance listener failed to start");
     scheduleReconnect();
   }
 }
@@ -113,7 +113,7 @@ export function announce(
   if (payload.length > MAX_PAYLOAD) {
     logger.warn(
       { size: payload.length },
-      "Pengumuman antar-instance terlalu besar, dilewati",
+      "Cross-instance announcement too large, skipped",
     );
     return;
   }
@@ -121,7 +121,7 @@ export function announce(
   void db
     .query(`SELECT pg_notify($1, $2)`, [CHANNEL, payload])
     .catch((err: unknown) => {
-      logger.error({ err }, "Gagal mengumumkan ke instance lain");
+      logger.error({ err }, "Failed to announce to other instances");
     });
 }
 

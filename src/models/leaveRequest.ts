@@ -199,15 +199,13 @@ export async function createRequest(
 
     const request = result.rows[0];
     if (!request) {
-      throw new Error("Gagal menyimpan pengajuan cuti");
+      throw new Error("Failed to save leave request");
     }
 
     return request;
   } catch (err) {
     if ((err as { code?: string }).code === EXCLUSION_VIOLATION_CODE) {
-      throw Conflict(
-        "Kamu sudah punya pengajuan cuti pada rentang tanggal tersebut",
-      );
+      throw Conflict("You already have a leave request in that date range");
     }
 
     throw err;

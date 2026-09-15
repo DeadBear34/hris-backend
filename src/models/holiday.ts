@@ -114,7 +114,7 @@ export async function createHoliday(
 
   const holiday = result.rows[0];
   if (!holiday) {
-    throw new Error("Gagal menyimpan hari libur");
+    throw new Error("Failed to save holiday");
   }
 
   return holiday;

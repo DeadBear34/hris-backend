@@ -220,7 +220,7 @@ describe("PATCH /api/v1/auth/me", () => {
 
     expect(res.body.data.employee.id).toBe(EMPLOYEE_ID);
     expect(res.body.data.email).toBe("karyawan@awan.io");
-    expect(res.body.message).toContain("berhasil diperbarui");
+    expect(res.body.message).toContain("updated successfully");
   });
 
   it("menerima pembaruan sebagian tanpa menghapus field lain", async () => {
@@ -235,7 +235,7 @@ describe("PATCH /api/v1/auth/me", () => {
     const res = await perbarui({ full_name: "Nama Baru" });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum terhubung ke data karyawan");
+    expect(res.body.message).toContain("not linked to an employee record");
     expect(employeeModel.updateOwnProfile).not.toHaveBeenCalled();
   });
 });

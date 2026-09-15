@@ -246,7 +246,7 @@ export async function createSchedule(
 
   const schedule = result.rows[0];
   if (!schedule) {
-    throw new Error("Gagal menyimpan jadwal kerja");
+    throw new Error("Failed to save work schedule");
   }
 
   return schedule;

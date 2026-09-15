@@ -178,7 +178,7 @@ export async function createCheckIn(
 
   const attendance = result.rows[0];
   if (!attendance) {
-    throw new Error("Gagal menyimpan absensi masuk");
+    throw new Error("Failed to save check-in");
   }
 
   return attendance;

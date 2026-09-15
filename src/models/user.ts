@@ -57,7 +57,7 @@ export async function insertUser(
 
   const user = result.rows[0];
   if (!user) {
-    throw new Error("Gagal menyimpan user");
+    throw new Error("Failed to save user");
   }
 
   return user;
@@ -83,7 +83,7 @@ export async function insertUserByAdmin(
 
   const user = result.rows[0];
   if (!user) {
-    throw new Error("Gagal menyimpan akun");
+    throw new Error("Failed to save account");
   }
 
   return user;
@@ -224,7 +224,7 @@ export async function insertUsersByAdmin(
   );
 
   if (result.rows.length !== items.length) {
-    throw new Error("Gagal menyimpan sebagian akun");
+    throw new Error("Failed to save some accounts");
   }
 
   return result.rows;

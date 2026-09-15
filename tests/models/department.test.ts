@@ -165,7 +165,7 @@ describe("createDepartment", () => {
 
     await expect(
       departmentModel.createDepartment({ code: "IT", name: "Teknologi" }),
-    ).rejects.toThrow("Gagal menyimpan departemen");
+    ).rejects.toThrow("Failed to save department");
   });
 });
 

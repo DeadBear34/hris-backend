@@ -181,7 +181,7 @@ describe("POST /api/v1/leave-requests/:id/attachments", () => {
     const res = await unggah(Buffer.from("%PDF-1.7 palsu"), "bukti.jpg");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("JPEG, PNG, atau WebP");
+    expect(res.body.message).toContain("JPEG, PNG, or WebP");
     expect(mockUpload).not.toHaveBeenCalled();
   });
 
@@ -269,7 +269,7 @@ describe("POST /api/v1/leave-requests/:id/attachments", () => {
       .field("catatan", "tanpa berkas");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("wajib diunggah");
+    expect(res.body.message).toContain("must be uploaded");
   });
 
   it("menolak berkas pada field selain file", async () => {
@@ -279,7 +279,7 @@ describe("POST /api/v1/leave-requests/:id/attachments", () => {
       .attach("gambar", JPEG, "bukti.jpg");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("field 'file'");
+    expect(res.body.message).toContain("'file' field");
   });
 
   it("menolak unggahan saat penyimpanan belum dikonfigurasi", async () => {
@@ -288,7 +288,7 @@ describe("POST /api/v1/leave-requests/:id/attachments", () => {
     const res = await unggah(JPEG);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum dikonfigurasi");
+    expect(res.body.message).toContain("not configured");
   });
 
   it("tidak menyimpan metadata jika unggahan ke storage gagal", async () => {

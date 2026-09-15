@@ -2,87 +2,87 @@ import { z } from "zod";
 
 export const registerSchema = z.object({
   email: z
-    .string({ message: "Email wajib diisi" })
+    .string({ message: "Email is required" })
     .trim()
     .toLowerCase()
-    .min(1, "Email wajib diisi")
-    .email("Format email tidak valid, contoh: nama@domain.com"),
+    .min(1, "Email is required")
+    .email("Invalid email format, example: name@domain.com"),
 
   password: z
-    .string({ message: "Password wajib diisi" })
-    .min(8, "Password minimal 8 karakter")
-    .max(72, "Password maksimal 72 karakter"),
+    .string({ message: "Password is required" })
+    .min(8, "Password must be at least 8 characters")
+    .max(72, "Password must be at most 72 characters"),
 
   full_name: z
-    .string({ message: "Nama lengkap wajib diisi" })
+    .string({ message: "Full name is required" })
     .trim()
-    .min(3, "Nama lengkap minimal 3 karakter")
-    .max(150, "Nama lengkap maksimal 150 karakter"),
+    .min(3, "Full name must be at least 3 characters")
+    .max(150, "Full name must be at most 150 characters"),
 
   phone: z
-    .string({ message: "Nomor telepon wajib diisi" })
+    .string({ message: "Phone number is required" })
     .trim()
     .regex(
       /^\+[1-9]\d{7,14}$/,
-      "Nomor telepon harus diawali kode negara, contoh: +628123456789",
+      "Phone number must start with a country code, example: +628123456789",
     ),
 
   gender: z.enum(["male", "female"], {
-    message: "Jenis kelamin wajib dipilih",
+    message: "Gender is required",
   }),
 
   terms_accepted: z.literal(true, {
-    message: "Kamu harus menyetujui syarat dan ketentuan",
+    message: "You must accept the terms and conditions",
   }),
 });
 
 export const loginSchema = z.object({
   email: z
-    .string({ message: "Email wajib diisi" })
+    .string({ message: "Email is required" })
     .trim()
     .toLowerCase()
-    .min(1, "Email wajib diisi")
-    .email("Format email tidak valid"),
+    .min(1, "Email is required")
+    .email("Invalid email format"),
 
   password: z
-    .string({ message: "Password wajib diisi" })
-    .min(1, "Password wajib diisi"),
+    .string({ message: "Password is required" })
+    .min(1, "Password is required"),
 });
 
 export const changePasswordSchema = z
   .object({
     current_password: z
-      .string({ message: "Password saat ini wajib diisi" })
-      .min(1, "Password saat ini wajib diisi"),
+      .string({ message: "Current password is required" })
+      .min(1, "Current password is required"),
 
     new_password: z
-      .string({ message: "Password baru wajib diisi" })
-      .min(8, "Password baru minimal 8 karakter")
-      .max(72, "Password baru maksimal 72 karakter"),
+      .string({ message: "New password is required" })
+      .min(8, "New password must be at least 8 characters")
+      .max(72, "New password must be at most 72 characters"),
   })
   .refine((data) => data.current_password !== data.new_password, {
-    message: "Password baru harus berbeda dari password saat ini",
+    message: "New password must be different from the current password",
     path: ["new_password"],
   });
 
 export const setUserActiveSchema = z.object({
-  is_active: z.boolean({ message: "Status aktif wajib diisi" }),
+  is_active: z.boolean({ message: "Active status is required" }),
 });
 
 const emailField = z
-  .string({ message: "Email wajib diisi" })
+  .string({ message: "Email is required" })
   .trim()
   .toLowerCase()
-  .min(1, "Email wajib diisi")
-  .pipe(z.email("Format email tidak valid, contoh: nama@domain.com"));
+  .min(1, "Email is required")
+  .pipe(z.email("Invalid email format, example: name@domain.com"));
 
 export const verifyEmailSchema = z.object({
   email: emailField,
 
   code: z
-    .string({ message: "Kode verifikasi wajib diisi" })
+    .string({ message: "Verification code is required" })
     .trim()
-    .regex(/^\d{6}$/, "Kode verifikasi harus terdiri dari 6 digit angka"),
+    .regex(/^\d{6}$/, "Verification code must be 6 digits"),
 });
 
 export const resendVerificationSchema = z.object({
@@ -98,20 +98,20 @@ export const resetPasswordSchema = z
     email: emailField,
 
     token: z
-      .string({ message: "Token wajib diisi" })
+      .string({ message: "Token is required" })
       .trim()
-      .min(1, "Token wajib diisi"),
+      .min(1, "Token is required"),
 
     password: z
-      .string({ message: "Password baru wajib diisi" })
-      .min(8, "Password baru minimal 8 karakter")
-      .max(72, "Password baru maksimal 72 karakter"),
+      .string({ message: "New password is required" })
+      .min(8, "New password must be at least 8 characters")
+      .max(72, "New password must be at most 72 characters"),
 
     password_confirmation: z.string({
-      message: "Konfirmasi password wajib diisi",
+      message: "Password confirmation is required",
     }),
   })
   .refine((data) => data.password === data.password_confirmation, {
-    message: "Konfirmasi password tidak sama dengan password baru",
+    message: "Password confirmation does not match the new password",
     path: ["password_confirmation"],
   });

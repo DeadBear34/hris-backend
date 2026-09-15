@@ -103,7 +103,7 @@ describe("listEmployeeQuerySchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe("Department tidak valid");
+      expect(result.error.issues[0]?.message).toBe("Invalid department");
     }
   });
 
@@ -632,7 +632,7 @@ describe("kewajaran tanggal", () => {
   }
 
   it("menolak tanggal lahir di masa depan", () => {
-    expect(tolak({ birth_date: "2090-01-01" })).toContain("minimal");
+    expect(tolak({ birth_date: "2090-01-01" })).toContain("at least");
   });
 
   it("menolak karyawan di bawah usia kerja", () => {
@@ -641,11 +641,11 @@ describe("kewajaran tanggal", () => {
 
     expect(
       tolak({ birth_date: limaTahunLalu.toISOString().slice(0, 10) }),
-    ).toContain("minimal 15 tahun");
+    ).toContain("at least 15 years");
   });
 
   it("menolak tanggal lahir yang terlalu jauh ke belakang", () => {
-    expect(tolak({ birth_date: "1850-01-01" })).toContain("terlalu jauh");
+    expect(tolak({ birth_date: "1850-01-01" })).toContain("too far");
   });
 
   it("menerima usia kerja yang wajar", () => {
@@ -661,7 +661,7 @@ describe("kewajaran tanggal", () => {
   });
 
   it("menolak tanggal bergabung yang terlalu jauh ke depan", () => {
-    expect(tolak({ join_date: "2200-01-01" })).toContain("365 hari");
+    expect(tolak({ join_date: "2200-01-01" })).toContain("365 days");
   });
 
   it("menerima tanggal bergabung yang belum tiba tetapi masih wajar", () => {
@@ -678,7 +678,7 @@ describe("kewajaran tanggal", () => {
   it("menolak bergabung sebelum tanggal lahir", () => {
     expect(
       tolak({ birth_date: "2000-01-01", join_date: "1990-01-01" }),
-    ).toContain("mendahului tanggal lahir");
+    ).toContain("before birth date");
   });
 
   it("aturan tanggal juga berlaku saat mengubah karyawan", () => {

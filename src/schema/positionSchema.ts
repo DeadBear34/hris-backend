@@ -2,23 +2,23 @@ import { z } from "zod";
 
 export const createPositionSchema = z.object({
   code: z
-    .string({ message: "Kode jabatan wajib diisi" })
+    .string({ message: "Position code is required" })
     .trim()
     .toUpperCase()
-    .min(2, "Kode jabatan minimal 2 karakter")
-    .max(20, "Kode jabatan maksimal 20 karakter"),
+    .min(2, "Position code must be at least 2 characters")
+    .max(20, "Position code must be at most 20 characters"),
 
   name: z
-    .string({ message: "Nama jabatan wajib diisi" })
+    .string({ message: "Position name is required" })
     .trim()
-    .min(3, "Nama jabatan minimal 3 karakter")
-    .max(100, "Nama jabatan maksimal 100 karakter"),
+    .min(3, "Position name must be at least 3 characters")
+    .max(100, "Position name must be at most 100 characters"),
 
   level: z.coerce
     .number()
-    .int("Level harus berupa bilangan bulat")
-    .min(1, "Level minimal 1")
-    .max(10, "Level maksimal 10")
+    .int("Level must be an integer")
+    .min(1, "Level must be at least 1")
+    .max(10, "Level must be at most 10")
     .optional(),
 });
 

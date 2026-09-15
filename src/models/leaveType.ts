@@ -119,7 +119,7 @@ export async function createLeaveType(
 
   const leaveType = result.rows[0];
   if (!leaveType) {
-    throw new Error("Gagal menyimpan jenis cuti");
+    throw new Error("Failed to save leave type");
   }
 
   return leaveType;

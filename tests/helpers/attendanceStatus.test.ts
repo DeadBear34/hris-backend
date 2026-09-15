@@ -9,11 +9,11 @@ import {
 
 describe("statusLabel", () => {
   it("menerjemahkan setiap status ke bahasa Indonesia", () => {
-    expect(statusLabel("present")).toBe("hadir");
-    expect(statusLabel("late")).toBe("terlambat");
-    expect(statusLabel("absent")).toBe("tidak hadir");
-    expect(statusLabel("leave")).toBe("cuti");
-    expect(statusLabel("holiday")).toBe("libur");
+    expect(statusLabel("present")).toBe("present");
+    expect(statusLabel("late")).toBe("late");
+    expect(statusLabel("absent")).toBe("absent");
+    expect(statusLabel("leave")).toBe("on leave");
+    expect(statusLabel("holiday")).toBe("holiday");
   });
 });
 
@@ -32,19 +32,19 @@ describe("butuhJamMasuk", () => {
 
 describe("jamMenit", () => {
   it("menampilkan jam dan menit sekaligus", () => {
-    expect(formatDuration(510)).toBe("8 jam 30 menit");
+    expect(formatDuration(510)).toBe("8 hours 30 minutes");
   });
 
   it("menghilangkan menit ketika pas pada jam bulat", () => {
-    expect(formatDuration(540)).toBe("9 jam");
+    expect(formatDuration(540)).toBe("9 hours");
   });
 
   it("menampilkan menit saja untuk durasi di bawah satu jam", () => {
-    expect(formatDuration(45)).toBe("45 menit");
+    expect(formatDuration(45)).toBe("45 minutes");
   });
 
   it("durasi nol tetap terbaca", () => {
-    expect(formatDuration(0)).toBe("0 menit");
+    expect(formatDuration(0)).toBe("0 minutes");
   });
 });
 
@@ -77,18 +77,18 @@ describe("tentukanStatusKedatangan", () => {
   });
 
   it("satu menit setelah batas absen ditolak", () => {
-    expect(putuskan(8, 11)).toBe("ditolak");
+    expect(putuskan(8, 11)).toBe("rejected");
   });
 
   it("datang jauh setelah batas absen ditolak", () => {
-    expect(putuskan(14, 0)).toBe("ditolak");
+    expect(putuskan(14, 0)).toBe("rejected");
   });
 
   it("tidak menyisakan menit tanpa keputusan sepanjang hari", () => {
     for (let minute = 0; minute < 1440; minute++) {
       const result = decideArrivalStatus(minute, MASUK, TOLERANSI, TUTUP);
 
-      expect(["present", "late", "ditolak"]).toContain(result);
+      expect(["present", "late", "rejected"]).toContain(result);
     }
   });
 

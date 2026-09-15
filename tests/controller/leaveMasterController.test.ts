@@ -296,7 +296,7 @@ describe("jenis cuti", () => {
       .delete(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
       .set("Authorization", `Bearer ${adminToken}`);
 
-    expect(res.body.message).toContain("Nonaktifkan");
+    expect(res.body.message).toContain("Deactivate");
   });
 
   it("menghapus jenis cuti yang belum pernah dipakai", async () => {

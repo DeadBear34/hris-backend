@@ -111,9 +111,7 @@ describe("authenticate", () => {
   it("tidak membocorkan alasan teknis kegagalan token", async () => {
     await authenticate(siapkanReq(`Bearer ${token}x`), {} as Response, next);
 
-    expect(ambilError(next).message).toBe(
-      "Token tidak valid atau sudah kedaluwarsa",
-    );
+    expect(ambilError(next).message).toBe("Token is invalid or has expired");
   });
 
   it("tidak mengisi req.user saat token ditolak", async () => {
@@ -154,7 +152,7 @@ describe("authenticate terhadap perubahan password", () => {
     const err = ambilError(next);
 
     expect(err.statusCode).toBe(401);
-    expect(err.message).toContain("password telah diubah");
+    expect(err.message).toContain("password was changed");
   });
 
   it("tidak mengisi req.user saat sesi sudah dibatalkan", async () => {

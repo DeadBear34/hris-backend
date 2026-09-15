@@ -91,7 +91,7 @@ export function minutesFromClockTime(hour: ClockTime): number {
     Number.isNaN(h) ||
     Number.isNaN(m)
   ) {
-    throw new Error(`Format jam tidak valid: ${hour}`);
+    throw new Error(`Invalid time format: ${hour}`);
   }
 
   return h * 60 + m;
@@ -101,7 +101,7 @@ export function dayNameOf(date: IsoDate): DayName {
   const [year, month, day] = date.split("-").map(Number);
 
   if (!year || !month || !day) {
-    throw new Error(`Tanggal tidak valid: ${date}`);
+    throw new Error(`Invalid date: ${date}`);
   }
 
   const indeks = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -125,7 +125,7 @@ export function dateRange(start: IsoDate, end: IsoDate): IsoDate[] {
   const [ay, am, ad] = end.split("-").map(Number);
 
   if (!ty || !tm || !td || !ay || !am || !ad) {
-    throw new Error(`Rentang tanggal tidak valid: ${start} sampai ${end}`);
+    throw new Error(`Invalid date range: ${start} to ${end}`);
   }
 
   const result: IsoDate[] = [];

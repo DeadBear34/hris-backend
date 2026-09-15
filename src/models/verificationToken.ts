@@ -44,7 +44,7 @@ export async function createToken(
 
   const token = result.rows[0];
   if (!token) {
-    throw new Error("Gagal menyimpan token verifikasi");
+    throw new Error("Failed to save verification token");
   }
 
   return token;

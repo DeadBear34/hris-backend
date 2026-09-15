@@ -461,7 +461,7 @@ describe("POST /api/v1/employees", () => {
       .send({ ...validCreate, department_id: DEPARTMENT_ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Departemen tidak ditemukan");
+    expect(res.body.message).toContain("Department not found");
   });
 
   it("menolak jabatan yang tidak ada", async () => {
@@ -474,7 +474,7 @@ describe("POST /api/v1/employees", () => {
       .send({ ...validCreate, position_id: POSITION_ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Jabatan tidak ditemukan");
+    expect(res.body.message).toContain("Position not found");
   });
 
   it("menolak manajer yang tidak ada", async () => {
@@ -487,7 +487,7 @@ describe("POST /api/v1/employees", () => {
       .send({ ...validCreate, manager_id: MANAGER_ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Manajer tidak ditemukan");
+    expect(res.body.message).toContain("Manager not found");
   });
 
   it("membuat karyawan dan mengembalikan 201", async () => {
@@ -769,7 +769,7 @@ describe("PATCH /api/v1/employees/:id", () => {
       .send({ manager_id: EMPLOYEE_ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("manajer dirinya sendiri");
+    expect(res.body.message).toContain("their own manager");
     expect(employeeModel.updateEmployee).not.toHaveBeenCalled();
   });
 
@@ -785,7 +785,7 @@ describe("PATCH /api/v1/employees/:id", () => {
       .send({ manager_id: MANAGER_ID });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("melingkar");
+    expect(res.body.message).toContain("circular");
     expect(employeeModel.updateEmployee).not.toHaveBeenCalled();
   });
 
@@ -875,7 +875,7 @@ describe("DELETE /api/v1/employees/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("2 karyawan");
+    expect(res.body.message).toContain("2 employees");
     expect(employeeModel.softDeleteEmployee).not.toHaveBeenCalled();
   });
 
@@ -901,7 +901,7 @@ describe("DELETE /api/v1/employees/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toContain("berhasil dihapus");
+    expect(res.body.message).toContain("deleted successfully");
   });
 
   it("menonaktifkan akun pengguna di transaksi yang sama", async () => {
@@ -1044,7 +1044,7 @@ describe("POST /api/v1/employees dengan array", () => {
     expect(res.status).toBe(400);
     expect(res.body.details.failed_rows).toHaveLength(1);
     expect(res.body.details.failed_rows[0].index).toBe(2);
-    expect(res.body.details.failed_rows[0].message).toContain("baris ke-1");
+    expect(res.body.details.failed_rows[0].message).toContain("row 1");
     expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 
@@ -1058,7 +1058,7 @@ describe("POST /api/v1/employees dengan array", () => {
     expect(res.status).toBe(400);
     expect(res.body.details.failed_rows[0].email).toBe("karyawan2@awan.io");
     expect(res.body.details.failed_rows[0].message).toContain(
-      "sudah terdaftar",
+      "already registered",
     );
   });
 
@@ -1071,7 +1071,7 @@ describe("POST /api/v1/employees dengan array", () => {
     const res = await tambahMassal([row(1), row(2), row(3)]);
 
     expect(res.body.details.failed_rows).toHaveLength(2);
-    expect(res.body.message).toContain("2 dari 3 baris");
+    expect(res.body.message).toContain("2 of 3 rows");
   });
 
   it("menolak baris yang departemennya tidak ditemukan", async () => {
@@ -1083,7 +1083,7 @@ describe("POST /api/v1/employees dengan array", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.details.failed_rows[0].message).toContain(
-      "Departemen tidak ditemukan",
+      "Department not found",
     );
   });
 
@@ -1245,7 +1245,7 @@ describe("satu endpoint, dua bentuk kiriman", () => {
     const res = await kirim(satu);
 
     expect(res.status).toBe(409);
-    expect(res.body.message).toContain("sudah terdaftar");
+    expect(res.body.message).toContain("already registered");
   });
 
   it("email duplikat pada kiriman array dijawab 400 beserta daftar barisnya", async () => {
@@ -1269,8 +1269,8 @@ describe("satu endpoint, dua bentuk kiriman", () => {
     expect(res.body.details.failed_rows[0]).toEqual({
       index: 0,
       email: "tunggal@awan.io",
-      message: "Email sudah terdaftar",
-      errors: [{ field: "email", message: "Email sudah terdaftar" }],
+      message: "Email is already registered",
+      errors: [{ field: "email", message: "Email is already registered" }],
     });
   });
 
@@ -1341,7 +1341,7 @@ describe("laporan per baris pada impor massal", () => {
     }[];
 
     expect(errors.find((e) => e.field === "email")?.message).toContain(
-      "Format email tidak valid",
+      "Invalid email format",
     );
     expect(errors.find((e) => e.field === "gender")).toBeDefined();
   });
@@ -1352,7 +1352,7 @@ describe("laporan per baris pada impor massal", () => {
     const res = await kirim([{ ...utuh(1), department_id: DEPARTMENT_ID }]);
 
     expect(res.body.details.failed_rows[0].errors).toEqual([
-      { field: "department_id", message: "Departemen tidak ditemukan" },
+      { field: "department_id", message: "Department not found" },
     ]);
   });
 
@@ -1629,7 +1629,7 @@ describe("log tetap ada saat terjadi kegagalan tak terduga", () => {
     const noteField = catatanTerakhir(logger.warn as jest.Mock);
 
     expect(noteField.status).toBe("failed");
-    expect(noteField.summary).toContain("galat tak terduga");
+    expect(noteField.summary).toContain("unexpected error");
     expect((noteField.metadata as { error: string }).error).toContain(
       "koneksi ke database putus",
     );
@@ -1797,7 +1797,7 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
     const res = await kirim({ "1": row(1), "2": row(2) });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("berurutan dari 0");
+    expect(res.body.message).toContain("run from 0");
     expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 
@@ -1805,7 +1805,7 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
     const res = await kirim({ "0": row(0), "1": row(1), "3": row(3) });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("Yang hilang: 2");
+    expect(res.body.message).toContain("Missing: 2");
     expect(res.body.details.missing).toEqual([2]);
     expect(res.body.details.received).toEqual([0, 1, 3]);
   });
@@ -1815,7 +1815,7 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
     const res = await kirim({ "0": row(0), "01": row(1), "1": row(2) });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("lebih dari sekali");
+    expect(res.body.message).toContain("more than once");
     expect(employeeModel.createEmployees).not.toHaveBeenCalled();
   });
 

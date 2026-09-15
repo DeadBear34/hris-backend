@@ -144,10 +144,7 @@ export function buildActivityLog(input: RecordActivityInput): ActivityLogEntry {
 // permintaan yang sudah berhasil
 function persistActivity(entry: ActivityLogEntry): void {
   void insertLog(entry).catch((err) => {
-    logger.error(
-      { err, action: entry.action },
-      "Gagal menyimpan log aktivitas",
-    );
+    logger.error({ err, action: entry.action }, "Failed to save activity log");
   });
 }
 

@@ -12,7 +12,10 @@ const transports: Transport[] = [];
 
 export function registerTransport(transport: Transport): void {
   transports.push(transport);
-  logger.info({ transport: transport.name }, "Jalur notifikasi didaftarkan");
+  logger.info(
+    { transport: transport.name },
+    "Notification transport registered",
+  );
 }
 
 // Mengirim ke seluruh jalur. Satu jalur gagal tidak menghentikan yang lain,
@@ -28,7 +31,7 @@ export function dispatch(user_ids: string[], event: NotificationEvent): void {
     } catch (err) {
       logger.error(
         { err, transport: transport.name, event: event.event },
-        "Jalur notifikasi gagal mengirim",
+        "Notification transport failed to send",
       );
     }
   }

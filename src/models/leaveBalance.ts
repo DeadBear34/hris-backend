@@ -78,7 +78,7 @@ export async function createTransaction(
 
   const transaksi = result.rows[0];
   if (!transaksi) {
-    throw new Error("Gagal menyimpan transaksi saldo cuti");
+    throw new Error("Failed to save leave balance transaction");
   }
 
   return transaksi;

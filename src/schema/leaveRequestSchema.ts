@@ -5,12 +5,12 @@ const LEAVE_STATUS = ["pending", "approved", "rejected", "cancelled"] as const;
 export const listLeaveRequestQuerySchema = z
   .object({
     status: z
-      .enum(LEAVE_STATUS, { message: "Status cuti tidak valid" })
+      .enum(LEAVE_STATUS, { message: "Invalid leave status" })
       .optional(),
-    employee_id: z.uuid("Karyawan tidak valid").optional(),
-    leave_type_id: z.uuid("Jenis cuti tidak valid").optional(),
-    start_date: z.iso.date("Tanggal awal tidak valid").optional(),
-    end_date: z.iso.date("Tanggal akhir tidak valid").optional(),
+    employee_id: z.uuid("Invalid employee").optional(),
+    leave_type_id: z.uuid("Invalid leave type").optional(),
+    start_date: z.iso.date("Invalid start date").optional(),
+    end_date: z.iso.date("Invalid end date").optional(),
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(10),
   })
@@ -18,26 +18,26 @@ export const listLeaveRequestQuerySchema = z
     (data) =>
       !data.start_date || !data.end_date || data.start_date <= data.end_date,
     {
-      message: "Tanggal akhir tidak boleh lebih awal dari tanggal awal",
+      message: "End date cannot be earlier than start date",
       path: ["end_date"],
     },
   );
 
 export const createLeaveRequestSchema = z
   .object({
-    leave_type_id: z.uuid("Jenis cuti wajib dipilih"),
+    leave_type_id: z.uuid("Leave type is required"),
 
-    start_date: z.iso.date("Tanggal mulai tidak valid"),
-    end_date: z.iso.date("Tanggal selesai tidak valid"),
+    start_date: z.iso.date("Invalid start date"),
+    end_date: z.iso.date("Invalid end date"),
 
     reason: z
       .string()
       .trim()
-      .max(500, "Alasan maksimal 500 karakter")
+      .max(500, "Reason must be at most 500 characters")
       .optional(),
   })
   .refine((data) => data.start_date <= data.end_date, {
-    message: "Tanggal selesai tidak boleh lebih awal dari tanggal mulai",
+    message: "End date cannot be earlier than start date",
     path: ["end_date"],
   });
 
@@ -45,6 +45,6 @@ export const decideLeaveRequestSchema = z.object({
   decision_note: z
     .string()
     .trim()
-    .max(500, "Catatan keputusan maksimal 500 karakter")
+    .max(500, "Decision note must be at most 500 characters")
     .optional(),
 });

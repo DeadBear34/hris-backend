@@ -52,7 +52,7 @@ function daysUntil(date: string): number {
 
 export const listEmployeeQuerySchema = z.object({
   search: z.string().trim().optional(),
-  department_id: z.uuid("Department tidak valid").optional(),
+  department_id: z.uuid("Invalid department").optional(),
   is_active: z
     .enum(["true", "false"])
     .optional()
@@ -63,53 +63,53 @@ export const listEmployeeQuerySchema = z.object({
 
 const employeeDataSchema = z.object({
   full_name: z
-    .string({ message: "Nama lengkap wajib diisi" })
+    .string({ message: "Full name is required" })
     .trim()
-    .min(3, "Nama lengkap minimal 3 karakter")
-    .max(150, "Nama lengkap maksimal 150 karakter"),
+    .min(3, "Full name must be at least 3 characters")
+    .max(150, "Full name must be at most 150 characters"),
 
   phone: z
-    .string({ message: "Nomor telepon wajib diisi" })
+    .string({ message: "Phone number is required" })
     .trim()
     .regex(
       /^\+[1-9]\d{7,14}$/,
-      "Nomor telepon harus diawali kode negara, contoh: +628123456789",
+      "Phone number must start with a country code, example: +628123456789",
     ),
 
   gender: z.enum(["male", "female"], {
-    message: "Jenis kelamin wajib dipilih",
+    message: "Gender is required",
   }),
 
   birth_date: optionalField(
     z.iso
-      .date("Tanggal lahir tidak valid")
+      .date("Invalid birth date")
       .refine((value) => ageFrom(value) >= MIN_WORKING_AGE, {
-        message: `Usia karyawan minimal ${MIN_WORKING_AGE} tahun`,
+        message: `Employee must be at least ${MIN_WORKING_AGE} years old`,
       })
       .refine((value) => ageFrom(value) <= MAX_AGE, {
-        message: "Tanggal lahir terlalu jauh ke belakang, periksa kembali",
+        message: "Birth date is too far in the past, please check it again",
       }),
   ),
 
   address: optionalField(
-    z.string().trim().max(500, "Alamat maksimal 500 karakter"),
+    z.string().trim().max(500, "Address must be at most 500 characters"),
   ),
 
-  department_id: optionalField(z.uuid("Departemen tidak valid")),
-  position_id: optionalField(z.uuid("Jabatan tidak valid")),
-  manager_id: optionalField(z.uuid("Manajer tidak valid")),
+  department_id: optionalField(z.uuid("Invalid department")),
+  position_id: optionalField(z.uuid("Invalid position")),
+  manager_id: optionalField(z.uuid("Invalid manager")),
 
   employment_status: optionalField(
     z.enum(["probation", "contract", "permanent", "intern", "resigned"], {
-      message: "Status kepegawaian tidak dikenal",
+      message: "Unknown employment status",
     }),
   ),
 
   join_date: optionalField(
     z.iso
-      .date("Tanggal bergabung tidak valid")
+      .date("Invalid join date")
       .refine((value) => daysUntil(value) <= MAX_JOIN_DATE_DAYS_AHEAD, {
-        message: `Tanggal bergabung paling jauh ${MAX_JOIN_DATE_DAYS_AHEAD} hari ke depan`,
+        message: `Join date can be at most ${MAX_JOIN_DATE_DAYS_AHEAD} days ahead`,
       }),
   ),
 });
@@ -122,25 +122,25 @@ const datesMakeSense = (data: { birth_date?: unknown; join_date?: unknown }) =>
   data.join_date >= data.birth_date;
 
 const datesMakeSenseMessage = {
-  message: "Tanggal bergabung tidak boleh mendahului tanggal lahir",
+  message: "Join date cannot be before birth date",
   path: ["join_date"],
 };
 
 export const createEmployeeSchema = employeeDataSchema
   .extend({
     email: z
-      .string({ message: "Email wajib diisi" })
+      .string({ message: "Email is required" })
       .trim()
       .toLowerCase()
-      .pipe(z.email("Format email tidak valid, contoh: nama@domain.com")),
+      .pipe(z.email("Invalid email format, example: name@domain.com")),
 
     password: z
-      .string({ message: "Password wajib diisi" })
-      .min(8, "Password minimal 8 karakter")
-      .max(72, "Password maksimal 72 karakter"),
+      .string({ message: "Password is required" })
+      .min(8, "Password must be at least 8 characters")
+      .max(72, "Password must be at most 72 characters"),
 
     role: optionalField(
-      z.enum(["employee", "admin"], { message: "Peran tidak dikenal" }),
+      z.enum(["employee", "admin"], { message: "Unknown role" }),
     ),
   })
   .refine(datesMakeSense, datesMakeSenseMessage);
@@ -158,7 +158,7 @@ export const updateEmployeeSchema = employeeDataSchema
   .partial()
   .extend({
     is_active: z.boolean().optional(),
-    resign_date: optionalField(z.iso.date("Tanggal resign tidak valid")),
+    resign_date: optionalField(z.iso.date("Invalid resign date")),
   })
   .refine(datesMakeSense, datesMakeSenseMessage);
 
@@ -170,10 +170,10 @@ export const MAX_EMPLOYEES_PER_REQUEST = 20;
 export const createEmployeePayloadSchema = z.union([
   z
     .array(z.unknown())
-    .min(1, "Minimal satu karyawan harus diisi")
+    .min(1, "At least one employee is required")
     .max(
       MAX_EMPLOYEES_PER_REQUEST,
-      `Maksimal ${MAX_EMPLOYEES_PER_REQUEST} karyawan dalam satu permintaan`,
+      `At most ${MAX_EMPLOYEES_PER_REQUEST} employees per request`,
     ),
   z.record(z.string(), z.unknown()),
 ]);

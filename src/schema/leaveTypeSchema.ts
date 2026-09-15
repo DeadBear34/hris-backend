@@ -2,22 +2,22 @@ import { z } from "zod";
 
 export const createLeaveTypeSchema = z.object({
   code: z
-    .string({ message: "Kode jenis cuti wajib diisi" })
+    .string({ message: "Leave type code is required" })
     .trim()
     .toUpperCase()
-    .min(2, "Kode jenis cuti minimal 2 karakter")
-    .max(20, "Kode jenis cuti maksimal 20 karakter"),
+    .min(2, "Leave type code must be at least 2 characters")
+    .max(20, "Leave type code must be at most 20 characters"),
 
   name: z
-    .string({ message: "Nama jenis cuti wajib diisi" })
+    .string({ message: "Leave type name is required" })
     .trim()
-    .min(3, "Nama jenis cuti minimal 3 karakter")
-    .max(100, "Nama jenis cuti maksimal 100 karakter"),
+    .min(3, "Leave type name must be at least 3 characters")
+    .max(100, "Leave type name must be at most 100 characters"),
 
   default_quota: z.coerce
     .number()
-    .min(0, "Jatah cuti tidak boleh negatif")
-    .max(365, "Jatah cuti maksimal 365 hari")
+    .min(0, "Leave quota cannot be negative")
+    .max(365, "Leave quota must be at most 365 days")
     .nullable()
     .optional(),
 
@@ -27,28 +27,28 @@ export const createLeaveTypeSchema = z.object({
 
   attachment_required_after: z.coerce
     .number()
-    .int("Ambang lampiran harus bilangan bulat")
-    .min(1, "Ambang lampiran minimal 1 hari")
+    .int("Attachment threshold must be an integer")
+    .min(1, "Attachment threshold must be at least 1 day")
     .nullable()
     .optional(),
 
   max_days_per_request: z.coerce
     .number()
-    .int("Batas hari per pengajuan harus bilangan bulat")
-    .min(1, "Batas hari per pengajuan minimal 1")
-    .max(365, "Batas hari per pengajuan maksimal 365")
+    .int("Max days per request must be an integer")
+    .min(1, "Max days per request must be at least 1")
+    .max(365, "Max days per request must be at most 365")
     .nullable()
     .optional(),
 
   min_notice_days: z.coerce
     .number()
-    .int("Minimal pemberitahuan harus bilangan bulat")
-    .min(0, "Minimal pemberitahuan tidak boleh negatif")
-    .max(365, "Minimal pemberitahuan maksimal 365 hari")
+    .int("Minimum notice must be an integer")
+    .min(0, "Minimum notice cannot be negative")
+    .max(365, "Minimum notice must be at most 365 days")
     .optional(),
 
   gender_restriction: z
-    .enum(["male", "female"], { message: "Batasan gender tidak valid" })
+    .enum(["male", "female"], { message: "Invalid gender restriction" })
     .nullable()
     .optional(),
 });

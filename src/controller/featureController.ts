@@ -7,6 +7,7 @@ import { invalidateFeatureCache } from "../helpers/featureCache.js";
 import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { BadRequest, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { plural } from "../helpers/plural.js";
 
 const CATEGORY_ORDER: FeatureCategory[] = [
   "employee",
@@ -17,11 +18,11 @@ const CATEGORY_ORDER: FeatureCategory[] = [
 ];
 
 const CATEGORY_LABEL: Record<FeatureCategory, string> = {
-  employee: "Kepegawaian",
-  organization: "Organisasi",
-  leave: "Cuti",
-  attendance: "Absensi",
-  system: "Sistem",
+  employee: "Employment",
+  organization: "Organization",
+  leave: "Leave",
+  attendance: "Attendance",
+  system: "System",
 };
 
 function groupByCategory(features: Feature[]) {
@@ -61,7 +62,7 @@ export async function PositionFeatureController(
     const { id } = res.locals.params as { id: string };
 
     const position = await positionModel.findById(id);
-    if (!position) throw NotFound("Jabatan tidak ditemukan");
+    if (!position) throw NotFound("Position not found");
 
     const features = await featureModel.findFeaturesByPosition(id);
 
@@ -91,7 +92,7 @@ export async function ReplacePositionFeatureController(
     const { codes } = req.body as { codes: string[] };
 
     const position = await positionModel.findById(id);
-    if (!position) throw NotFound("Jabatan tidak ditemukan");
+    if (!position) throw NotFound("Position not found");
 
     const diminta = [...new Set(codes)];
     const dikenal = await featureModel.findByCodes(diminta);
@@ -100,10 +101,9 @@ export async function ReplacePositionFeatureController(
       const knownCodes = new Set(dikenal.map((f) => f.code));
       const unknownCodes = diminta.filter((code) => !knownCodes.has(code));
 
-      throw BadRequest(
-        `Kode fitur berikut tidak dikenal: ${unknownCodes.join(", ")}`,
-        { unknown_codes: unknownCodes },
-      );
+      throw BadRequest(`Unknown feature codes: ${unknownCodes.join(", ")}`, {
+        unknown_codes: unknownCodes,
+      });
     }
 
     await client.query("BEGIN");
@@ -123,13 +123,13 @@ export async function ReplacePositionFeatureController(
       action: "position.features_replace",
       entity: "position",
       entity_id: id,
-      summary: `Fitur jabatan ${position.name} diperbarui menjadi ${dikenal.length} fitur`,
+      summary: `Features for position ${position.name} updated to ${plural(dikenal.length, "feature")}`,
       metadata: { codes: dikenal.map((f) => f.code) },
     });
 
     res.json({
       success: true,
-      message: `Fitur untuk jabatan ${position.name} berhasil diperbarui`,
+      message: `Features for position ${position.name} updated successfully`,
       data: {
         position_id: id,
         codes: dikenal.map((f) => f.code),

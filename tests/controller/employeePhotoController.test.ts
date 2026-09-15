@@ -172,7 +172,7 @@ describe("unggah foto profil sendiri", () => {
     const res = await unggahSendiri(BUKAN_GAMBAR, "photo", "virus.jpg");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("JPEG, PNG, atau WebP");
+    expect(res.body.message).toContain("JPEG, PNG, or WebP");
     expect(mockUploadPhoto).not.toHaveBeenCalled();
   });
 
@@ -182,7 +182,7 @@ describe("unggah foto profil sendiri", () => {
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("field 'photo'");
+    expect(res.body.message).toContain("'photo' field");
   });
 
   it("menolak berkas yang dikirim pada field yang salah", async () => {
@@ -198,7 +198,7 @@ describe("unggah foto profil sendiri", () => {
     const res = await unggahSendiri(JPEG);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum terhubung ke data karyawan");
+    expect(res.body.message).toContain("not linked to an employee record");
   });
 
   it("memberi tahu ketika penyimpanan belum dikonfigurasi", async () => {
@@ -207,7 +207,7 @@ describe("unggah foto profil sendiri", () => {
     const res = await unggahSendiri(JPEG);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum dikonfigurasi");
+    expect(res.body.message).toContain("not configured");
     expect(mockUploadPhoto).not.toHaveBeenCalled();
   });
 
@@ -268,7 +268,7 @@ describe("hapus foto profil sendiri", () => {
     const res = await hapus();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum memiliki foto profil");
+    expect(res.body.message).toContain("no profile photo");
     expect(employeeModel.updatePhotoPath).not.toHaveBeenCalled();
   });
 });

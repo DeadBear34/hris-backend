@@ -29,7 +29,7 @@ describe("parseIsoDate dan toIsoDate", () => {
   });
 
   it("menolak tanggal yang tidak dapat dibaca", () => {
-    expect(() => parseIsoDate("bukan-tanggal")).toThrow("Tanggal tidak valid");
+    expect(() => parseIsoDate("bukan-tanggal")).toThrow("Invalid date");
   });
 });
 

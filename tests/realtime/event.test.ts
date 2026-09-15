@@ -6,7 +6,7 @@ const row = {
   id: "n1",
   recipient_user_id: "u1",
   type: "leave_approval_needed" as const,
-  title: "Pengajuan cuti baru",
+  title: "New leave request",
   message: "pesan",
   link: "/leave-management",
   entity: "leave_request",

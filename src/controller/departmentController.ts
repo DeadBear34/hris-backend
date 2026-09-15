@@ -3,6 +3,7 @@ import * as departmentModel from "../models/department.js";
 import type { DepartmentInput } from "../models/department.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { plural } from "../helpers/plural.js";
 
 export async function ListDepartmentController(
   _req: Request,
@@ -26,7 +27,7 @@ export async function DetailDepartmentController(
     const { id } = res.locals.params as { id: string };
 
     const department = await departmentModel.findById(id);
-    if (!department) throw NotFound("Departemen tidak ditemukan");
+    if (!department) throw NotFound("Department not found");
 
     res.json({ success: true, data: department });
   } catch (err) {
@@ -44,7 +45,7 @@ export async function CreateDepartmentController(
     const data = req.body as DepartmentInput;
 
     const existing = await departmentModel.findByCode(data.code);
-    if (existing) throw Conflict("Kode departemen sudah digunakan");
+    if (existing) throw Conflict("Department code is already in use");
 
     const department = await departmentModel.createDepartment(data);
 
@@ -52,7 +53,7 @@ export async function CreateDepartmentController(
       action: "department.create",
       entity: "department",
       entity_id: department.id,
-      summary: `Departemen ${department.name} dibuat`,
+      summary: `Department ${department.name} created`,
     });
 
     res.status(201).json({ success: true, data: department });
@@ -72,11 +73,11 @@ export async function UpdateDepartmentController(
     const data = req.body as Partial<DepartmentInput>;
 
     const existing = await departmentModel.findById(id);
-    if (!existing) throw NotFound("Departemen tidak ditemukan");
+    if (!existing) throw NotFound("Department not found");
 
     if (data.code && data.code !== existing.code) {
       const duplicate = await departmentModel.findByCode(data.code);
-      if (duplicate) throw Conflict("Kode departemen sudah digunakan");
+      if (duplicate) throw Conflict("Department code is already in use");
     }
 
     if (data.is_active === false && existing.is_active) {
@@ -84,7 +85,7 @@ export async function UpdateDepartmentController(
 
       if (count > 0) {
         throw BadRequest(
-          `Departemen tidak dapat dinonaktifkan karena masih memiliki ${count} karyawan`,
+          `Department cannot be deactivated because it still has ${plural(count, "employee")}`,
           { employee_count: count },
         );
       }
@@ -96,7 +97,7 @@ export async function UpdateDepartmentController(
       action: "department.update",
       entity: "department",
       entity_id: id,
-      summary: `Departemen ${existing.name} diubah`,
+      summary: `Department ${existing.name} updated`,
       metadata: { fields: Object.keys(data) },
     });
 
@@ -116,12 +117,12 @@ export async function DeleteDepartmentController(
     const { id } = res.locals.params as { id: string };
 
     const existing = await departmentModel.findById(id);
-    if (!existing) throw NotFound("Departemen tidak ditemukan");
+    if (!existing) throw NotFound("Department not found");
 
     const count = await departmentModel.countEmployees(id);
     if (count > 0) {
       throw BadRequest(
-        `Departemen tidak dapat dihapus karena masih memiliki ${count} karyawan. Pindahkan karyawan ke departemen lain terlebih dahulu.`,
+        `Department cannot be deleted because it still has ${plural(count, "employee")}. Move them to another department first.`,
         { employee_count: count },
       );
     }
@@ -132,10 +133,10 @@ export async function DeleteDepartmentController(
       action: "department.delete",
       entity: "department",
       entity_id: id,
-      summary: `Departemen ${existing.name} dihapus`,
+      summary: `Department ${existing.name} deleted`,
     });
 
-    res.json({ success: true, message: "Departemen berhasil dihapus" });
+    res.json({ success: true, message: "Department deleted successfully" });
   } catch (err) {
     next(err);
   }

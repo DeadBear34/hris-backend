@@ -22,18 +22,18 @@ export async function authenticate(
     const header = req.headers.authorization;
 
     if (!header || !header.startsWith("Bearer ")) {
-      throw Unauthorized("Token tidak ditemukan");
+      throw Unauthorized("Token not found");
     }
 
     const token = header.split(" ")[1];
 
     if (!token) {
-      throw Unauthorized("Token tidak valid");
+      throw Unauthorized("Invalid token");
     }
 
     payload = verifyToken(token);
   } catch (err) {
-    return next(Unauthorized("Token tidak valid atau sudah kedaluwarsa"));
+    return next(Unauthorized("Token is invalid or has expired"));
   }
 
   try {
@@ -47,7 +47,7 @@ export async function authenticate(
       if (payload.iat < changedAt) {
         return next(
           Unauthorized(
-            "Sesi sudah tidak berlaku karena password telah diubah, silakan login kembali",
+            "Your session is no longer valid because the password was changed, please log in again",
           ),
         );
       }
@@ -63,13 +63,11 @@ export async function authenticate(
 export function authorize(...roles: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(
-        Unauthorized("Kamu belum login, silakan masuk terlebih dahulu"),
-      );
+      return next(Unauthorized("You are not logged in, please log in first"));
     }
 
     if (!roles.includes(req.user.role)) {
-      return next(Forbidden("Kamu tidak punya akses ke fitur ini"));
+      return next(Forbidden("You don't have access to this feature"));
     }
     next();
   };

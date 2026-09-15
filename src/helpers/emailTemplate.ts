@@ -12,13 +12,13 @@ function wrap(title: string, body: string): string {
   ${body}
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
   <p style="color: ${WARNA_REDUP}; font-size: 13px;">
-    Email ini dikirim otomatis oleh sistem HRIS Awanio. Mohon tidak membalas email ini.
+    This email was sent automatically by the Awanio HRIS system. Please do not reply to this email.
   </p>
 </div>`;
 }
 
 function greeting(name?: string | null): string {
-  return name ? `<p>Halo ${name},</p>` : "<p>Halo,</p>";
+  return name ? `<p>Hi ${name},</p>` : "<p>Hi,</p>";
 }
 
 export function verificationCodeEmail(
@@ -27,14 +27,14 @@ export function verificationCodeEmail(
   name?: string | null,
 ): EmailContent {
   return {
-    subject: `Kode verifikasi HRIS: ${code}`,
+    subject: `HRIS verification code: ${code}`,
     html: wrap(
-      "Verifikasi alamat email kamu",
+      "Verify your email address",
       `${greeting(name)}
-  <p>Masukkan kode berikut untuk menyelesaikan pendaftaran akun HRIS kamu.</p>
+  <p>Enter the following code to finish setting up your HRIS account.</p>
   <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 24px 0;">${code}</p>
-  <p>Kode ini berlaku selama ${validMinutes} menit dan hanya dapat dipakai satu kali.</p>
-  <p>Kalau kamu merasa tidak mendaftar di HRIS Awanio, abaikan saja email ini.</p>`,
+  <p>This code is valid for ${validMinutes} minutes and can only be used once.</p>
+  <p>If you didn't sign up for Awanio HRIS, you can ignore this email.</p>`,
     ),
   };
 }
@@ -45,32 +45,32 @@ export function passwordResetEmail(
   name?: string | null,
 ): EmailContent {
   return {
-    subject: "Permintaan atur ulang password HRIS",
+    subject: "HRIS password reset request",
     html: wrap(
-      "Atur ulang password kamu",
+      "Reset your password",
       `${greeting(name)}
-  <p>Kami menerima permintaan untuk mengatur ulang password akun HRIS kamu.</p>
+  <p>We received a request to reset the password for your HRIS account.</p>
   <p style="margin: 24px 0;">
     <a href="${link}" style="background-color: ${WARNA_UTAMA}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
-      Atur Ulang Password
+      Reset Password
     </a>
   </p>
-  <p>Kalau tombol di atas tidak berfungsi, salin tautan berikut ke peramban kamu:</p>
+  <p>If the button above doesn't work, copy this link into your browser:</p>
   <p style="word-break: break-all; color: ${WARNA_REDUP}; font-size: 13px;">${link}</p>
-  <p>Tautan ini berlaku selama ${validMinutes} menit dan hanya dapat dipakai satu kali.</p>
-  <p>Kalau kamu tidak meminta hal ini, abaikan email ini. Password kamu tidak akan berubah.</p>`,
+  <p>This link is valid for ${validMinutes} minutes and can only be used once.</p>
+  <p>If you didn't request this, ignore this email. Your password will not change.</p>`,
     ),
   };
 }
 
 export function passwordResetSuccessEmail(name?: string | null): EmailContent {
   return {
-    subject: "Password HRIS kamu telah diubah",
+    subject: "Your HRIS password has been changed",
     html: wrap(
-      "Password berhasil diubah",
+      "Password changed successfully",
       `${greeting(name)}
-  <p>Password akun HRIS kamu baru saja berhasil diubah. Seluruh sesi login lama sudah dihentikan, jadi silakan login kembali memakai password barumu.</p>
-  <p>Kalau perubahan ini bukan kamu yang melakukan, segera hubungi tim HR agar akun kamu dapat diamankan.</p>`,
+  <p>The password for your HRIS account was just changed. All previous login sessions have been signed out, so please log in again with your new password.</p>
+  <p>If you didn't make this change, contact the HR team right away so your account can be secured.</p>`,
     ),
   };
 }
@@ -80,17 +80,17 @@ export function accountApprovedEmail(
   name?: string | null,
 ): EmailContent {
   return {
-    subject: "Akun HRIS kamu telah disetujui",
+    subject: "Your HRIS account has been approved",
     html: wrap(
-      "Akun kamu sudah aktif",
+      "Your account is now active",
       `${greeting(name)}
-  <p>Kabar baik, akun HRIS kamu sudah disetujui oleh tim HR dan sekarang dapat digunakan.</p>
+  <p>Good news, your HRIS account has been approved by the HR team and is ready to use.</p>
   <p style="margin: 24px 0;">
     <a href="${loginLink}" style="background-color: ${WARNA_UTAMA}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
-      Masuk ke HRIS
+      Log in to HRIS
     </a>
   </p>
-  <p>Gunakan email dan password yang kamu daftarkan sebelumnya untuk login.</p>`,
+  <p>Use the email and password you registered with to log in.</p>`,
     ),
   };
 }

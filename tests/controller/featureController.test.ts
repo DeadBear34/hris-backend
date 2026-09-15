@@ -157,7 +157,7 @@ describe("GET /api/v1/features", () => {
       .get("/api/v1/features")
       .set("Authorization", `Bearer ${adminToken}`);
 
-    expect(res.body.data.categories[0].label).toBe("Kepegawaian");
+    expect(res.body.data.categories[0].label).toBe("Employment");
   });
 
   it("tidak menampilkan kategori yang kosong", async () => {

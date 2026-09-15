@@ -3,6 +3,7 @@ import * as leaveTypeModel from "../models/leaveType.js";
 import type { LeaveTypeInput } from "../models/leaveType.js";
 import { BadRequest, Conflict, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { plural } from "../helpers/plural.js";
 
 export async function ListLeaveTypeController(
   _req: Request,
@@ -27,7 +28,7 @@ export async function DetailLeaveTypeController(
     const { id } = res.locals.params as { id: string };
 
     const leaveType = await leaveTypeModel.findById(id);
-    if (!leaveType) throw NotFound("Jenis cuti tidak ditemukan");
+    if (!leaveType) throw NotFound("Leave type not found");
 
     res.json({ success: true, data: leaveType });
   } catch (err) {
@@ -45,7 +46,7 @@ export async function CreateLeaveTypeController(
     const data = req.body as LeaveTypeInput;
 
     const existing = await leaveTypeModel.findByCode(data.code);
-    if (existing) throw Conflict("Kode jenis cuti sudah digunakan");
+    if (existing) throw Conflict("Leave type code is already in use");
 
     const leaveType = await leaveTypeModel.createLeaveType(data);
 
@@ -53,7 +54,7 @@ export async function CreateLeaveTypeController(
       action: "leave_type.create",
       entity: "leave_type",
       entity_id: leaveType.id,
-      summary: `Jenis cuti ${leaveType.name} dibuat`,
+      summary: `Leave type ${leaveType.name} created`,
     });
 
     res.status(201).json({ success: true, data: leaveType });
@@ -73,11 +74,11 @@ export async function UpdateLeaveTypeController(
     const data = req.body as Partial<LeaveTypeInput>;
 
     const existing = await leaveTypeModel.findById(id);
-    if (!existing) throw NotFound("Jenis cuti tidak ditemukan");
+    if (!existing) throw NotFound("Leave type not found");
 
     if (data.code && data.code !== existing.code) {
       const duplicate = await leaveTypeModel.findByCode(data.code);
-      if (duplicate) throw Conflict("Kode jenis cuti sudah digunakan");
+      if (duplicate) throw Conflict("Leave type code is already in use");
     }
 
     const leaveType = await leaveTypeModel.updateLeaveType(id, data);
@@ -86,7 +87,7 @@ export async function UpdateLeaveTypeController(
       action: "leave_type.update",
       entity: "leave_type",
       entity_id: id,
-      summary: `Jenis cuti ${existing.name} diubah`,
+      summary: `Leave type ${existing.name} updated`,
       metadata: { fields: Object.keys(data) },
     });
 
@@ -106,12 +107,12 @@ export async function DeleteLeaveTypeController(
     const { id } = res.locals.params as { id: string };
 
     const existing = await leaveTypeModel.findById(id);
-    if (!existing) throw NotFound("Jenis cuti tidak ditemukan");
+    if (!existing) throw NotFound("Leave type not found");
 
     const count = await leaveTypeModel.countLeaveRequests(id);
     if (count > 0) {
       throw BadRequest(
-        `Jenis cuti tidak dapat dihapus karena sudah dipakai oleh ${count} pengajuan. Nonaktifkan saja agar tidak dapat dipilih lagi.`,
+        `Leave type cannot be deleted because it is used by ${plural(count, "request")}. Deactivate it instead so it can no longer be selected.`,
         { leave_request_count: count },
       );
     }
@@ -122,10 +123,10 @@ export async function DeleteLeaveTypeController(
       action: "leave_type.delete",
       entity: "leave_type",
       entity_id: id,
-      summary: `Jenis cuti ${existing.name} dihapus`,
+      summary: `Leave type ${existing.name} deleted`,
     });
 
-    res.json({ success: true, message: "Jenis cuti berhasil dihapus" });
+    res.json({ success: true, message: "Leave type deleted successfully" });
   } catch (err) {
     next(err);
   }

@@ -97,7 +97,7 @@ describe("insertEmployee", () => {
         "+628123456789",
         "male",
       ),
-    ).rejects.toThrow("Gagal menyimpan data karyawan");
+    ).rejects.toThrow("Failed to save employee data");
   });
 
   it("dapat dijalankan memakai client transaksi", async () => {
@@ -214,7 +214,7 @@ describe("createEmployee", () => {
         phone: "+628123456789",
         gender: "male",
       }),
-    ).rejects.toThrow("Gagal menyimpan data karyawan");
+    ).rejects.toThrow("Failed to save employee data");
   });
 });
 
@@ -875,7 +875,7 @@ describe("createEmployees menolak karyawan tanpa akun", () => {
           },
         ] as never,
       ),
-    ).rejects.toThrow("tidak boleh disimpan tanpa akun");
+    ).rejects.toThrow("cannot be saved without an account");
 
     expect(mockQuery).not.toHaveBeenCalled();
   });
@@ -897,6 +897,6 @@ describe("createEmployees menolak karyawan tanpa akun", () => {
           },
         ] as never,
       ),
-    ).rejects.toThrow("Gagal menyimpan sebagian data karyawan");
+    ).rejects.toThrow("Failed to save some employee data");
   });
 });

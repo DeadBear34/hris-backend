@@ -139,7 +139,7 @@ export async function insertEmployee(
 
   const employee = result.rows[0];
   if (!employee) {
-    throw new Error("Gagal menyimpan data karyawan");
+    throw new Error("Failed to save employee data");
   }
 
   return employee;
@@ -176,7 +176,7 @@ export async function createEmployee(
 
   const employee = result.rows[0];
   if (!employee) {
-    throw new Error("Gagal menyimpan data karyawan");
+    throw new Error("Failed to save employee data");
   }
 
   return employee;
@@ -410,7 +410,7 @@ export async function createEmployees(
   if (rows.length === 0) return [];
 
   if (rows.some((row) => !row.user_id)) {
-    throw new Error("Karyawan tidak boleh disimpan tanpa akun");
+    throw new Error("An employee cannot be saved without an account");
   }
 
   const column = <T>(read: (row: (typeof rows)[number]) => T) => rows.map(read);
@@ -447,7 +447,7 @@ export async function createEmployees(
   );
 
   if (result.rows.length !== rows.length) {
-    throw new Error("Gagal menyimpan sebagian data karyawan");
+    throw new Error("Failed to save some employee data");
   }
 
   return result.rows;

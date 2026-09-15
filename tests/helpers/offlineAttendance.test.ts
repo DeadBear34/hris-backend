@@ -38,7 +38,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       wib("2026-08-20", "08:00"),
     );
 
-    expect(reason).toContain("masa depan");
+    expect(reason).toContain("in the future");
   });
 
   it("menolak waktu yang tidak dapat dibaca", () => {
@@ -48,7 +48,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       MENIT_MASUK,
     );
 
-    expect(reason).toContain("tidak dapat dibaca");
+    expect(reason).toContain("could not be read");
   });
 
   it("menerima sinkronisasi tepat pada batas jeda", () => {
@@ -66,7 +66,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       offline.getTime() + (MAX_SYNC_DELAY_MINUTES + 1) * 60_000,
     );
 
-    expect(tolak(offline, server)).toContain("paling lambat");
+    expect(tolak(offline, server)).toContain("up to");
   });
 
   it("menolak absen offline yang melewati pergantian hari", () => {
@@ -76,7 +76,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       wib("2026-08-20", "01:00"),
     );
 
-    expect(reason).toContain("hari yang sama");
+    expect(reason).toContain("same day");
   });
 
   it("absen kemarin tertahan batas jeda lebih dulu", () => {
@@ -85,7 +85,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       wib("2026-08-20", "09:00"),
     );
 
-    expect(reason).toContain("paling lambat");
+    expect(reason).toContain("up to");
   });
 
   it("menolak waktu yang terlalu jauh sebelum jam masuk", () => {
@@ -94,7 +94,7 @@ describe("alasanWaktuOfflineDitolak", () => {
       wib("2026-08-20", "09:00"),
     );
 
-    expect(reason).toContain("terlalu jauh sebelum jam masuk");
+    expect(reason).toContain("too early");
   });
 
   it("menerima datang dua jam sebelum jam masuk", () => {
@@ -124,7 +124,7 @@ describe("susunCatatanOffline", () => {
     );
 
     expect(noteField).toBe(
-      "[Absen offline pukul 07:55, diterima server 09:12]",
+      "[Offline attendance at 07:55, received by server at 09:12]",
     );
   });
 
@@ -136,6 +136,6 @@ describe("susunCatatanOffline", () => {
     );
 
     expect(noteField).toContain("Jaringan kantor mati");
-    expect(noteField.startsWith("[Absen offline")).toBe(true);
+    expect(noteField.startsWith("[Offline attendance")).toBe(true);
   });
 });

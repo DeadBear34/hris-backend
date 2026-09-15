@@ -7,7 +7,7 @@ export function parseIsoDate(date: IsoDate): Date {
   const [year, month, day] = date.split("-").map(Number);
 
   if (!year || !month || !day) {
-    throw new Error(`Tanggal tidak valid: ${date}`);
+    throw new Error(`Invalid date: ${date}`);
   }
 
   return new Date(Date.UTC(year, month - 1, day));

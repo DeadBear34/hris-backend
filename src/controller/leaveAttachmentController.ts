@@ -25,13 +25,13 @@ async function assertMayAccess(
   request: LeaveRequest,
 ): Promise<string> {
   if (!req.user)
-    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+    throw Unauthorized("You are not logged in, please log in first");
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+      "Your account is not linked to an employee record yet, please contact an admin first",
     );
   }
 
@@ -43,7 +43,9 @@ async function assertMayAccess(
     request.approver_id === employee.id;
 
   if (!allowed) {
-    throw Forbidden("Kamu tidak punya akses ke lampiran pengajuan cuti ini");
+    throw Forbidden(
+      "You don't have access to this leave request's attachments",
+    );
   }
 
   return employee.id;
@@ -57,7 +59,7 @@ export async function UploadLeaveAttachmentController(
   try {
     if (!isStorageConfigured()) {
       throw BadRequest(
-        "Penyimpanan lampiran belum dikonfigurasi, hubungi administrator",
+        "Attachment storage is not configured, please contact an administrator",
       );
     }
 
@@ -65,24 +67,22 @@ export async function UploadLeaveAttachmentController(
     const berkas = req.file;
 
     if (!berkas) {
-      throw BadRequest("Berkas lampiran wajib diunggah pada field 'file'");
+      throw BadRequest("An attachment must be uploaded in the 'file' field");
     }
 
     if (berkas.size > MAX_FILE_SIZE) {
-      throw BadRequest("Ukuran berkas maksimal 5 MB");
+      throw BadRequest("File must be 5 MB or smaller");
     }
 
     const request = await leaveRequestModel.findById(id);
-    if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!request) throw NotFound("Leave request not found");
 
     const employeeId = await assertMayAccess(req, res, request);
 
     const mime = detectImageMimeType(berkas.buffer);
 
     if (!mime) {
-      throw BadRequest(
-        "Lampiran harus berupa gambar JPEG, PNG, atau WebP yang sah",
-      );
+      throw BadRequest("Attachment must be a valid JPEG, PNG, or WebP image");
     }
 
     const storagePath = buildStoragePath(request.id, mime);
@@ -101,7 +101,7 @@ export async function UploadLeaveAttachmentController(
 
     res.status(201).json({
       success: true,
-      message: "Lampiran berhasil diunggah",
+      message: "Attachment uploaded successfully",
       data: attachment,
     });
   } catch (err) {
@@ -118,7 +118,7 @@ export async function ListLeaveAttachmentController(
     const { id } = res.locals.params as { id: string };
 
     const request = await leaveRequestModel.findById(id);
-    if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!request) throw NotFound("Leave request not found");
 
     await assertMayAccess(req, res, request);
 
@@ -138,19 +138,19 @@ export async function SignedUrlLeaveAttachmentController(
   try {
     if (!isStorageConfigured()) {
       throw BadRequest(
-        "Penyimpanan lampiran belum dikonfigurasi, hubungi administrator",
+        "Attachment storage is not configured, please contact an administrator",
       );
     }
 
     const { id } = res.locals.params as { id: string };
 
     const attachment = await attachmentModel.findById(id);
-    if (!attachment) throw NotFound("Lampiran tidak ditemukan");
+    if (!attachment) throw NotFound("Attachment not found");
 
     const request = await leaveRequestModel.findById(
       attachment.leave_request_id,
     );
-    if (!request) throw NotFound("Pengajuan cuti tidak ditemukan");
+    if (!request) throw NotFound("Leave request not found");
 
     await assertMayAccess(req, res, request);
 

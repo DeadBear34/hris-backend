@@ -56,7 +56,7 @@ export function pushToLocal(user_id: string, message: ServerEvent): number {
       socket.send(payload);
       delivered += 1;
     } catch (err) {
-      logger.error({ err, user_id }, "Gagal mengirim pesan ke soket");
+      logger.error({ err, user_id }, "Failed to send message to socket");
     }
   }
 

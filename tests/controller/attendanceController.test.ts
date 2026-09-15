@@ -300,7 +300,7 @@ describe("absensi masuk", () => {
 
     const res = await checkIn();
 
-    expect(res.body.message).toContain("terlambat 30 menit");
+    expect(res.body.message).toContain("30 minutes late");
   });
 
   it("menolak absen masuk kedua sambil menyebut jam absen sebelumnya", async () => {
@@ -325,7 +325,7 @@ describe("absensi masuk", () => {
     const res = await checkIn();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("bukan hari kerja");
+    expect(res.body.message).toContain("is not a workday");
   });
 
   it("menolak absen pada hari libur sambil menyebut namanya", async () => {
@@ -350,7 +350,7 @@ describe("absensi masuk", () => {
     const res = await checkIn();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("cuti");
+    expect(res.body.message).toContain("on approved leave");
   });
 
   it("menolak akun yang belum terhubung ke data karyawan", async () => {
@@ -359,7 +359,7 @@ describe("absensi masuk", () => {
     const res = await checkIn();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum terhubung ke data karyawan");
+    expect(res.body.message).toContain("not linked to an employee record");
   });
 
   it("menolak karyawan yang sudah dinonaktifkan", async () => {
@@ -382,7 +382,7 @@ describe("absensi masuk", () => {
     const res = await checkIn();
 
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain("mengundurkan diri");
+    expect(res.body.message).toContain("resigned");
   });
 
   it("menolak absen ketika belum ada jadwal kerja yang berlaku", async () => {
@@ -393,7 +393,7 @@ describe("absensi masuk", () => {
     const res = await checkIn();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("jadwal kerja");
+    expect(res.body.message).toContain("work schedule");
   });
 });
 
@@ -423,7 +423,7 @@ describe("absensi pulang", () => {
     const res = await checkOut();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum melakukan absensi masuk");
+    expect(res.body.message).toContain("haven't checked in");
   });
 
   it("menolak absen pulang pada baris yang tidak punya jam masuk", async () => {
@@ -463,7 +463,7 @@ describe("absensi pulang", () => {
 
     const res = await checkOut();
 
-    expect(res.body.message).toContain("8 jam 30 menit");
+    expect(res.body.message).toContain("8 hours 30 minutes");
   });
 
   it("menolak absen pulang kedua sambil menyebut jam sebelumnya", async () => {
@@ -489,7 +489,7 @@ describe("absensi pulang", () => {
     const res = await checkOut();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("sebelum jam kerja dimulai");
+    expect(res.body.message).toContain("before work starts");
   });
 
   it("melaporkan bentrok ketika absen pulang sudah dicatat permintaan lain", async () => {
@@ -543,7 +543,7 @@ describe("ringkasan hari ini", () => {
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.body.data.can_check_in).toBe(false);
-    expect(res.body.data.blocked_reason).toContain("bukan hari kerja");
+    expect(res.body.data.blocked_reason).toContain("is not a workday");
   });
 });
 
@@ -1114,7 +1114,7 @@ describe("batas absen masuk", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("08:10");
-    expect(res.body.message).toContain("tidak hadir");
+    expect(res.body.message).toContain("absent");
     expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
   });
 
@@ -1241,8 +1241,8 @@ describe("absen offline yang disinkronkan setelah online kembali", () => {
     const [data] = (attendanceModel.createCheckIn as jest.Mock).mock
       .calls[0] as [{ note: string }];
 
-    expect(data.note).toContain("Absen offline pukul 07:58");
-    expect(data.note).toContain("diterima server 09:30");
+    expect(data.note).toContain("Offline attendance at 07:58");
+    expect(data.note).toContain("received by server at 09:30");
   });
 
   it("mempertahankan catatan asli karyawan di belakang penanda", async () => {
@@ -1284,7 +1284,7 @@ describe("absen offline yang disinkronkan setelah online kembali", () => {
     const res = await checkInOffline("2026-03-10T09:00:00+07:00");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("masa depan");
+    expect(res.body.message).toContain("in the future");
     expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
   });
 
@@ -1294,7 +1294,7 @@ describe("absen offline yang disinkronkan setelah online kembali", () => {
     const res = await checkInOffline("2026-03-10T08:00:00+07:00");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("paling lambat");
+    expect(res.body.message).toContain("up to");
   });
 
   it("menolak absen offline milik hari sebelumnya", async () => {
@@ -1303,7 +1303,7 @@ describe("absen offline yang disinkronkan setelah online kembali", () => {
     const res = await checkInOffline("2026-03-09T23:30:00+07:00");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("hari yang sama");
+    expect(res.body.message).toContain("same day");
   });
 
   it("menolak format waktu yang tidak sah sebelum menyentuh basis data", async () => {
@@ -1434,7 +1434,7 @@ describe("absen pulang offline", () => {
     const res = await checkOutOffline("2026-03-10T18:00:00+07:00");
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("masa depan");
+    expect(res.body.message).toContain("in the future");
   });
 });
 

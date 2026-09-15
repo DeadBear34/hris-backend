@@ -36,7 +36,7 @@ const fakeNotification = {
   id: NOTIF_ID,
   recipient_user_id: USER_ID,
   type: "leave_approval_needed" as const,
-  title: "Pengajuan cuti baru",
+  title: "New leave request",
   message: "Yusuf mengajukan Cuti Duka 1 hari pada 2027-07-12",
   link: "/leave-management",
   entity: "leave_request",
@@ -70,7 +70,7 @@ describe("GET /api/v1/notifications", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0].title).toBe("Pengajuan cuti baru");
+    expect(res.body.data[0].title).toBe("New leave request");
   });
 
   it("menyaring berdasarkan penerima, bukan parameter dari pengguna", async () => {

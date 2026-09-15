@@ -15,14 +15,14 @@ import { startActivity } from "../helpers/activityLog.js";
 
 async function requesterEmployee(req: Request): Promise<Employee> {
   if (!req.user) {
-    throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+    throw Unauthorized("You are not logged in, please log in first");
   }
 
   const employee = await employeeModel.findByUserId(req.user.id);
 
   if (!employee) {
     throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi admin terlebih dahulu",
+      "Your account is not linked to an employee record yet, please contact an admin first",
     );
   }
 
@@ -32,7 +32,7 @@ async function requesterEmployee(req: Request): Promise<Employee> {
 async function targetEmployee(id: string): Promise<Employee> {
   const employee = await employeeModel.findById(id);
 
-  if (!employee) throw NotFound("Karyawan tidak ditemukan");
+  if (!employee) throw NotFound("Employee not found");
 
   return employee;
 }
@@ -40,7 +40,7 @@ async function targetEmployee(id: string): Promise<Employee> {
 function assertStorageReady(): void {
   if (!isStorageConfigured()) {
     throw BadRequest(
-      "Penyimpanan foto profil belum dikonfigurasi, hubungi administrator",
+      "Profile photo storage is not configured, please contact an administrator",
     );
   }
 }
@@ -53,7 +53,7 @@ async function discardOldPhoto(storagePath: string | null): Promise<void> {
   } catch (err) {
     logger.warn(
       { err, storagePath },
-      "Foto profil lama gagal dihapus dari penyimpanan",
+      "Failed to delete the old profile photo from storage",
     );
   }
 }
@@ -65,19 +65,17 @@ async function replacePhoto(
   assertStorageReady();
 
   if (!berkas) {
-    throw BadRequest("Foto profil wajib diunggah pada field 'photo'");
+    throw BadRequest("A profile photo must be uploaded in the 'photo' field");
   }
 
   if (berkas.size > MAX_FILE_SIZE) {
-    throw BadRequest("Ukuran foto profil maksimal 5 MB");
+    throw BadRequest("Profile photo must be 5 MB or smaller");
   }
 
   const mime = detectImageMimeType(berkas.buffer);
 
   if (!mime) {
-    throw BadRequest(
-      "Foto profil harus berupa gambar JPEG, PNG, atau WebP yang sah",
-    );
+    throw BadRequest("Profile photo must be a valid JPEG, PNG, or WebP image");
   }
 
   const storagePath = buildPhotoPath(employee.id, mime);
@@ -88,7 +86,7 @@ async function replacePhoto(
 
   if (!updated) {
     await discardOldPhoto(storagePath);
-    throw NotFound("Karyawan tidak ditemukan");
+    throw NotFound("Employee not found");
   }
 
   await discardOldPhoto(employee.photo_path);
@@ -102,7 +100,7 @@ async function replacePhoto(
 
 async function removePhoto(employee: Employee) {
   if (!employee.photo_path) {
-    throw BadRequest("Karyawan ini belum memiliki foto profil");
+    throw BadRequest("This employee has no profile photo");
   }
 
   assertStorageReady();
@@ -122,7 +120,7 @@ export async function UploadOwnPhotoController(
 
     res.json({
       success: true,
-      message: "Foto profil berhasil diperbarui",
+      message: "Profile photo updated successfully",
       data,
     });
   } catch (err) {
@@ -139,7 +137,7 @@ export async function DeleteOwnPhotoController(
     const employee = await requesterEmployee(req);
     await removePhoto(employee);
 
-    res.json({ success: true, message: "Foto profil berhasil dihapus" });
+    res.json({ success: true, message: "Profile photo deleted successfully" });
   } catch (err) {
     next(err);
   }
@@ -160,12 +158,12 @@ export async function UploadEmployeePhotoController(
       action: "employee.photo_upload",
       entity: "employee",
       entity_id: employee.id,
-      summary: `Foto profil ${employee.full_name} diperbarui`,
+      summary: `Profile photo for ${employee.full_name} updated`,
     });
 
     res.json({
       success: true,
-      message: `Foto profil ${employee.full_name} berhasil diperbarui`,
+      message: `Profile photo for ${employee.full_name} updated successfully`,
       data,
     });
   } catch (err) {
@@ -188,12 +186,12 @@ export async function DeleteEmployeePhotoController(
       action: "employee.photo_delete",
       entity: "employee",
       entity_id: employee.id,
-      summary: `Foto profil ${employee.full_name} dihapus`,
+      summary: `Profile photo for ${employee.full_name} deleted`,
     });
 
     res.json({
       success: true,
-      message: `Foto profil ${employee.full_name} berhasil dihapus`,
+      message: `Profile photo for ${employee.full_name} deleted successfully`,
     });
   } catch (err) {
     next(err);

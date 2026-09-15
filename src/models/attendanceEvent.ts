@@ -88,7 +88,7 @@ export async function recordEvent(
 
   const event = result.rows[0];
   if (!event) {
-    throw new Error("Gagal mencatat kejadian absensi");
+    throw new Error("Failed to record attendance event");
   }
 
   return event;

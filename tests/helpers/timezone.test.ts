@@ -123,7 +123,7 @@ describe("menitDariJam", () => {
 
   it("menolak format yang tidak dapat dibaca", () => {
     expect(() => minutesFromClockTime("delapan pagi")).toThrow(
-      "Format jam tidak valid",
+      "Invalid time format",
     );
   });
 });
@@ -136,7 +136,7 @@ describe("namaHariDariTanggal", () => {
   });
 
   it("menolak tanggal yang tidak dapat dibaca", () => {
-    expect(() => dayNameOf("bukan-tanggal")).toThrow("Tanggal tidak valid");
+    expect(() => dayNameOf("bukan-tanggal")).toThrow("Invalid date");
   });
 });
 

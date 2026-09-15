@@ -31,6 +31,7 @@ import {
   Conflict,
   Unauthorized,
 } from "../helpers/appError.js";
+import { plural } from "../helpers/plural.js";
 
 // Satu masalah pada satu kolom
 interface FieldError {
@@ -51,7 +52,7 @@ async function checkRelations(
     if (!dept) {
       errors.push({
         field: "department_id",
-        message: "Departemen tidak ditemukan",
+        message: "Department not found",
       });
     }
   }
@@ -59,7 +60,7 @@ async function checkRelations(
   if (data.position_id) {
     const pos = await positionModel.findById(data.position_id);
     if (!pos) {
-      errors.push({ field: "position_id", message: "Jabatan tidak ditemukan" });
+      errors.push({ field: "position_id", message: "Position not found" });
     }
   }
 
@@ -67,7 +68,7 @@ async function checkRelations(
     if (currentId && data.manager_id === currentId) {
       errors.push({
         field: "manager_id",
-        message: "Karyawan tidak bisa menjadi manajer dirinya sendiri",
+        message: "An employee cannot be their own manager",
       });
     } else {
       const manager = await employeeModel.findById(data.manager_id);
@@ -75,7 +76,7 @@ async function checkRelations(
       if (!manager) {
         errors.push({
           field: "manager_id",
-          message: "Manajer tidak ditemukan",
+          message: "Manager not found",
         });
       } else if (currentId) {
         const isCycle = await employeeModel.isDescendantOf(
@@ -87,7 +88,7 @@ async function checkRelations(
           errors.push({
             field: "manager_id",
             message:
-              "Manajer yang dipilih merupakan bawahan dari karyawan ini, sehingga akan membentuk struktur melingkar",
+              "The selected manager reports to this employee, which would create a circular structure",
           });
         }
       }
@@ -144,7 +145,7 @@ export async function DetailEmployeeController(
     const { id } = res.locals.params as { id: string };
 
     const employee = await employeeModel.findDetailById(id);
-    if (!employee) throw NotFound("Karyawan tidak ditemukan");
+    if (!employee) throw NotFound("Employee not found");
 
     res.json({ success: true, data: withPhotoUrl(employee) });
   } catch (err) {
@@ -212,14 +213,14 @@ async function checkRowAgainstDatabase(
     return [
       {
         field: "email",
-        message: `Email sama dengan baris ke-${twinIndex + 1} pada permintaan ini`,
+        message: `Email duplicates row ${twinIndex + 1} in this request`,
       },
     ];
   }
   seenEmails.set(row.email, index);
 
   if (takenEmails.has(row.email)) {
-    return [{ field: "email", message: "Email sudah terdaftar" }];
+    return [{ field: "email", message: "Email is already registered" }];
   }
 
   // Satu CSV biasanya menunjuk departemen dan jabatan yang itu-itu saja,
@@ -264,7 +265,7 @@ function indexedObjectToRows(payload: Record<string, unknown>): unknown[] {
   for (const [position, entry] of entries.entries()) {
     if (seen.has(entry.key)) {
       throw BadRequest(
-        `Kunci ${entry.key} muncul lebih dari sekali pada kiriman`,
+        `Key ${entry.key} appears more than once in the payload`,
       );
     }
     seen.add(entry.key);
@@ -276,7 +277,7 @@ function indexedObjectToRows(payload: Record<string, unknown>): unknown[] {
     const accepted = entries.map((entry) => entry.key);
 
     throw BadRequest(
-      `Kunci karyawan harus berurutan dari 0 sampai ${entries.length - 1} tanpa ada yang terlewat. Yang hilang: ${missing.join(", ")}. Yang diterima: ${accepted.join(", ")}`,
+      `Employee keys must run from 0 to ${entries.length - 1} with no gaps. Missing: ${missing.join(", ")}. Received: ${accepted.join(", ")}`,
       { expected: entries.length, missing, received: accepted },
     );
   }
@@ -391,7 +392,7 @@ function rejectFailedRows(
       status: "failed",
       context,
       entity: "employee",
-      summary: `Penambahan karyawan ditolak: ${first.message}`,
+      summary: `Adding employees rejected: ${first.message}`,
       occurred_at: occurredAt,
       metadata: {
         email: first.email,
@@ -409,7 +410,7 @@ function rejectFailedRows(
     status: "failed",
     context,
     entity: "employee",
-    summary: `Penambahan karyawan ditolak, ${failed.length} dari ${rawRows.length} baris bermasalah`,
+    summary: `Adding employees rejected, ${failed.length} of ${rawRows.length} rows have problems`,
     occurred_at: occurredAt,
     metadata: {
       total: rawRows.length,
@@ -427,7 +428,7 @@ function rejectFailedRows(
   });
 
   throw BadRequest(
-    `${failed.length} dari ${rawRows.length} baris tidak dapat diproses, tidak ada karyawan yang ditambahkan`,
+    `${failed.length} of ${rawRows.length} rows could not be processed, no employees were added`,
     {
       total: rawRows.length,
       valid: rawRows.length - failed.length,
@@ -477,7 +478,7 @@ async function insertWithAccounts(
   // akan tersimpan tanpa akun
   if (accounts.length !== rows.length) {
     throw new Error(
-      `Jumlah akun yang dibuat (${accounts.length}) tidak cocok dengan jumlah karyawan (${rows.length})`,
+      `Number of accounts created (${accounts.length}) does not match the number of employees (${rows.length})`,
     );
   }
 
@@ -517,7 +518,7 @@ export async function CreateEmployeeController(
 
   try {
     if (!req.user)
-      throw Unauthorized("Kamu belum login, silakan masuk terlebih dahulu");
+      throw Unauthorized("You are not logged in, please log in first");
 
     // Diambil di sini, bukan saat log ditulis, supaya yang tercatat adalah
     // kapan permintaannya mulai diproses
@@ -531,7 +532,7 @@ export async function CreateEmployeeController(
 
     if (rawRows.length > MAX_EMPLOYEES_PER_REQUEST) {
       throw BadRequest(
-        `Maksimal ${MAX_EMPLOYEES_PER_REQUEST} karyawan dalam satu permintaan`,
+        `At most ${MAX_EMPLOYEES_PER_REQUEST} employees per request`,
       );
     }
 
@@ -553,8 +554,8 @@ export async function CreateEmployeeController(
     await client.query("COMMIT");
 
     const message = isMany
-      ? `${created.length} karyawan berhasil ditambahkan. Sampaikan password awal kepada masing-masing karyawan dan minta menggantinya saat login pertama.`
-      : "Karyawan berhasil ditambahkan. Sampaikan password awal kepada karyawan dan minta menggantinya saat login pertama.";
+      ? `${created.length} employees added successfully. Share each employee's initial password and ask them to change it on first login.`
+      : "Employee added successfully. Share the initial password with the employee and ask them to change it on first login.";
 
     // dicatat setelah COMMIT, jadi tidak pernah menyatakan berhasil lebih awal
     recordActivity({
@@ -564,8 +565,8 @@ export async function CreateEmployeeController(
       entity: "employee",
       entity_id: isMany ? null : (created[0]?.employee.id ?? null),
       summary: isMany
-        ? `${created.length} karyawan ditambahkan`
-        : `Karyawan ${created[0]?.employee.full_name ?? ""} ditambahkan`,
+        ? `${created.length} employees added`
+        : `Employee ${created[0]?.employee.full_name ?? ""} added`,
       occurred_at: occurredAt,
       metadata: {
         created: created.length,
@@ -600,7 +601,7 @@ export async function CreateEmployeeController(
         status: "failed",
         context: logContext ?? requestContext(req),
         entity: "employee",
-        summary: "Penambahan karyawan gagal karena galat tak terduga",
+        summary: "Adding employees failed due to an unexpected error",
         occurred_at: logOccurredAt ?? new Date(),
         metadata: {
           error: err instanceof Error ? err.message : String(err),
@@ -625,7 +626,7 @@ export async function UpdateEmployeeController(
     const data = req.body as UpdateEmployeeInput;
 
     const existing = await employeeModel.findById(id);
-    if (!existing) throw NotFound("Karyawan tidak ditemukan");
+    if (!existing) throw NotFound("Employee not found");
 
     await assertRelationsExist(data, id);
 
@@ -635,7 +636,7 @@ export async function UpdateEmployeeController(
       action: "employee.update",
       entity: "employee",
       entity_id: id,
-      summary: `Data karyawan ${existing.full_name} diubah`,
+      summary: `Employee ${existing.full_name} updated`,
       metadata: { fields: Object.keys(data) },
     });
 
@@ -657,13 +658,13 @@ export async function DeleteEmployeeController(
     const { id } = res.locals.params as { id: string };
 
     const existing = await employeeModel.findById(id);
-    if (!existing) throw NotFound("Karyawan tidak ditemukan");
+    if (!existing) throw NotFound("Employee not found");
 
     const subordinates = await employeeModel.findSubordinates(id);
 
     if (subordinates.length > 0) {
       throw BadRequest(
-        `Karyawan tidak dapat dihapus karena masih menjadi manajer dari ${subordinates.length} karyawan. Pindahkan mereka ke manajer lain terlebih dahulu.`,
+        `Employee cannot be deleted because they still manage ${plural(subordinates.length, "employee")}. Move them to another manager first.`,
         { subordinates: subordinates },
       );
     }
@@ -682,11 +683,11 @@ export async function DeleteEmployeeController(
       action: "employee.delete",
       entity: "employee",
       entity_id: id,
-      summary: `Karyawan ${existing.full_name} dihapus`,
+      summary: `Employee ${existing.full_name} deleted`,
       metadata: { employee_number: existing.employee_number },
     });
 
-    res.json({ success: true, message: "Karyawan berhasil dihapus" });
+    res.json({ success: true, message: "Employee deleted successfully" });
   } catch (err) {
     await client.query("ROLLBACK");
     next(err);

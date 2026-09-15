@@ -106,7 +106,7 @@ describe("createToken", () => {
         token_hash: "hash",
         expires_at: new Date(),
       }),
-    ).rejects.toThrow("Gagal menyimpan token verifikasi");
+    ).rejects.toThrow("Failed to save verification token");
   });
 });
 

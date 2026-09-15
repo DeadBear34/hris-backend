@@ -403,7 +403,7 @@ describe("POST /api/v1/auth/login", () => {
       .send({ email: "ismail@awan.io", password: "password123" });
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("menunggu persetujuan");
+    expect(res.body.message).toContain("waiting for admin approval");
   });
 
   it("menolak akun yang dinonaktifkan", async () => {
@@ -414,7 +414,7 @@ describe("POST /api/v1/auth/login", () => {
       .send({ email: "ismail@awan.io", password: "password123" });
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toContain("dinonaktifkan");
+    expect(res.body.message).toContain("deactivated");
   });
 
   it("tidak menerbitkan token untuk akun yang belum disetujui", async () => {
@@ -818,7 +818,7 @@ describe("PATCH /api/v1/users/:id/approve", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("sudah pernah disetujui");
+    expect(res.body.message).toContain("already been approved");
     expect(userModel.approveUser).not.toHaveBeenCalled();
   });
 
@@ -930,7 +930,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("akun sendiri");
+    expect(res.body.message).toContain("your own account");
     expect(userModel.setUserActive).not.toHaveBeenCalled();
   });
 
@@ -957,7 +957,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
       .send({ is_active: true });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum pernah disetujui");
+    expect(res.body.message).toContain("never been approved");
     expect(userModel.setUserActive).not.toHaveBeenCalled();
   });
 
@@ -992,7 +992,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
       .send({ is_active: false });
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toContain("dinonaktifkan");
+    expect(res.body.message).toContain("deactivated");
     expect(userModel.setUserActive).toHaveBeenCalledWith(TARGET_ID, false);
   });
 
@@ -1009,7 +1009,7 @@ describe("PATCH /api/v1/users/:id/status", () => {
       .send({ is_active: true });
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toContain("diaktifkan");
+    expect(res.body.message).toContain("activated");
     expect(userModel.setUserActive).toHaveBeenCalledWith(TARGET_ID, true);
   });
 

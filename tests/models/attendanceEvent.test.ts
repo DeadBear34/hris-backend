@@ -92,7 +92,7 @@ describe("recordEvent", () => {
         received_at: new Date(),
         source: "online",
       }),
-    ).rejects.toThrow("Gagal mencatat kejadian absensi");
+    ).rejects.toThrow("Failed to record attendance event");
   });
 });
 

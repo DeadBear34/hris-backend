@@ -5,6 +5,7 @@ import * as employeeModel from "../models/employee.js";
 import type { NewNotification } from "../models/notification.js";
 import { dispatch } from "../realtime/dispatcher.js";
 import { toView } from "../realtime/event.js";
+import { plural } from "./plural.js";
 
 // Simpan dulu, baru dorong. Urutannya penting: jangan sampai penerima
 // melihat notifikasi yang ternyata gagal disimpan
@@ -24,7 +25,7 @@ function persist(rows: NewNotification[]): void {
     .catch((err) => {
       logger.error(
         { err, type: rows[0]?.type, recipients: rows.length },
-        "Gagal menyimpan notifikasi",
+        "Failed to save notification",
       );
     });
 }
@@ -43,12 +44,12 @@ function clearPending(type: NewNotification["type"], entity_id: string): void {
       );
     })
     .catch((err) => {
-      logger.error({ err, type, entity_id }, "Gagal menghapus notifikasi");
+      logger.error({ err, type, entity_id }, "Failed to delete notification");
     });
 }
 
 function dateRangeLabel(start: string, end: string): string {
-  return start === end ? start : `${start} sampai ${end}`;
+  return start === end ? start : `${start} to ${end}`;
 }
 
 export interface LeaveSubmittedInput {
@@ -80,15 +81,15 @@ export async function notifyLeaveSubmitted(
       recipients.map((recipient_user_id) => ({
         recipient_user_id,
         type: "leave_approval_needed" as const,
-        title: "Pengajuan cuti baru",
-        message: `${input.requester_name} mengajukan ${input.leave_type_name} ${input.total_days} hari pada ${dateRangeLabel(input.start_date, input.end_date)}`,
+        title: "New leave request",
+        message: `${input.requester_name} requested ${plural(input.total_days, "day")} of ${input.leave_type_name} for ${dateRangeLabel(input.start_date, input.end_date)}`,
         link: "/leave-management",
         entity: "leave_request",
         entity_id: input.request_id,
       })),
     );
   } catch (err) {
-    logger.error({ err }, "Gagal menentukan penerima notifikasi cuti");
+    logger.error({ err }, "Failed to determine leave notification recipients");
   }
 }
 
@@ -118,15 +119,15 @@ export async function notifyLeaveDecided(
   const recipient = await userIdOf(input.requester_employee_id);
   if (!recipient) return;
 
-  const decided = input.decision === "approved" ? "disetujui" : "ditolak";
-  const note = input.decision_note ? `. Catatan: ${input.decision_note}` : "";
+  const decided = input.decision === "approved" ? "approved" : "rejected";
+  const note = input.decision_note ? `. Note: ${input.decision_note}` : "";
 
   persist([
     {
       recipient_user_id: recipient,
       type: "leave_status_changed",
-      title: `Pengajuan cuti ${decided}`,
-      message: `${input.leave_type_name} pada ${dateRangeLabel(input.start_date, input.end_date)} ${decided}${note}`,
+      title: `Leave request ${decided}`,
+      message: `${input.leave_type_name} for ${dateRangeLabel(input.start_date, input.end_date)} ${decided}${note}`,
       link: "/leave",
       entity: "leave_request",
       entity_id: input.request_id,
@@ -154,15 +155,18 @@ export async function notifyAccountNeedsApproval(
       recipients.map((recipient_user_id) => ({
         recipient_user_id,
         type: "account_approval_needed" as const,
-        title: "Akun baru menunggu persetujuan",
-        message: `${input.full_name} (${input.email}) mendaftar dan menunggu persetujuan`,
+        title: "New account waiting for approval",
+        message: `${input.full_name} (${input.email}) registered and is waiting for approval`,
         link: "/approval",
         entity: "user",
         entity_id: input.user_id,
       })),
     );
   } catch (err) {
-    logger.error({ err }, "Gagal menentukan penerima notifikasi pendaftaran");
+    logger.error(
+      { err },
+      "Failed to determine registration notification recipients",
+    );
   }
 }
 

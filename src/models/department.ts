@@ -53,7 +53,7 @@ export async function createDepartment(
 
   const department = result.rows[0];
   if (!department) {
-    throw new Error("Gagal menyimpan departemen");
+    throw new Error("Failed to save department");
   }
 
   return department;

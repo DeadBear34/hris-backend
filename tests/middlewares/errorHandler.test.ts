@@ -48,8 +48,8 @@ function jalankan(err: unknown): HasilRespons {
 
 function buatZodError() {
   const schema = z.object({
-    email: z.email("Format email tidak valid"),
-    password: z.string().min(8, "Password minimal 8 karakter"),
+    email: z.email("Invalid email format"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
   });
 
   const result = schema.safeParse({ email: "bukanemail", password: "abc" });
@@ -114,7 +114,7 @@ describe("errorHandler untuk error validasi", () => {
     const result = jalankan(buatZodError());
     const errors = result.body.errors as { field: string; message: string }[];
 
-    expect(errors[0]?.message).toBe("Format email tidak valid");
+    expect(errors[0]?.message).toBe("Invalid email format");
   });
 
   it("tidak mencatat error validasi ke log", () => {
@@ -152,15 +152,15 @@ describe("errorHandler untuk AppError", () => {
   });
 
   it("memakai status dan kode dari error yang dilempar", () => {
-    const result = jalankan(NotFound("Karyawan tidak ditemukan"));
+    const result = jalankan(NotFound("Employee not found"));
 
     expect(result.status).toBe(404);
     expect(result.body.code).toBe("NOT_FOUND");
-    expect(result.body.message).toBe("Karyawan tidak ditemukan");
+    expect(result.body.message).toBe("Employee not found");
   });
 
   it("meneruskan status konflik", () => {
-    const result = jalankan(Conflict("Email sudah terdaftar"));
+    const result = jalankan(Conflict("Email is already registered"));
 
     expect(result.status).toBe(409);
     expect(result.body.code).toBe("CONFLICT");
@@ -176,7 +176,7 @@ describe("errorHandler untuk AppError", () => {
   });
 
   it("tidak menyertakan properti details jika tidak ada", () => {
-    const result = jalankan(BadRequest("Permintaan tidak valid"));
+    const result = jalankan(BadRequest("Invalid request"));
 
     expect(result.body).not.toHaveProperty("details");
   });
@@ -210,7 +210,7 @@ describe("errorHandler untuk error tak terduga", () => {
   it("tidak membocorkan pesan asli error", () => {
     const result = jalankan(new Error("relation users does not exist"));
 
-    expect(result.body.message).toBe("Terjadi kesalahan pada server");
+    expect(result.body.message).toBe("An error occurred on the server");
   });
 
   it("tidak menyertakan stack trace dalam respons", () => {
@@ -231,6 +231,6 @@ describe("errorHandler untuk error tak terduga", () => {
     const result = jalankan("kesalahan berupa teks");
 
     expect(result.status).toBe(500);
-    expect(result.body.message).toBe("Terjadi kesalahan pada server");
+    expect(result.body.message).toBe("An error occurred on the server");
   });
 });

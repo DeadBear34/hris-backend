@@ -29,21 +29,20 @@ import {
 import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { notifyAccountNeedsApproval } from "../helpers/notify.js";
+import { plural } from "../helpers/plural.js";
 
 const CODE_VALID_MINUTES = 10;
 const TAUTAN_BERLAKU_MENIT = 15;
 const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 
-const MESSAGE_INVALID_CODE =
-  "Kode verifikasi tidak valid atau sudah kedaluwarsa";
-const MESSAGE_INVALID_LINK =
-  "Tautan reset password tidak valid atau sudah kedaluwarsa";
+const MESSAGE_INVALID_CODE = "Verification code is invalid or has expired";
+const MESSAGE_INVALID_LINK = "Password reset link is invalid or has expired";
 
 const MESSAGE_RESEND =
-  "Kalau email tersebut terdaftar dan belum diverifikasi, kode verifikasi baru sudah kami kirim.";
+  "If that email is registered and not yet verified, we've sent a new verification code.";
 const MESSAGE_FORGOT_PASSWORD =
-  "Kalau email tersebut terdaftar, tautan untuk mengatur ulang password sudah kami kirim.";
+  "If that email is registered, we've sent a link to reset your password.";
 
 interface RequestMeta {
   ip_address: string | null;
@@ -86,13 +85,13 @@ async function sendVerificationCode(
 
   const sent = await sendMailWithoutFailing(
     () => sendMail({ to: email, subject: body.subject, html: body.html }),
-    "Gagal mengirim email verifikasi",
+    "Failed to send verification email",
     { email },
   );
 
   if (!sent) {
     logFallback(
-      "Email gagal dikirim, kode verifikasi dicetak di sini agar pengembangan dapat dilanjutkan",
+      "Email could not be sent, the verification code is printed here so development can continue",
       { email, verification_code: code },
     );
   }
@@ -114,8 +113,8 @@ async function verifikasiToken(
 
   if (!token) {
     logger.warn(
-      { email, purpose, reason: "token belum pernah diterbitkan" },
-      "Verifikasi token ditolak",
+      { email, purpose, reason: "token was never issued" },
+      "Token verification rejected",
     );
     throw BadRequest(failureMessage);
   }
@@ -123,18 +122,21 @@ async function verifikasiToken(
   let reason: string | null = null;
 
   if (token.consumed_at) {
-    reason = "token sudah digunakan";
+    reason = "token already used";
   } else if (token.expires_at.getTime() <= Date.now()) {
-    reason = "token sudah kedaluwarsa";
+    reason = "token expired";
   } else if (token.attempts >= MAX_ATTEMPTS) {
-    reason = "percobaan melebihi batas";
+    reason = "attempt limit exceeded";
   } else if (!(await verifyPassword(token.token_hash, value))) {
-    reason = "nilai token tidak cocok";
+    reason = "token value does not match";
   }
 
   if (reason) {
     await increaseAttempts(token);
-    logger.warn({ email, purpose, alasan: reason }, "Verifikasi token ditolak");
+    logger.warn(
+      { email, purpose, alasan: reason },
+      "Token verification rejected",
+    );
     throw BadRequest(failureMessage);
   }
 
@@ -205,11 +207,11 @@ export async function RegisterController(
         entity_id: existing.id,
         actor_user_id: existing.id,
         actor_email: email,
-        summary: `Pendaftaran ditolak, email ${email} sudah terdaftar`,
-        metadata: { reason: "email_sudah_terdaftar" },
+        summary: `Registration rejected, email ${email} is already registered`,
+        metadata: { reason: "email_already_registered" },
       });
 
-      throw Conflict("Email sudah terdaftar");
+      throw Conflict("Email is already registered");
     }
 
     // Pernah mendaftar tapi belum verifikasi: kirim ulang kodenya saja,
@@ -224,14 +226,14 @@ export async function RegisterController(
         actor_user_id: existing.id,
         actor_email: email,
         actor_name: full_name,
-        summary: `Kode verifikasi dikirim ulang ke ${email}`,
-        metadata: { reason: "belum_diverifikasi", resent: true },
+        summary: `Verification code resent to ${email}`,
+        metadata: { reason: "not_verified", resent: true },
       });
 
       res.json({
         success: true,
         message:
-          "Email ini sudah pernah didaftarkan tetapi belum diverifikasi. Kode verifikasi baru sudah dikirim, silakan lanjutkan ke halaman verifikasi.",
+          "This email was registered before but has not been verified. A new verification code has been sent, please continue to the verification page.",
         data: { email, verification_required: true },
       });
       return;
@@ -257,7 +259,7 @@ export async function RegisterController(
       actor_user_id: user.id,
       actor_email: user.email,
       actor_name: employee.full_name,
-      summary: `${employee.full_name} mendaftar dengan email ${user.email}`,
+      summary: `${employee.full_name} registered with email ${user.email}`,
       metadata: {
         employee_id: employee.id,
         employee_number: employee.employee_number,
@@ -268,7 +270,7 @@ export async function RegisterController(
     res.status(201).json({
       success: true,
       message:
-        "Pendaftaran berhasil. Kami sudah mengirim kode verifikasi ke email kamu. Setelah email terverifikasi, akun masih menunggu persetujuan HR.",
+        "Registration successful. We've sent a verification code to your email. After your email is verified, your account still needs HR approval.",
       data: {
         id: user.id,
         email: user.email,
@@ -316,7 +318,7 @@ export async function VerifyEmailController(
     res.json({
       success: true,
       message:
-        "Email berhasil diverifikasi. Akun kamu sekarang menunggu persetujuan dari HR.",
+        "Email verified successfully. Your account is now waiting for HR approval.",
       data: { email: user.email, email_verified: true },
     });
   } catch (err) {
@@ -340,7 +342,7 @@ export async function ResendVerificationController(
 
       if (remainder > 0) {
         throw TooManyRequests(
-          `Mohon tunggu ${Math.ceil(remainder / 1000)} detik sebelum meminta kode verifikasi baru`,
+          `Please wait ${plural(Math.ceil(remainder / 1000), "second")} before requesting a new verification code`,
         );
       }
     }
@@ -395,13 +397,13 @@ export async function ForgotPasswordController(
 
       const sent = await sendMailWithoutFailing(
         () => sendMail({ to: email, subject: body.subject, html: body.html }),
-        "Gagal mengirim email reset password",
+        "Failed to send password reset email",
         { email },
       );
 
       if (!sent) {
         logFallback(
-          "Email gagal dikirim, tautan reset password dicetak di sini agar pengembangan dapat dilanjutkan",
+          "Email could not be sent, the password reset link is printed here so development can continue",
           { email, reset_link: link },
         );
       }
@@ -449,13 +451,14 @@ export async function ResetPasswordController(
 
     await sendMailWithoutFailing(
       () => sendMail({ to: email, subject: body.subject, html: body.html }),
-      "Gagal mengirim email pemberitahuan reset password",
+      "Failed to send password reset notification email",
       { email },
     );
 
     res.json({
       success: true,
-      message: "Password berhasil diubah. Silakan login memakai password baru.",
+      message:
+        "Password changed successfully. Please log in with your new password.",
     });
   } catch (err) {
     next(err);

@@ -120,7 +120,7 @@ describe("model holiday", () => {
         { holiday_date: "2026-08-17", name: "Kemerdekaan" },
         fakeDb as never,
       ),
-    ).rejects.toThrow("Gagal menyimpan hari libur");
+    ).rejects.toThrow("Failed to save holiday");
   });
 });
 
@@ -359,7 +359,7 @@ describe("model leaveBalance", () => {
         amount: 1,
         type: "accrual",
       }),
-    ).rejects.toThrow("Gagal menyimpan transaksi saldo cuti");
+    ).rejects.toThrow("Failed to save leave balance transaction");
   });
 
   it("menghitung saldo dari penjumlahan seluruh baris", async () => {
@@ -464,7 +464,7 @@ describe("model leaveAttachment", () => {
         },
         fakeDb as never,
       ),
-    ).rejects.toThrow("Gagal menyimpan lampiran");
+    ).rejects.toThrow("Failed to save attachment");
   });
 
   it("mengambil lampiran milik satu pengajuan", async () => {

@@ -53,7 +53,7 @@ export async function createPosition(data: PositionInput): Promise<Position> {
 
   const position = result.rows[0];
   if (!position) {
-    throw new Error("Gagal menyimpan jabatan");
+    throw new Error("Failed to save position");
   }
 
   return position;

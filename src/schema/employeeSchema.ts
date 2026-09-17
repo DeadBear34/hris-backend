@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 import { todayInOfficeZone } from "../helpers/timezone.js";
 
 // Sel kosong pada CSV terbaca sebagai string kosong, bukan tidak ada. Tanpa ini
@@ -158,7 +159,8 @@ export const updateOwnProfileSchema = employeeDataSchema
     birth_date: true,
     address: true,
   })
-  .partial();
+  .partial()
+  .extend({ updated_at: expectedUpdatedAt });
 
 export const updateEmployeeSchema = employeeDataSchema
   .partial()
@@ -171,6 +173,7 @@ export const updateEmployeeSchema = employeeDataSchema
     position_id: clearableField(z.uuid("Invalid position")),
     manager_id: clearableField(z.uuid("Invalid manager")),
     resign_date: clearableField(z.iso.date("Invalid resign date")),
+    updated_at: expectedUpdatedAt,
   })
   .refine(datesMakeSense, datesMakeSenseMessage);
 

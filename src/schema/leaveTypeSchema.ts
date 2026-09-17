@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 export const createLeaveTypeSchema = z.object({
   code: z
@@ -53,6 +54,7 @@ export const createLeaveTypeSchema = z.object({
     .optional(),
 });
 
-export const updateLeaveTypeSchema = createLeaveTypeSchema
-  .partial()
-  .extend({ is_active: z.boolean().optional() });
+export const updateLeaveTypeSchema = createLeaveTypeSchema.partial().extend({
+  is_active: z.boolean().optional(),
+  updated_at: expectedUpdatedAt,
+});

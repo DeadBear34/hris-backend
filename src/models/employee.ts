@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 import type { Executor } from "./user.js";
 
 export type EmployeeGender = "male" | "female";
@@ -45,6 +46,7 @@ export interface EmployeeListItem {
 // data yang sebenarnya masih ada
 export interface EmployeeDetail extends EmployeeListItem {
   user_id: string | null;
+  updated_at: Date;
   phone: string;
   gender: EmployeeGender;
   birth_date: string | null;
@@ -195,6 +197,7 @@ async function updateColumns(
   id: string,
   data: Record<string, unknown>,
   allowed: readonly string[],
+  expectedUpdatedAt?: string,
 ): Promise<Employee | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -214,11 +217,14 @@ async function updateColumns(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<Employee>(
     `UPDATE employees
      SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING *`,
     values,
   );
@@ -229,15 +235,17 @@ async function updateColumns(
 export async function updateEmployee(
   id: string,
   data: UpdateEmployeeInput,
+  expectedUpdatedAt?: string,
 ): Promise<Employee | null> {
-  return updateColumns(id, data, UPDATABLE_COLUMNS);
+  return updateColumns(id, data, UPDATABLE_COLUMNS, expectedUpdatedAt);
 }
 
 export async function updateOwnProfile(
   id: string,
   data: UpdateOwnProfileInput,
+  expectedUpdatedAt?: string,
 ): Promise<Employee | null> {
-  return updateColumns(id, { ...data }, OWN_PROFILE_COLUMNS);
+  return updateColumns(id, { ...data }, OWN_PROFILE_COLUMNS, expectedUpdatedAt);
 }
 
 export async function softDeleteEmployee(
@@ -284,7 +292,10 @@ export async function findDetailById(
        -- untuk ditampilkan, id di bawah untuk dikirim balik saat menyimpan
        e.user_id, e.phone, e.gender, e.birth_date, e.address,
        e.employment_status, e.join_date, e.resign_date,
-       e.department_id, e.position_id, e.manager_id
+       e.department_id, e.position_id, e.manager_id,
+
+       -- dikirim balik saat menyimpan untuk mendeteksi perubahan orang lain
+       e.updated_at
      FROM employees e
      LEFT JOIN users u       ON u.id = e.user_id
      LEFT JOIN departments d ON d.id = e.department_id

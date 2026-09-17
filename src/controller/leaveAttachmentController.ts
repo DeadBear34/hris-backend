@@ -13,6 +13,7 @@ import {
 } from "../helpers/storage.js";
 import { BadRequest, Forbidden, NotFound } from "../helpers/appError.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 async function assertMayAccess(
   req: Request,
@@ -41,6 +42,8 @@ export async function UploadLeaveAttachmentController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     if (!isStorageConfigured()) {
       throw BadRequest(
@@ -82,6 +85,18 @@ export async function UploadLeaveAttachmentController(
       file_size: uploadedFile.size,
       checksum: checksumOf(uploadedFile.buffer),
       uploaded_by: employeeId,
+    });
+
+    activity.success({
+      action: "leave.attachment_upload",
+      entity: "leave_attachment",
+      entity_id: attachment.id,
+      summary: `Evidence uploaded for leave request ${request.start_date} to ${request.end_date}`,
+      metadata: {
+        leave_request_id: request.id,
+        file_size: uploadedFile.size,
+        mime_type: mime,
+      },
     });
 
     res.status(201).json({

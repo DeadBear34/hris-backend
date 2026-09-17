@@ -183,7 +183,7 @@ describe("updatePosition", () => {
 
     expect(sql).toContain("level = $1");
     expect(sql).not.toContain("name =");
-    expect(values).toEqual([5, POSITION_ID]);
+    expect(values).toEqual([5, POSITION_ID, null]);
   });
 
   it("mengabaikan kolom yang tidak boleh diubah", async () => {
@@ -203,7 +203,7 @@ describe("updatePosition", () => {
 
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
-    expect(values).toEqual([false, POSITION_ID]);
+    expect(values).toEqual([false, POSITION_ID, null]);
   });
 
   it("selalu memperbarui kolom updated_at", async () => {

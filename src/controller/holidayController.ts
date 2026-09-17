@@ -3,6 +3,7 @@ import * as holidayModel from "../models/holiday.js";
 import type { HolidayInput, ListHolidayParams } from "../models/holiday.js";
 import { Conflict, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 
 export async function ListHolidayController(
   _req: Request,
@@ -81,7 +82,10 @@ export async function UpdateHolidayController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<HolidayInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<HolidayInput> & {
+        updated_at?: string;
+      };
 
     const existing = await holidayModel.findById(id);
     if (!existing) throw NotFound("Holiday not found");
@@ -93,7 +97,19 @@ export async function UpdateHolidayController(
       }
     }
 
-    const holiday = await holidayModel.updateHoliday(id, data);
+    const holiday = await holidayModel.updateHoliday(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!holiday) {
+      throw await rejectStaleUpdate(
+        "holiday",
+        () => holidayModel.findById(id),
+        "Holiday not found",
+      );
+    }
 
     activity.success({
       action: "holiday.update",

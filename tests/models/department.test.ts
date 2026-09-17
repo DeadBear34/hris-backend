@@ -182,7 +182,26 @@ describe("updateDepartment", () => {
 
     expect(sql).toContain("name = $1");
     expect(sql).not.toContain("code =");
-    expect(values).toEqual(["Keuangan", DEPARTMENT_ID]);
+    expect(values).toEqual(["Keuangan", DEPARTMENT_ID, null]);
+  });
+
+  it("menjadikan updated_at dari klien sebagai syarat perubahan", async () => {
+    await departmentModel.updateDepartment(
+      DEPARTMENT_ID,
+      { name: "Keuangan" },
+      "2026-09-14T08:04:33.373Z",
+    );
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain(
+      "date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $3::timestamptz)",
+    );
+    expect(values).toEqual([
+      "Keuangan",
+      DEPARTMENT_ID,
+      "2026-09-14T08:04:33.373Z",
+    ]);
   });
 
   it("mengabaikan kolom yang tidak boleh diubah", async () => {
@@ -203,7 +222,7 @@ describe("updateDepartment", () => {
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("is_active = $1");
-    expect(values).toEqual([false, DEPARTMENT_ID]);
+    expect(values).toEqual([false, DEPARTMENT_ID, null]);
   });
 
   it("selalu memperbarui kolom updated_at", async () => {

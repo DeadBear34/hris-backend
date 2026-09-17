@@ -82,6 +82,7 @@ const balanceModel = await import("../../src/models/leaveBalance.js");
 const attachmentModel = await import("../../src/models/leaveAttachment.js");
 const attendanceModel = await import("../../src/models/attendance.js");
 const workScheduleModel = await import("../../src/models/workSchedule.js");
+const { logger } = await import("../../src/config/logger.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { toIsoDate } = await import("../../src/helpers/workdays.js");
 const { app } = await import("../../src/app.js");
@@ -1250,5 +1251,52 @@ describe("saldo tidak boleh bisa ditembus permintaan bersamaan", () => {
     expect(res.status).toBe(400);
     expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+});
+
+describe("catatan aktivitas cuti", () => {
+  function lastActivity(mock: jest.Mock) {
+    const calls = mock.mock.calls.at(-1) as [
+      { activity: Record<string, unknown> },
+      string,
+    ];
+
+    return calls[0].activity;
+  }
+
+  it("mencatat pengajuan cuti baru", async () => {
+    const res = await submitRequest();
+
+    expect(res.status).toBe(201);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("leave.create");
+    expect(note.entity_id).toBe(REQUEST_ID);
+    expect((note.metadata as { total_days: number }).total_days).toBe(
+      TOTAL_DAYS,
+    );
+  });
+
+  it("mencatat pembatalan beserta status sebelumnya", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest() as never,
+    );
+    (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "cancelled" }) as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/leave-requests/${REQUEST_ID}/cancel`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("leave.cancel");
+    expect((note.metadata as { previous_status: string }).previous_status).toBe(
+      "pending",
+    );
   });
 });

@@ -26,7 +26,12 @@ import {
   generateResetToken,
   expiresInMinutes,
 } from "../helpers/token.js";
-import { Conflict, BadRequest, TooManyRequests } from "../helpers/appError.js";
+import {
+  AppError,
+  Conflict,
+  BadRequest,
+  TooManyRequests,
+} from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { notifyAccountNeedsApproval } from "../helpers/notify.js";
 import { plural } from "../helpers/plural.js";
@@ -282,9 +287,10 @@ export async function VerifyEmailController(
   res: Response,
   next: NextFunction,
 ) {
-  try {
-    const { email, code } = req.body as { email: string; code: string };
+  const activity = startActivity(req);
+  const { email, code } = req.body as { email: string; code: string };
 
+  try {
     const token = await verifyTokenValue(
       email,
       "email_verification",
@@ -303,6 +309,15 @@ export async function VerifyEmailController(
       await userModel.setEmailVerified(user.id);
     }
 
+    activity.success({
+      action: "auth.verify_email",
+      entity: "user",
+      entity_id: user.id,
+      actor_user_id: user.id,
+      actor_email: user.email,
+      summary: `Email ${user.email} verified`,
+    });
+
     res.json({
       success: true,
       message:
@@ -310,6 +325,16 @@ export async function VerifyEmailController(
       data: { email: user.email, email_verified: true },
     });
   } catch (err) {
+    activity.failed({
+      action: "auth.verify_email",
+      entity: "user",
+      actor_email: email,
+      summary: `Email verification failed for ${email}`,
+      metadata: {
+        reason: err instanceof AppError ? err.message : "unexpected error",
+      },
+    });
+
     next(err);
   }
 }
@@ -319,6 +344,8 @@ export async function ResendVerificationController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const { email } = req.body as { email: string };
 
@@ -332,6 +359,14 @@ export async function ResendVerificationController(
       const remainder = RESEND_COOLDOWN_SECONDS * 1000 - cooldownElapsed;
 
       if (remainder > 0) {
+        activity.failed({
+          action: "auth.resend_verification",
+          entity: "user",
+          actor_email: email,
+          summary: `Verification code request rejected for ${email}`,
+          metadata: { reason: "cooldown" },
+        });
+
         throw TooManyRequests(
           `Please wait ${plural(Math.ceil(remainder / 1000), "second")} before requesting a new verification code`,
         );
@@ -349,6 +384,16 @@ export async function ResendVerificationController(
       );
     }
 
+    activity.success({
+      action: "auth.resend_verification",
+      entity: "user",
+      entity_id: user?.id ?? null,
+      actor_user_id: user?.id ?? null,
+      actor_email: email,
+      summary: `Verification code requested again for ${email}`,
+      metadata: { sent: Boolean(user && !user.email_verified_at) },
+    });
+
     res.json({ success: true, message: MESSAGE_RESEND });
   } catch (err) {
     next(err);
@@ -360,6 +405,8 @@ export async function ForgotPasswordController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const { email } = req.body as { email: string };
 
@@ -400,6 +447,16 @@ export async function ForgotPasswordController(
       }
     }
 
+    activity.success({
+      action: "auth.forgot_password",
+      entity: "user",
+      entity_id: user?.id ?? null,
+      actor_user_id: user?.id ?? null,
+      actor_email: email,
+      summary: `Password reset requested for ${email}`,
+      metadata: { sent: Boolean(user?.is_active) },
+    });
+
     res.json({ success: true, message: MESSAGE_FORGOT_PASSWORD });
   } catch (err) {
     next(err);
@@ -411,6 +468,9 @@ export async function ResetPasswordController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+  const { email: requestEmail } = req.body as { email: string };
+
   try {
     const {
       email,
@@ -450,12 +510,31 @@ export async function ResetPasswordController(
       { email },
     );
 
+    activity.success({
+      action: "auth.reset_password",
+      entity: "user",
+      entity_id: user.id,
+      actor_user_id: user.id,
+      actor_email: user.email,
+      summary: `Password reset completed for ${user.email}`,
+    });
+
     res.json({
       success: true,
       message:
         "Password changed successfully. Please log in with your new password.",
     });
   } catch (err) {
+    activity.failed({
+      action: "auth.reset_password",
+      entity: "user",
+      actor_email: requestEmail,
+      summary: `Password reset failed for ${requestEmail}`,
+      metadata: {
+        reason: err instanceof AppError ? err.message : "unexpected error",
+      },
+    });
+
     next(err);
   }
 }

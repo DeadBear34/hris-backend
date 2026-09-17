@@ -99,9 +99,19 @@ export async function UploadOwnPhotoController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const employee = await requireRequestEmployee(req, res);
     const data = await replacePhoto(employee, req.file);
+
+    activity.success({
+      action: "profile.photo_upload",
+      entity: "employee",
+      entity_id: employee.id,
+      actor_name: employee.full_name,
+      summary: `${employee.full_name} updated their own profile photo`,
+    });
 
     res.json({
       success: true,
@@ -118,9 +128,19 @@ export async function DeleteOwnPhotoController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const employee = await requireRequestEmployee(req, res);
     await removePhoto(employee);
+
+    activity.success({
+      action: "profile.photo_delete",
+      entity: "employee",
+      entity_id: employee.id,
+      actor_name: employee.full_name,
+      summary: `${employee.full_name} deleted their own profile photo`,
+    });
 
     res.json({ success: true, message: "Profile photo deleted successfully" });
   } catch (err) {

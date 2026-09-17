@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 import type { EmployeeGender } from "./employee.js";
 
 export interface LeaveType {
@@ -128,6 +129,7 @@ export async function createLeaveType(
 export async function updateLeaveType(
   id: string,
   data: Partial<LeaveTypeInput>,
+  expectedUpdatedAt?: string,
 ): Promise<LeaveType | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -147,10 +149,13 @@ export async function updateLeaveType(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<LeaveType>(
     `UPDATE leave_types SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING ${COLUMNS}`,
     values,
   );

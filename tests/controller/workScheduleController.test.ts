@@ -324,9 +324,11 @@ describe("mengubah jadwal kerja", () => {
     const res = await patchSchedule({ late_tolerance_minutes: 10 });
 
     expect(res.status).toBe(200);
-    expect(workScheduleModel.updateSchedule).toHaveBeenCalledWith(SCHEDULE_ID, {
-      late_tolerance_minutes: 10,
-    });
+    expect(workScheduleModel.updateSchedule).toHaveBeenCalledWith(
+      SCHEDULE_ID,
+      { late_tolerance_minutes: 10 },
+      undefined,
+    );
   });
 
   it("membandingkan jam dengan nilai lama ketika hanya satu yang diubah", async () => {

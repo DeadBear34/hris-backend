@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 
 export interface Department {
   id: string;
@@ -62,6 +63,7 @@ export async function createDepartment(
 export async function updateDepartment(
   id: string,
   data: Partial<DepartmentInput>,
+  expectedUpdatedAt?: string,
 ): Promise<Department | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -80,11 +82,14 @@ export async function updateDepartment(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<Department>(
     `UPDATE departments
      SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING *`,
     values,
   );

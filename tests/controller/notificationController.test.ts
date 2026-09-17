@@ -9,6 +9,10 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   findSessionInfo: jest.fn(() => Promise.resolve(null)),
 }));
 
+jest.unstable_mockModule("../../src/config/logger.js", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
 jest.unstable_mockModule("../../src/models/notification.js", () => ({
   insertMany: jest.fn(),
   listFor: jest.fn(),
@@ -19,6 +23,7 @@ jest.unstable_mockModule("../../src/models/notification.js", () => ({
 }));
 
 const notificationModel = await import("../../src/models/notification.js");
+const { logger } = await import("../../src/config/logger.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
@@ -224,5 +229,51 @@ describe("PATCH /api/v1/notifications/read-all", () => {
       .set("Authorization", `Bearer ${token}`);
 
     expect(notificationModel.markRead).not.toHaveBeenCalled();
+  });
+});
+
+describe("catatan aktivitas notifikasi", () => {
+  function lastActivity(mock: jest.Mock) {
+    const calls = mock.mock.calls.at(-1) as [
+      { activity: Record<string, unknown> },
+      string,
+    ];
+
+    return calls[0].activity;
+  }
+
+  it("mencatat penandaan satu notifikasi", async () => {
+    (notificationModel.markRead as jest.Mock).mockResolvedValue({
+      ...fakeNotification,
+      is_read: true,
+      read_at: new Date(),
+    } as never);
+    (notificationModel.countUnread as jest.Mock).mockResolvedValue(0 as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/notifications/${NOTIF_ID}/read`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("notification.read");
+    expect(note.entity_id).toBe(NOTIF_ID);
+  });
+
+  it("mencatat penandaan seluruh notifikasi beserta jumlahnya", async () => {
+    (notificationModel.markAllRead as jest.Mock).mockResolvedValue(3 as never);
+
+    const res = await request(app)
+      .patch("/api/v1/notifications/read-all")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("notification.read_all");
+    expect((note.metadata as { updated: number }).updated).toBe(3);
   });
 });

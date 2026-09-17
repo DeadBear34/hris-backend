@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 const attendanceStatusEnum = z.enum(
   ["present", "late", "absent", "leave", "holiday"],
@@ -82,6 +83,7 @@ export const reportQuerySchema = z.object({
 export const correctAttendanceSchema = z
   .object({
     status: attendanceStatusEnum,
+    updated_at: expectedUpdatedAt,
     check_in_at: z.iso.datetime({ offset: true }).nullish(),
     check_out_at: z.iso.datetime({ offset: true }).nullish(),
     reason: z

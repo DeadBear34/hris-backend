@@ -136,3 +136,34 @@ export async function listLogs(
 
   return { rows: dataResult.rows, total };
 }
+
+export interface LatestChange {
+  action: string;
+  actor_name: string | null;
+  actor_email: string | null;
+  occurred_at: Date;
+}
+
+// Perubahan terakhir yang berhasil atas satu data. Dipakai memberi tahu
+// pengguna siapa yang lebih dulu mengubah data yang sedang ia sunting
+export async function findLatestChange(
+  entity: string,
+  entity_id: string,
+): Promise<LatestChange | null> {
+  const result = await pool.query<LatestChange>(
+    // nama pelaku tidak selalu tersimpan di log, misalnya aksi admin, jadi
+    // diambil dari data karyawan pemilik akunnya
+    `SELECT l.action, COALESCE(l.actor_name, e.full_name) AS actor_name,
+            l.actor_email, l.occurred_at
+     FROM activity_logs l
+     LEFT JOIN employees e
+       ON e.user_id = l.actor_user_id AND e.deleted_at IS NULL
+     WHERE l.entity = $1 AND l.entity_id = $2::uuid
+       AND l.status = 'success'::activity_status
+     ORDER BY l.occurred_at DESC
+     LIMIT 1`,
+    [entity, entity_id],
+  );
+
+  return result.rows[0] ?? null;
+}

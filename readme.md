@@ -17,6 +17,7 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Notifikasi Real-time](#notifikasi-real-time)
 - [Keamanan](#keamanan)
 - [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan)
+- [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan)
 - [Pengiriman Email](#pengiriman-email)
 - [Karyawan](#menambah-karyawan-satu-atau-banyak)
 - [Absensi](#aturan-absensi)
@@ -204,6 +205,7 @@ Respons gagal selalu berbentuk sama:
 | 403    | `FORBIDDEN`         | Tidak memiliki fitur yang dibutuhkan, disertai `required_feature`     |
 | 404    | `NOT_FOUND`         | Data atau rute tidak ditemukan                                        |
 | 409    | `CONFLICT`          | Data bentrok atau berubah di tengah jalan                             |
+| 409    | `STALE_DATA`        | Data sudah diubah orang lain sejak dibuka, lihat [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan) |
 | 429    | `TOO_MANY_REQUESTS` | Meminta kode verifikasi baru sebelum jeda berakhir                    |
 | 500    | —                   | Kesalahan tak terduga, rinciannya hanya dicatat di log server         |
 
@@ -482,6 +484,83 @@ Pemeriksaan yang dijalankan sebelum menulis ke database dapat dilewati bila dua 
 
 Kunci baris karyawan dipakai, bukan kunci tabel, sehingga hanya permintaan milik karyawan yang sama yang saling menunggu. Kunci dan pembacaan saldo wajib memakai **klien transaksi yang sama**. Pembacaan lewat `pool` akan memakai koneksi lain yang tidak ikut antre di belakang kunci tersebut.
 
+## Deteksi Edit Bersamaan
+
+Dua orang bisa membuka form edit untuk data yang sama. Tanpa pemeriksaan, siapa pun yang menyimpan belakangan menimpa perubahan orang pertama tanpa ada yang tahu (*lost update*). Backend mencegahnya dengan **optimistic locking** berbasis kolom `updated_at`.
+
+### Cara pakai di frontend
+
+1. Saat membuka form, simpan nilai `updated_at` dari respons GET.
+2. Saat menyimpan, kirim balik nilai itu apa adanya di body:
+
+   ```json
+   PATCH /api/v1/departments/:id
+   { "name": "Keuangan", "updated_at": "2026-09-14T08:04:33.373Z" }
+   ```
+
+3. Kalau berhasil, pakai `updated_at` baru dari respons untuk penyimpanan berikutnya.
+4. Kalau dijawab **409 `STALE_DATA`**, jangan menyimpan ulang otomatis. Tampilkan data terbaru beserta siapa yang mengubahnya, lalu biarkan pengguna meninjau sebelum menyimpan lagi dengan `updated_at` yang baru.
+
+```json
+{
+  "success": false,
+  "message": "This data was changed by someone else after you opened it. Review the latest data, then save again.",
+  "code": "STALE_DATA",
+  "details": {
+    "current": { "id": "uuid", "name": "Keuangan & Akuntansi", "updated_at": "2026-09-14T08:05:10.120Z" },
+    "last_changed_by": {
+      "name": "Bagus Pratama",
+      "email": "bagus@awan.io",
+      "action": "department.update",
+      "at": "2026-09-14T08:05:10.118Z"
+    }
+  }
+}
+```
+
+`details.current` adalah data terbaru di database. `last_changed_by` diambil dari log aktivitas, dan bernilai `null` bila catatannya belum tersedia.
+
+### Endpoint yang dijaga
+
+| Endpoint | `updated_at` diambil dari |
+| -------- | ------------------------- |
+| `PATCH /employees/:id` | `GET /employees/:id` |
+| `PATCH /auth/me` | `GET /auth/me`, pada `employee.updated_at` |
+| `PATCH /departments/:id` | `GET /departments/:id` |
+| `PATCH /positions/:id` | `GET /positions/:id` |
+| `PUT /positions/:id/features` | `position.updated_at` pada `GET /positions/:id/features`, atau `GET /features/matrix` |
+| `PATCH /holidays/:id` | `GET /holidays/:id` |
+| `PATCH /leave-types/:id` | `GET /leave-types/:id` |
+| `PATCH /work-schedules/:id` | `GET /work-schedules/:id` |
+| `PATCH /attendances/:id/correct` | baris absensi pada `GET /attendances` |
+
+Edit oleh admin (`PATCH /employees/:id`) dan edit profil sendiri (`PATCH /auth/me`) mengubah baris yang sama, jadi keduanya saling terdeteksi. Mengganti fitur jabatan juga memperbarui `updated_at` jabatannya, sehingga dua admin yang mengubah centang jabatan yang sama saling terdeteksi.
+
+Menyetujui, menolak, dan membatalkan cuti serta menyetujui akun tidak memakai `updated_at`, karena sudah dijaga syarat status (lihat [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan)).
+
+### Cara kerjanya
+
+Pemeriksaan dan penyimpanan berjalan dalam **satu query**:
+
+```sql
+UPDATE departments SET name = $1, updated_at = now()
+WHERE id = $2
+  AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $3::timestamptz)
+RETURNING *
+```
+
+Karena atomik, penyimpanan yang datang bersamaan dengan versi yang sama tidak bisa lolos semua. Pengujian langsung ke database dengan tiga penyimpanan serentak menghasilkan tepat satu berhasil: `200, 409, 409`.
+
+Kedua sisi dipotong ke milidetik karena database menyimpan `updated_at` sampai mikrodetik (`08:04:33.373932`), sedangkan JSON hanya membawa milidetik (`08:04:33.373`). Tanpa pemotongan, nilainya tidak akan pernah sama.
+
+Bila query tidak mengenai baris mana pun, data dibaca ulang untuk membedakan dua kemungkinan: datanya sudah dihapus (**404**) atau sudah diubah orang lain (**409 `STALE_DATA`**).
+
+### Masih opsional
+
+`updated_at` belum diwajibkan, supaya frontend yang belum mengirimnya tetap berjalan. Permintaan tanpa `updated_at` disimpan seperti biasa tanpa pemeriksaan versi. Setelah seluruh form edit mengirimnya, pemeriksaan ini dapat diwajibkan.
+
+Logikanya ada di `src/helpers/concurrency.ts`: `sameVersion` menyusun syarat SQL, dan `rejectStaleUpdate` menyusun respons 404 atau 409.
+
 ## Pengiriman Email
 
 Lapisan email ada di `src/helpers/mailer.ts` dan punya dua mode.
@@ -669,24 +748,30 @@ Atasan dan karyawan tidak boleh membentuk struktur melingkar. Menunjuk diri send
 
 ## Log Aktivitas
 
-Tindakan yang mengubah data orang lain, hak akses, atau keamanan akun tercatat di tabel `activity_logs`.
+**Setiap permintaan yang mengubah data dicatat di tabel `activity_logs`.** Aturannya sederhana: seluruh endpoint selain `GET` punya catatannya, termasuk tindakan atas diri sendiri seperti absen, ganti password, dan menandai notifikasi terbaca.
 
 | Entitas | Aksi yang dicatat |
 | ------- | ----------------- |
-| Autentikasi | `auth.login`, `auth.register`, termasuk yang gagal beserta alasannya |
-| Karyawan | `employee.create`, `create_bulk`, `update`, `delete`, `photo_upload`, `photo_delete` |
+| Autentikasi | `auth.login`, `auth.register`, `auth.verify_email`, `auth.resend_verification`, `auth.forgot_password`, `auth.reset_password`, `auth.change_password` |
+| Profil sendiri | `profile.update`, `profile.photo_upload`, `profile.photo_delete` |
+| Karyawan | `employee.create`, `employee.create_bulk`, `employee.update`, `employee.delete`, `employee.photo_upload`, `employee.photo_delete` |
 | Akun | `user.approve`, `user.set_active` |
 | Organisasi | `department.*`, `position.*`, `schedule.*` masing-masing create, update, delete |
 | Hak akses | `position.features_replace` |
 | Hari libur dan jenis cuti | `holiday.*`, `leave_type.*` |
-| Cuti | `leave.approve`, `leave.reject`, `leave.balance_adjust` |
-| Absensi | `attendance.correct`, `attendance.close_day` |
+| Cuti | `leave.create`, `leave.approve`, `leave.reject`, `leave.cancel`, `leave.attachment_upload`, `leave.balance_adjust` |
+| Absensi | `attendance.check_in`, `attendance.check_out`, `attendance.correct`, `attendance.close_day` |
+| Notifikasi | `notification.read`, `notification.read_all` |
 
 Yang dicatat: pelaku beserta email dan namanya, kapan peristiwanya terjadi dan kapan catatannya ditulis, lama proses, alamat IP, perangkat, dan rincian per aksi pada kolom `metadata`. Password tidak pernah ikut dicatat.
 
-Login gagal dicatat dengan kode alasan pada `metadata.reason`: `email_not_registered`, `wrong_password`, `email_not_verified`, `not_approved`, atau `account_inactive`.
+Kegagalan ikut dicatat dengan `status: "failed"` pada aksi yang menyangkut keamanan atau kehadiran: login, verifikasi email, reset password, ganti password sendiri, permintaan kode ulang, absen masuk, absen pulang, dan penambahan karyawan. Sebabnya ada di `metadata.reason`, misalnya `email_not_registered`, `wrong_password`, `wrong_current_password`, atau `cooldown`.
 
-Absen masuk dan pulang tidak masuk log aktivitas karena sudah punya jejaknya sendiri di `attendance_events`. Penulisan log tidak pernah ditunggu, dan kegagalannya tidak membatalkan tindakan yang sudah berhasil.
+Absensi punya dua jejak yang saling melengkapi: `activity_logs` mencatat tindakannya, sedangkan `attendance_events` menyimpan setiap penekanan tombol beserta waktu presisinya, termasuk yang ditolak.
+
+Penulisan log tidak pernah ditunggu. Kegagalan mencatat hanya menghasilkan peringatan di log aplikasi dan tidak membatalkan tindakan yang sudah berhasil.
+
+**Catatan volume.** `notification.read` ikut tercatat karena aturannya mencakup semua endpoint non-`GET`, padahal aksi inilah yang paling sering terjadi. Kalau tabelnya tumbuh terlalu cepat, pilihannya mengecualikan aksi ini atau menambah pembersihan berkala seperti yang sudah ada untuk notifikasi.
 
 ## Jejak Kejadian Absensi
 
@@ -1032,4 +1117,5 @@ Hal-hal berikut disadari dan belum dikerjakan:
 | Belum ada endpoint membaca log aktivitas | Log hanya dapat dibaca langsung dari database | Model sudah menyediakan `listLogs`, tinggal dibuatkan rute dengan fitur `system.view_log` |
 | `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
 | Penyesuaian saldo manual boleh membuat saldo negatif | Admin dapat mengurangi saldo melebihi sisanya | Tentukan kebijakan, lalu tolak di dalam transaksi yang sudah terkunci |
+| `updated_at` masih opsional | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain | Wajibkan setelah seluruh form frontend mengirimnya |
 | Cache fitur per proses | Instance lain tertinggal paling lama satu menit setelah fitur jabatan diubah | Siarkan pembatalan cache lewat `LISTEN`/`NOTIFY` yang sama dengan notifikasi |

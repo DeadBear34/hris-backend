@@ -61,6 +61,8 @@ jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
 const userModel = await import("../../src/models/user.js");
 const employeeModel = await import("../../src/models/employee.js");
 const { hashPassword } = await import("../../src/helpers/password.js");
+const tokenModel = await import("../../src/models/verificationToken.js");
+const { createToken } = await import("../../src/helpers/jwt.js");
 const { logger } = await import("../../src/config/logger.js");
 const { app } = await import("../../src/app.js");
 
@@ -301,5 +303,175 @@ describe("catatan aktivitas register", () => {
     expect(note.action).toBe("auth.register");
     expect((note.metadata as { resent: boolean }).resent).toBe(true);
     expect(userModel.insertUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("catatan aktivitas verifikasi email dan password", () => {
+  const CODE = "123456";
+  const RESET_TOKEN = "a".repeat(64);
+
+  async function fakeVerificationToken(
+    override: Record<string, unknown> = {},
+    value = CODE,
+  ) {
+    return {
+      id: "44444444-4444-4444-8444-444444444444",
+      email: fakeUser.email,
+      purpose: "email_verification",
+      token_hash: await hashPassword(value),
+      expires_at: new Date(Date.now() + 600_000),
+      consumed_at: null,
+      attempts: 0,
+      ip_address: null,
+      user_agent: null,
+      created_at: new Date(Date.now() - 120_000),
+      ...override,
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockClient.query.mockResolvedValue({ rows: [] } as never);
+  });
+
+  it("mencatat verifikasi email yang berhasil", async () => {
+    const token = await fakeVerificationToken();
+
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
+    (tokenModel.claimAttempt as jest.Mock).mockResolvedValue(token as never);
+    (tokenModel.markConsumed as jest.Mock).mockResolvedValue(token as never);
+    (userModel.findByEmail as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      email_verified_at: null,
+    } as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/verify-email")
+      .send({ email: fakeUser.email, code: CODE });
+
+    expect(res.status).toBe(200);
+
+    const note = lastLogEntry(logger.info as jest.Mock);
+
+    expect(note.action).toBe("auth.verify_email");
+    expect(note.status).toBe("success");
+    expect(note.actor_user_id).toBe(USER_ID);
+  });
+
+  it("mencatat verifikasi email yang gagal beserta pemiliknya", async () => {
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/verify-email")
+      .send({ email: fakeUser.email, code: CODE });
+
+    expect(res.status).toBe(400);
+
+    const note = lastLogEntry(logger.warn as jest.Mock);
+
+    expect(note.action).toBe("auth.verify_email");
+    expect(note.status).toBe("failed");
+    expect(note.actor_email).toBe(fakeUser.email);
+  });
+
+  it("mencatat permintaan kode ulang yang ditolak karena jeda", async () => {
+    const token = await fakeVerificationToken({ created_at: new Date() });
+
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/resend-verification")
+      .send({ email: fakeUser.email });
+
+    expect(res.status).toBe(429);
+
+    const note = lastLogEntry(logger.warn as jest.Mock);
+
+    expect(note.action).toBe("auth.resend_verification");
+    expect((note.metadata as { reason: string }).reason).toBe("cooldown");
+  });
+
+  it("mencatat permintaan reset tanpa membocorkan keberadaan akun", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: "tidakada@awan.io" });
+
+    expect(res.status).toBe(200);
+
+    const note = lastLogEntry(logger.info as jest.Mock);
+
+    expect(note.action).toBe("auth.forgot_password");
+    expect((note.metadata as { sent: boolean }).sent).toBe(false);
+  });
+
+  it("mencatat penggantian password lewat tautan reset", async () => {
+    const token = await fakeVerificationToken(
+      { purpose: "password_reset" },
+      RESET_TOKEN,
+    );
+
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
+    (tokenModel.claimAttempt as jest.Mock).mockResolvedValue(token as never);
+    (tokenModel.markConsumed as jest.Mock).mockResolvedValue(token as never);
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
+
+    const res = await request(app).post("/api/v1/auth/reset-password").send({
+      email: fakeUser.email,
+      token: RESET_TOKEN,
+      password: "passwordbaru123",
+      password_confirmation: "passwordbaru123",
+    });
+
+    expect(res.status).toBe(200);
+
+    const note = lastLogEntry(logger.info as jest.Mock);
+
+    expect(note.action).toBe("auth.reset_password");
+    expect(note.entity_id).toBe(USER_ID);
+  });
+
+  it("mencatat ganti password sendiri, yang berhasil maupun yang ditolak", async () => {
+    const hashed = await hashPassword("password123");
+
+    (userModel.findByEmail as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      password: hashed,
+    } as never);
+
+    const sessionToken = createToken({
+      id: USER_ID,
+      email: fakeUser.email,
+      role: "employee",
+    });
+
+    const ditolak = await request(app)
+      .patch("/api/v1/auth/password")
+      .set("Authorization", `Bearer ${sessionToken}`)
+      .send({
+        current_password: "passwordsalah",
+        new_password: "passwordbaru123",
+      });
+
+    expect(ditolak.status).toBe(401);
+    expect(lastLogEntry(logger.warn as jest.Mock).action).toBe(
+      "auth.change_password",
+    );
+
+    const res = await request(app)
+      .patch("/api/v1/auth/password")
+      .set("Authorization", `Bearer ${sessionToken}`)
+      .send({
+        current_password: "password123",
+        new_password: "passwordbaru123",
+      });
+
+    expect(res.status).toBe(200);
+
+    const note = lastLogEntry(logger.info as jest.Mock);
+
+    expect(note.action).toBe("auth.change_password");
+    expect(note.actor_user_id).toBe(USER_ID);
   });
 });

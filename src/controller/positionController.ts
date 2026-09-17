@@ -3,6 +3,7 @@ import * as positionModel from "../models/position.js";
 import type { PositionInput } from "../models/position.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { plural } from "../helpers/plural.js";
 
 export async function ListPositionController(
@@ -70,7 +71,10 @@ export async function UpdatePositionController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<PositionInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<PositionInput> & {
+        updated_at?: string;
+      };
 
     const existing = await positionModel.findById(id);
     if (!existing) throw NotFound("Position not found");
@@ -91,7 +95,19 @@ export async function UpdatePositionController(
       }
     }
 
-    const position = await positionModel.updatePosition(id, data);
+    const position = await positionModel.updatePosition(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!position) {
+      throw await rejectStaleUpdate(
+        "position",
+        () => positionModel.findById(id),
+        "Position not found",
+      );
+    }
 
     activity.success({
       action: "position.update",

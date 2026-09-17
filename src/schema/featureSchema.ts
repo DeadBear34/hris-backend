@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 export const replacePositionFeaturesSchema = z.object({
   codes: z
@@ -11,4 +12,5 @@ export const replacePositionFeaturesSchema = z.object({
       { message: "Feature code list is required" },
     )
     .max(200, "Too many feature codes in one request"),
+  updated_at: expectedUpdatedAt,
 });

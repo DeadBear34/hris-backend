@@ -3,6 +3,7 @@ import * as leaveTypeModel from "../models/leaveType.js";
 import type { LeaveTypeInput } from "../models/leaveType.js";
 import { BadRequest, Conflict, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { plural } from "../helpers/plural.js";
 
 export async function ListLeaveTypeController(
@@ -71,7 +72,10 @@ export async function UpdateLeaveTypeController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<LeaveTypeInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<LeaveTypeInput> & {
+        updated_at?: string;
+      };
 
     const existing = await leaveTypeModel.findById(id);
     if (!existing) throw NotFound("Leave type not found");
@@ -81,7 +85,19 @@ export async function UpdateLeaveTypeController(
       if (duplicate) throw Conflict("Leave type code is already in use");
     }
 
-    const leaveType = await leaveTypeModel.updateLeaveType(id, data);
+    const leaveType = await leaveTypeModel.updateLeaveType(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!leaveType) {
+      throw await rejectStaleUpdate(
+        "leave_type",
+        () => leaveTypeModel.findById(id),
+        "Leave type not found",
+      );
+    }
 
     activity.success({
       action: "leave_type.update",

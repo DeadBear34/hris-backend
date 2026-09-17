@@ -94,6 +94,7 @@ const leaveRequestModel = await import("../../src/models/leaveRequest.js");
 const workScheduleModel = await import("../../src/models/workSchedule.js");
 const attendanceModel = await import("../../src/models/attendance.js");
 const eventModel = await import("../../src/models/attendanceEvent.js");
+const { logger } = await import("../../src/config/logger.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
@@ -1773,5 +1774,68 @@ describe("kejadian mentah dicatat lebih dulu", () => {
 
     expect(res.status).toBe(400);
     expect(eventModel.recordEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("catatan aktivitas absensi", () => {
+  function lastActivity(mock: jest.Mock) {
+    const calls = mock.mock.calls.at(-1) as [
+      { activity: Record<string, unknown> },
+      string,
+    ];
+
+    return calls[0].activity;
+  }
+
+  it("mencatat absen masuk beserta status kehadirannya", async () => {
+    const res = await checkIn();
+
+    expect(res.status).toBe(201);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("attendance.check_in");
+    expect(note.status).toBe("success");
+    expect(note.entity).toBe("attendance");
+    expect((note.metadata as { status: string }).status).toBe("present");
+  });
+
+  it("mencatat absen masuk yang ditolak beserta alasannya", async () => {
+    (holidayModel.findByDate as jest.Mock).mockResolvedValue({
+      name: "Hari Raya",
+    } as never);
+
+    const res = await checkIn();
+
+    expect(res.status).toBe(400);
+
+    const note = lastActivity(logger.warn as jest.Mock);
+
+    expect(note.action).toBe("attendance.check_in");
+    expect(note.status).toBe("failed");
+    expect((note.metadata as { reason: string }).reason).toContain("holiday");
+  });
+
+  it("mencatat absen pulang beserta lama kerjanya", async () => {
+    (attendanceModel.findByEmployeeAndDate as jest.Mock).mockResolvedValue({
+      id: ATTENDANCE_ID,
+      check_in_at: new Date("2026-03-10T01:00:00.000Z"),
+      check_out_at: null,
+    } as never);
+    (attendanceModel.setCheckOut as jest.Mock).mockResolvedValue({
+      id: ATTENDANCE_ID,
+      check_out_source: "online",
+    } as never);
+
+    setWibTime("2026-03-10", "17:00");
+
+    const res = await checkOut();
+
+    expect(res.status).toBe(200);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("attendance.check_out");
+    expect((note.metadata as { work_minutes: number }).work_minutes).toBe(540);
   });
 });

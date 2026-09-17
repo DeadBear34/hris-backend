@@ -327,7 +327,7 @@ describe("updateEmployee", () => {
 
     expect(sql).toContain("full_name = $1");
     expect(sql).not.toContain("phone =");
-    expect(values).toEqual(["Nama Baru", EMPLOYEE_ID]);
+    expect(values).toEqual(["Nama Baru", EMPLOYEE_ID, null]);
   });
 
   it("mengabaikan kolom yang tidak boleh diubah", async () => {

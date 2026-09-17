@@ -3,6 +3,7 @@ import * as departmentModel from "../models/department.js";
 import type { DepartmentInput } from "../models/department.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { plural } from "../helpers/plural.js";
 
 export async function ListDepartmentController(
@@ -70,7 +71,10 @@ export async function UpdateDepartmentController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<DepartmentInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<DepartmentInput> & {
+        updated_at?: string;
+      };
 
     const existing = await departmentModel.findById(id);
     if (!existing) throw NotFound("Department not found");
@@ -91,7 +95,19 @@ export async function UpdateDepartmentController(
       }
     }
 
-    const department = await departmentModel.updateDepartment(id, data);
+    const department = await departmentModel.updateDepartment(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!department) {
+      throw await rejectStaleUpdate(
+        "department",
+        () => departmentModel.findById(id),
+        "Department not found",
+      );
+    }
 
     activity.success({
       action: "department.update",

@@ -23,6 +23,7 @@ import {
   type RequestContext,
   startActivity,
 } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import {
   AppError,
@@ -627,14 +628,27 @@ export async function UpdateEmployeeController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as UpdateEmployeeInput;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as UpdateEmployeeInput & { updated_at?: string };
 
     const existing = await employeeModel.findById(id);
     if (!existing) throw NotFound("Employee not found");
 
     await assertRelationsExist(data, id);
 
-    const employee = await employeeModel.updateEmployee(id, data);
+    const employee = await employeeModel.updateEmployee(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!employee) {
+      throw await rejectStaleUpdate(
+        "employee",
+        () => employeeModel.findDetailById(id),
+        "Employee not found",
+      );
+    }
 
     activity.success({
       action: "employee.update",

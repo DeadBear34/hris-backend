@@ -34,7 +34,22 @@ export type ActivityAction =
   | "attendance.correct"
   | "attendance.close_day"
   | "auth.login"
-  | "auth.register";
+  | "auth.register"
+  | "auth.verify_email"
+  | "auth.resend_verification"
+  | "auth.forgot_password"
+  | "auth.reset_password"
+  | "auth.change_password"
+  | "profile.update"
+  | "profile.photo_upload"
+  | "profile.photo_delete"
+  | "attendance.check_in"
+  | "attendance.check_out"
+  | "leave.create"
+  | "leave.cancel"
+  | "leave.attachment_upload"
+  | "notification.read"
+  | "notification.read_all";
 
 export type ActivityStatus = "success" | "failed";
 

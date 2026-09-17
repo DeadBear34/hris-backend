@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 import type { Executor } from "./user.js";
 import type { IsoDate } from "../helpers/timezone.js";
 
@@ -380,6 +381,7 @@ export async function correctAttendance(
   id: string,
   data: CorrectionInput,
   db: Executor = pool,
+  expectedUpdatedAt?: string,
 ): Promise<Attendance | null> {
   const result = await db.query<Attendance>(
     `UPDATE attendances
@@ -394,7 +396,7 @@ export async function correctAttendance(
          work_minutes = $10::int,
          note = $11,
          updated_at = now()
-     WHERE id = $1::uuid
+     WHERE id = $1::uuid AND ${sameVersion("updated_at", 12)}
      RETURNING ${COLUMNS}`,
     [
       id,
@@ -408,6 +410,7 @@ export async function correctAttendance(
       data.late_minutes,
       data.work_minutes ?? null,
       data.note,
+      expectedUpdatedAt ?? null,
     ],
   );
 

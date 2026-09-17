@@ -7,6 +7,7 @@ import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 
 function buildProfile(
   user: userModel.User,
@@ -42,6 +43,7 @@ function buildProfile(
           department_name: detail?.department_name ?? null,
           position_name: detail?.position_name ?? null,
           manager_name: detail?.manager_name ?? null,
+          updated_at: employee.updated_at,
         }
       : null,
   };
@@ -190,6 +192,8 @@ export async function UpdateMeController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     if (!req.user)
       throw Unauthorized("You are not logged in, please log in first");
@@ -205,14 +209,37 @@ export async function UpdateMeController(
       );
     }
 
+    const { updated_at: expectedUpdatedAt, ...changes } =
+      req.body as employeeModel.UpdateOwnProfileInput & {
+        updated_at?: string;
+      };
+
     const updated = await employeeModel.updateOwnProfile(
       employee.id,
-      req.body as employeeModel.UpdateOwnProfileInput,
+      changes,
+      expectedUpdatedAt,
     );
+
+    if (!updated) {
+      throw await rejectStaleUpdate(
+        "employee",
+        () => employeeModel.findById(employee.id),
+        "Employee not found",
+      );
+    }
 
     const detail = updated
       ? await employeeModel.findDetailById(updated.id)
       : null;
+
+    activity.success({
+      action: "profile.update",
+      entity: "employee",
+      entity_id: employee.id,
+      actor_name: (updated ?? employee).full_name,
+      summary: `${(updated ?? employee).full_name} updated their own profile`,
+      metadata: { fields: Object.keys(changes) },
+    });
 
     res.json({
       success: true,
@@ -234,6 +261,8 @@ export async function ChangePasswordController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     if (!req.user)
       throw Unauthorized("You are not logged in, please log in first");
@@ -244,10 +273,28 @@ export async function ChangePasswordController(
     if (!user) throw NotFound("User not found");
 
     const valid = await verifyPassword(user.password, current_password);
-    if (!valid) throw Unauthorized("Current password is incorrect");
+
+    if (!valid) {
+      activity.failed({
+        action: "auth.change_password",
+        entity: "user",
+        entity_id: user.id,
+        summary: `Password change rejected for ${user.email}`,
+        metadata: { reason: "wrong_current_password" },
+      });
+
+      throw Unauthorized("Current password is incorrect");
+    }
 
     const hashed = await hashPassword(new_password);
     await userModel.updatePassword(user.id, hashed);
+
+    activity.success({
+      action: "auth.change_password",
+      entity: "user",
+      entity_id: user.id,
+      summary: `${user.email} changed their own password`,
+    });
 
     res.json({
       success: true,

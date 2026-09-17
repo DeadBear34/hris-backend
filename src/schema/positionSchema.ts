@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 export const createPositionSchema = z.object({
   code: z
@@ -22,6 +23,7 @@ export const createPositionSchema = z.object({
     .optional(),
 });
 
-export const updatePositionSchema = createPositionSchema
-  .partial()
-  .extend({ is_active: z.boolean().optional() });
+export const updatePositionSchema = createPositionSchema.partial().extend({
+  is_active: z.boolean().optional(),
+  updated_at: expectedUpdatedAt,
+});

@@ -4,6 +4,7 @@ import * as departmentModel from "../models/department.js";
 import type { WorkScheduleInput } from "../models/workSchedule.js";
 import { minutesFromClockTime } from "../helpers/timezone.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { BadRequest, Conflict, NotFound } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
@@ -160,7 +161,10 @@ export async function UpdateWorkScheduleController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<WorkScheduleInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<WorkScheduleInput> & {
+        updated_at?: string;
+      };
 
     const existing = await workScheduleModel.findById(id);
     if (!existing) throw NotFound("Work schedule not found");
@@ -203,7 +207,19 @@ export async function UpdateWorkScheduleController(
         data.absent_cutoff_time ?? existing.absent_cutoff_time,
     });
 
-    const schedule = await workScheduleModel.updateSchedule(id, data);
+    const schedule = await workScheduleModel.updateSchedule(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!schedule) {
+      throw await rejectStaleUpdate(
+        "work_schedule",
+        () => workScheduleModel.findById(id),
+        "Work schedule not found",
+      );
+    }
 
     activity.success({
       action: "schedule.update",

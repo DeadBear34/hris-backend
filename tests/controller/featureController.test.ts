@@ -27,6 +27,7 @@ jest.unstable_mockModule("../../src/models/position.js", () => ({
   findByCode: jest.fn(),
   createPosition: jest.fn(),
   updatePosition: jest.fn(),
+  touchPosition: jest.fn(),
   softDeletePosition: jest.fn(),
   countEmployees: jest.fn(),
 }));
@@ -103,6 +104,9 @@ beforeEach(() => {
     position_id: POSITION_ID,
   } as never);
   (positionModel.findById as jest.Mock).mockResolvedValue(
+    fakePosition as never,
+  );
+  (positionModel.touchPosition as jest.Mock).mockResolvedValue(
     fakePosition as never,
   );
   (positionModel.findAll as jest.Mock).mockResolvedValue([
@@ -253,6 +257,17 @@ describe("PUT /api/v1/positions/:id/features", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ codes });
   }
+
+  it("menolak dengan 409 bila jabatan sudah diubah orang lain", async () => {
+    (positionModel.touchPosition as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await replaceFeatures(["employee.view_all"]);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("STALE_DATA");
+    expect(featureModel.replacePositionFeatures).not.toHaveBeenCalled();
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
 
   it("mengganti seluruh fitur jabatan", async () => {
     const res = await replaceFeatures(["employee.view_all"]);

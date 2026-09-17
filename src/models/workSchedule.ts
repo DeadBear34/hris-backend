@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 import {
   dayNameOf,
   dateRange,
@@ -255,6 +256,7 @@ export async function createSchedule(
 export async function updateSchedule(
   id: string,
   data: Partial<WorkScheduleInput>,
+  expectedUpdatedAt?: string,
 ): Promise<WorkSchedule | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -274,10 +276,13 @@ export async function updateSchedule(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<WorkSchedule>(
     `UPDATE work_schedules SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING ${COLUMNS}`,
     values,
   );

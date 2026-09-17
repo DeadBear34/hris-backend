@@ -3,6 +3,7 @@ import * as notificationModel from "../models/notification.js";
 import { toView } from "../realtime/event.js";
 import { Unauthorized, NotFound } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { startActivity } from "../helpers/activityLog.js";
 
 function requireUserId(req: Request): string {
   if (!req.user) {
@@ -54,6 +55,8 @@ export async function MarkNotificationReadController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const recipient_user_id = requireUserId(req);
     const { id } = res.locals.params as { id: string };
@@ -65,6 +68,14 @@ export async function MarkNotificationReadController(
     if (!updated) {
       throw NotFound("Notification not found or already read");
     }
+
+    activity.success({
+      action: "notification.read",
+      entity: "notification",
+      entity_id: updated.id,
+      summary: `Notification "${updated.title}" marked as read`,
+      metadata: { type: updated.type },
+    });
 
     res.json({
       success: true,
@@ -82,9 +93,18 @@ export async function MarkAllNotificationReadController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const recipient_user_id = requireUserId(req);
     const affected = await notificationModel.markAllRead(recipient_user_id);
+
+    activity.success({
+      action: "notification.read_all",
+      entity: "notification",
+      summary: `${plural(affected, "notification")} marked as read`,
+      metadata: { updated: affected },
+    });
 
     res.json({
       success: true,

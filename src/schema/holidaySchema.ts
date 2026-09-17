@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 export const listHolidayQuerySchema = z.object({
   year: z.coerce.number().int().min(1900).max(2200).optional(),
@@ -18,4 +19,6 @@ export const createHolidaySchema = z.object({
   is_collective_leave: z.boolean().optional(),
 });
 
-export const updateHolidaySchema = createHolidaySchema.partial();
+export const updateHolidaySchema = createHolidaySchema
+  .partial()
+  .extend({ updated_at: expectedUpdatedAt });

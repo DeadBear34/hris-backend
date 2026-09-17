@@ -3,6 +3,7 @@ import { pool } from "../config/databaseConnection.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as eventModel from "../models/attendanceEvent.js";
 import * as workScheduleModel from "../models/workSchedule.js";
@@ -38,6 +39,7 @@ import {
 } from "../helpers/attendanceStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
 import {
+  AppError,
   BadRequest,
   Conflict,
   Forbidden,
@@ -216,6 +218,8 @@ export async function CheckInController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const employee = await requireRequestEmployee(req, res);
     assertMayCheckIn(employee);
@@ -296,6 +300,20 @@ export async function CheckInController(
 
     const recordedClockTime = clockTimeOf(attendanceAt.at);
 
+    activity.success({
+      action: "attendance.check_in",
+      entity: "attendance",
+      entity_id: attendance.id,
+      actor_name: employee.full_name,
+      summary: `${employee.full_name} checked in at ${recordedClockTime}`,
+      metadata: {
+        employee_id: employee.id,
+        status: attendance.status,
+        late_minutes: attendance.late_minutes,
+        source: attendance.check_in_source,
+      },
+    });
+
     res.status(201).json({
       success: true,
       message: isLate
@@ -304,6 +322,15 @@ export async function CheckInController(
       data: attendance,
     });
   } catch (err) {
+    activity.failed({
+      action: "attendance.check_in",
+      entity: "attendance",
+      summary: "Check-in rejected",
+      metadata: {
+        reason: err instanceof AppError ? err.message : "unexpected error",
+      },
+    });
+
     next(err);
   }
 }
@@ -313,6 +340,8 @@ export async function CheckOutController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const employee = await requireRequestEmployee(req, res);
     assertMayCheckIn(employee);
@@ -393,12 +422,34 @@ export async function CheckOutController(
 
     await eventModel.linkToAttendance(event.id, attendance.id);
 
+    activity.success({
+      action: "attendance.check_out",
+      entity: "attendance",
+      entity_id: attendance.id,
+      actor_name: employee.full_name,
+      summary: `${employee.full_name} checked out at ${clockTimeOf(attendanceAt.at)}`,
+      metadata: {
+        employee_id: employee.id,
+        work_minutes: workedMinutes,
+        source: attendance.check_out_source,
+      },
+    });
+
     res.json({
       success: true,
       message: `Check-out recorded at ${clockTimeOf(attendanceAt.at)}, total work time ${formatDuration(workedMinutes)}`,
       data: attendance,
     });
   } catch (err) {
+    activity.failed({
+      action: "attendance.check_out",
+      entity: "attendance",
+      summary: "Check-out rejected",
+      metadata: {
+        reason: err instanceof AppError ? err.message : "unexpected error",
+      },
+    });
+
     next(err);
   }
 }
@@ -618,6 +669,7 @@ export async function CorrectAttendanceController(
       check_in_at?: string | null;
       check_out_at?: string | null;
       reason: string;
+      updated_at?: string;
     };
 
     const existing = await attendanceModel.findById(id);
@@ -669,21 +721,34 @@ export async function CorrectAttendanceController(
       correctedAt,
     );
 
-    const attendance = await attendanceModel.correctAttendance(id, {
-      status: data.status,
-      check_in_at: newCheckIn,
-      check_in_recorded_at: checkInWitness.recorded_at,
-      check_in_source: checkInWitness.source,
-      check_out_at: newCheckOut,
-      check_out_recorded_at: checkOutWitness.recorded_at,
-      check_out_source: checkOutWitness.source,
-      late_minutes: lateMinutes,
-      work_minutes:
-        newCheckIn && newCheckOut
-          ? minutesBetween(newCheckIn, newCheckOut)
-          : null,
-      note: buildCorrectionNote(corrector, data.reason, correctedAt),
-    });
+    const attendance = await attendanceModel.correctAttendance(
+      id,
+      {
+        status: data.status,
+        check_in_at: newCheckIn,
+        check_in_recorded_at: checkInWitness.recorded_at,
+        check_in_source: checkInWitness.source,
+        check_out_at: newCheckOut,
+        check_out_recorded_at: checkOutWitness.recorded_at,
+        check_out_source: checkOutWitness.source,
+        late_minutes: lateMinutes,
+        work_minutes:
+          newCheckIn && newCheckOut
+            ? minutesBetween(newCheckIn, newCheckOut)
+            : null,
+        note: buildCorrectionNote(corrector, data.reason, correctedAt),
+      },
+      pool,
+      data.updated_at,
+    );
+
+    if (!attendance) {
+      throw await rejectStaleUpdate(
+        "attendance",
+        () => attendanceModel.findById(id),
+        "Attendance record not found",
+      );
+    }
 
     activity.success({
       action: "attendance.correct",

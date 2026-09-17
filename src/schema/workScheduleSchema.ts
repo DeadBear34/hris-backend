@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 const hour = z
   .string()
@@ -56,4 +57,5 @@ export const createWorkScheduleSchema = scheduleBase.refine(
 
 export const updateWorkScheduleSchema = scheduleBase
   .partial()
+  .extend({ updated_at: expectedUpdatedAt })
   .refine(endAfterStart, endAfterStartMessage);

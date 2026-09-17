@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 import type { Executor } from "./user.js";
 
 export interface Holiday {
@@ -123,6 +124,7 @@ export async function createHoliday(
 export async function updateHoliday(
   id: string,
   data: Partial<HolidayInput>,
+  expectedUpdatedAt?: string,
 ): Promise<Holiday | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -142,10 +144,13 @@ export async function updateHoliday(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<Holiday>(
     `UPDATE holidays SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid
+     WHERE id = $${idParam}::uuid
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING ${COLUMNS}`,
     values,
   );

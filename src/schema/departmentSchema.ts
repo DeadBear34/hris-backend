@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 export const createDepartmentSchema = z.object({
   code: z
@@ -15,6 +16,7 @@ export const createDepartmentSchema = z.object({
     .max(100, "Department name must be at most 100 characters"),
 });
 
-export const updateDepartmentSchema = createDepartmentSchema
-  .partial()
-  .extend({ is_active: z.boolean().optional() });
+export const updateDepartmentSchema = createDepartmentSchema.partial().extend({
+  is_active: z.boolean().optional(),
+  updated_at: expectedUpdatedAt,
+});

@@ -291,6 +291,63 @@ describe("PATCH /api/v1/departments/:id", () => {
     expect(res.body.data.name).toBe("Keuangan");
   });
 
+  it("meneruskan updated_at dari klien sebagai syarat versi", async () => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan", updated_at: "2026-09-14T08:04:33.373Z" });
+
+    expect(res.status).toBe(200);
+    expect(departmentModel.updateDepartment).toHaveBeenCalledWith(
+      DEPARTMENT_ID,
+      { name: "Keuangan" },
+      "2026-09-14T08:04:33.373Z",
+    );
+  });
+
+  it("menolak dengan 409 dan data terbaru bila sudah diubah orang lain", async () => {
+    const latest = { ...fakeDepartment, name: "Keuangan & Akuntansi" };
+
+    (departmentModel.findById as jest.Mock)
+      .mockResolvedValueOnce(fakeDepartment as never)
+      .mockResolvedValueOnce(latest as never);
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      null as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan", updated_at: "2026-09-14T08:04:33.373Z" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("STALE_DATA");
+    expect(res.body.details.current.name).toBe("Keuangan & Akuntansi");
+  });
+
+  it("menjawab 404 bila departemen dihapus orang lain di tengah jalan", async () => {
+    (departmentModel.findById as jest.Mock)
+      .mockResolvedValueOnce(fakeDepartment as never)
+      .mockResolvedValueOnce(null as never);
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      null as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan" });
+
+    expect(res.status).toBe(404);
+  });
+
   it("menolak kode yang sudah dipakai departemen lain", async () => {
     (departmentModel.findById as jest.Mock).mockResolvedValue(
       fakeDepartment as never,

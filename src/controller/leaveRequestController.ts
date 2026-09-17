@@ -269,6 +269,8 @@ export async function CreateLeaveRequestController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
+
   try {
     const requester = await getRequester(req, res);
     const { leave_type_id, start_date, end_date, reason } = req.body as {
@@ -369,6 +371,22 @@ export async function CreateLeaveRequestController(
       start_date: request.start_date,
       end_date: request.end_date,
       total_days: request.total_days,
+    });
+
+    activity.success({
+      action: "leave.create",
+      entity: "leave_request",
+      entity_id: request.id,
+      actor_name: requester.employee.full_name,
+      summary: `${requester.employee.full_name} requested ${plural(totalDays, "day")} of ${leaveType.name} for ${request.start_date} to ${request.end_date}`,
+      metadata: {
+        employee_id: requester.employee.id,
+        leave_type_id,
+        total_days: totalDays,
+        start_date: request.start_date,
+        end_date: request.end_date,
+        approver_id: request.approver_id,
+      },
     });
 
     res.status(201).json({
@@ -601,6 +619,7 @@ export async function CancelLeaveRequestController(
   res: Response,
   next: NextFunction,
 ) {
+  const activity = startActivity(req);
   const client = await pool.connect();
 
   try {
@@ -665,6 +684,19 @@ export async function CancelLeaveRequestController(
     // setelah COMMIT, supaya lencana atasan tidak kehilangan tugas yang
     // ternyata gagal dibatalkan
     clearLeaveApproval(id);
+
+    activity.success({
+      action: "leave.cancel",
+      entity: "leave_request",
+      entity_id: id,
+      actor_name: requester.employee.full_name,
+      summary: `Leave request ${existing.start_date} to ${existing.end_date} cancelled`,
+      metadata: {
+        employee_id: existing.employee_id,
+        previous_status: existing.status,
+        total_days: existing.total_days,
+      },
+    });
 
     res.json({
       success: true,

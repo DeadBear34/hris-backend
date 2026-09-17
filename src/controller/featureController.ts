@@ -7,6 +7,7 @@ import { invalidateFeatureCache } from "../helpers/featureCache.js";
 import { getUserFeatureCodes } from "../middlewares/feature.js";
 import { BadRequest, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { plural } from "../helpers/plural.js";
 
 const CATEGORY_ORDER: FeatureCategory[] = [
@@ -69,7 +70,12 @@ export async function PositionFeatureController(
     res.json({
       success: true,
       data: {
-        position: { id: position.id, code: position.code, name: position.name },
+        position: {
+          id: position.id,
+          code: position.code,
+          name: position.name,
+          updated_at: position.updated_at,
+        },
         codes: features.map((f) => f.code),
         features,
       },
@@ -89,7 +95,10 @@ export async function ReplacePositionFeatureController(
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const { codes } = req.body as { codes: string[] };
+    const { codes, updated_at: expectedUpdatedAt } = req.body as {
+      codes: string[];
+      updated_at?: string;
+    };
 
     const position = await positionModel.findById(id);
     if (!position) throw NotFound("Position not found");
@@ -109,6 +118,22 @@ export async function ReplacePositionFeatureController(
     }
 
     await client.query("BEGIN");
+
+    // Pengaturan fitur dianggap bagian dari data jabatan, jadi dua admin yang
+    // mengubah centang jabatan yang sama saling terdeteksi lewat updated_at-nya
+    const touched = await positionModel.touchPosition(
+      client,
+      id,
+      expectedUpdatedAt,
+    );
+
+    if (!touched) {
+      throw await rejectStaleUpdate(
+        "position",
+        () => positionModel.findById(id),
+        "Position not found",
+      );
+    }
 
     await featureModel.replacePositionFeatures(
       client,
@@ -134,6 +159,7 @@ export async function ReplacePositionFeatureController(
       message: `Features for position ${position.name} updated successfully`,
       data: {
         position_id: id,
+        updated_at: touched.updated_at,
         codes: recognizedCodes.map((f) => f.code),
         total: recognizedCodes.length,
       },
@@ -166,6 +192,7 @@ export async function FeatureMatrixController(
           code: p.code,
           name: p.name,
           level: p.level,
+          updated_at: p.updated_at,
         })),
         categories: groupByCategory(features),
         grants,

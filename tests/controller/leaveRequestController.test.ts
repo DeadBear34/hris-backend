@@ -25,6 +25,12 @@ jest.unstable_mockModule("../../src/models/holiday.js", () => ({
   findDatesBetween: jest.fn(),
 }));
 
+jest.unstable_mockModule("../../src/models/feature.js", () => ({
+  findCodesByPosition: jest.fn(),
+  findAllCodes: jest.fn(() => Promise.resolve([])),
+  findUserIdsWithFeature: jest.fn(() => Promise.resolve([])),
+}));
+
 jest.unstable_mockModule("../../src/models/leaveType.js", () => ({
   findById: jest.fn(),
 }));
@@ -83,6 +89,9 @@ const attachmentModel = await import("../../src/models/leaveAttachment.js");
 const attendanceModel = await import("../../src/models/attendance.js");
 const workScheduleModel = await import("../../src/models/workSchedule.js");
 const { logger } = await import("../../src/config/logger.js");
+const featureModel = await import("../../src/models/feature.js");
+const { invalidateFeatureCache } =
+  await import("../../src/helpers/featureCache.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { toIsoDate } = await import("../../src/helpers/workdays.js");
 const { app } = await import("../../src/app.js");
@@ -128,9 +137,12 @@ const START_DATE = futureMonday();
 const END_DATE = shiftDays(START_DATE, 2); // Senin sampai Rabu, tiga hari kerja
 const TOTAL_DAYS = 3;
 
+const POSITION_ID = "77777777-7777-4777-8777-777777777777";
+
 const fakeEmployee = {
   id: EMPLOYEE_ID,
   user_id: USER_ID,
+  position_id: POSITION_ID,
   employee_number: "001",
   full_name: "Ismail Muhammad",
   phone: "+628123456789",
@@ -210,8 +222,19 @@ function transactionsOfType(txType: string) {
     .filter((data) => data.type === txType);
 }
 
+// Fitur penyetuju dipegang atasan langsung. Tanpa ini, menyetujui cuti
+// bawahan ditolak, jadi dipasang sebagai keadaan bawaan pengujian
+function grantFeatures(codes: string[]) {
+  (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue(
+    codes as never,
+  );
+  invalidateFeatureCache();
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
+  invalidateFeatureCache();
+  grantFeatures(["leave.approve_team"]);
   mockClient.query.mockResolvedValue({ rows: [] } as never);
   (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
@@ -612,6 +635,19 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     expect(res.status).toBe(200);
   });
 
+  it("menolak penyetuju yang jabatannya tidak punya leave.approve_team", async () => {
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: MANAGER_ID,
+    } as never);
+    grantFeatures([]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
   it("mengizinkan admin sebagai jalur darurat", async () => {
     const res = await approve(adminToken);
 
@@ -951,6 +987,18 @@ describe("daftar dan detail pengajuan", () => {
       .calls[0] as [{ employee_id: string }];
 
     expect(params.employee_id).toBe(EMPLOYEE_ID);
+  });
+
+  it("daftar persetujuan kosong tanpa fitur penyetuju", async () => {
+    grantFeatures([]);
+
+    const res = await request(app)
+      .get("/api/v1/leave-requests/approvals")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(leaveRequestModel.listRequests).not.toHaveBeenCalled();
   });
 
   it("daftar persetujuan disaring berdasarkan penyetuju", async () => {

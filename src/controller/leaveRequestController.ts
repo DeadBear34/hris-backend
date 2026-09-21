@@ -40,6 +40,7 @@ const SICK_LEAVE_CODE = "SICK";
 
 interface Requester {
   employee: Employee;
+  canApproveTeam: boolean;
   canApproveAll: boolean;
   canViewAll: boolean;
 }
@@ -47,12 +48,13 @@ interface Requester {
 async function getRequester(req: Request, res: Response): Promise<Requester> {
   const employee = await requireRequestEmployee(req, res);
 
-  const [canApproveAll, canViewAll] = await Promise.all([
+  const [canApproveTeam, canApproveAll, canViewAll] = await Promise.all([
+    hasFeature(req, res, "leave.approve_team"),
     hasFeature(req, res, "leave.approve_all"),
     hasFeature(req, res, "leave.view_all"),
   ]);
 
-  return { employee, canApproveAll, canViewAll };
+  return { employee, canApproveTeam, canApproveAll, canViewAll };
 }
 
 function resolveApprover(employee: Employee): string | null {
@@ -67,9 +69,13 @@ function canView(request: LeaveRequest, requester: Requester): boolean {
   );
 }
 
+// Atasan langsung tetap membutuhkan fitur menyetujui cuti bawahannya, supaya
+// kotak centang leave.approve_team benar-benar menentukan sesuatu
 function canDecide(request: LeaveRequest, requester: Requester): boolean {
+  if (requester.canApproveAll) return true;
+
   return (
-    requester.canApproveAll || request.approver_id === requester.employee.id
+    request.approver_id === requester.employee.id && requester.canApproveTeam
   );
 }
 
@@ -203,6 +209,17 @@ export async function ListApprovalLeaveRequestController(
   try {
     const requester = await getRequester(req, res);
     const query = res.locals.query as ListLeaveRequestParams;
+
+    // Tanpa salah satu fitur penyetuju tidak ada pengajuan yang boleh
+    // ditindak, jadi daftarnya kosong alih-alih ditolak
+    if (!requester.canApproveTeam && !requester.canApproveAll) {
+      res.json({
+        success: true,
+        data: [],
+        meta: meta(0, query.page, query.limit),
+      });
+      return;
+    }
 
     const { rows, total } = await leaveRequestModel.listRequests({
       ...query,

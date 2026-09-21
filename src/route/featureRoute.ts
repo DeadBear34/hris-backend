@@ -14,6 +14,8 @@ import { idParamSchema } from "../schema/commonSchema.js";
 const router = Router();
 const loggedIn = [authenticate];
 
+// Sengaja dijaga role, bukan fitur. Kalau dijaga fitur, pemegangnya dapat
+// memberi fitur apa pun ke jabatan lain lalu memindahkan dirinya ke sana
 const adminOnly = [authenticate, authorize("admin")];
 
 router.get("/features", ...adminOnly, ListFeatureCatalogController);

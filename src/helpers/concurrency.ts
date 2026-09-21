@@ -12,7 +12,7 @@ export function sameVersion(column: string, param: number): string {
   return `($${param}::timestamptz IS NULL OR date_trunc('milliseconds', ${column}) = date_trunc('milliseconds', $${param}::timestamptz))`;
 }
 
-// UPDATE bersyarat yang tidak mengenai baris punya dua kemungkinan: datanya
+// UPDATE itu bersyarat dalam artian yang tidak mengenai baris punya dua kemungkinan: datanya
 // sudah dihapus, atau sudah diubah orang lain sejak dibuka. Keduanya dibedakan
 // supaya pengguna tahu harus memuat ulang atau datanya memang sudah tidak ada
 export async function rejectStaleUpdate(

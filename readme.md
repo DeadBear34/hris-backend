@@ -369,6 +369,14 @@ Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan ke
 | `PUT`  | `/positions/:id/features` | Admin | Mengganti seluruh fitur jabatan sekaligus          |
 | `GET`  | `/me/features`            | Login | Kode fitur milik pengguna yang sedang login        |
 
+### Log Aktivitas
+
+| Metode | Endpoint          | Akses               | Keterangan                           |
+| ------ | ----------------- | ------------------- | ------------------------------------ |
+| `GET`  | `/activity-logs`  | `system.view_log`   | Riwayat tindakan, terbaru lebih dulu |
+
+Penyaring yang tersedia: `action`, `status`, `entity`, `entity_id`, `actor_user_id`, `start_date`, `end_date`, `page`, dan `limit` (bawaan 20, maksimal 100).
+
 ## Notifikasi Real-time
 
 Notifikasi dikirim lewat WebSocket milik server ini sendiri di jalur `/ws`, pada port yang sama dengan REST API. Tidak ada layanan pihak ketiga dan frontend tidak memerlukan `.env` apa pun.
@@ -970,9 +978,18 @@ Penolakan memakai 403 beserta kode fitur yang dibutuhkan:
 | `attendance.view_all`   | Melihat absensi seluruh karyawan                 |
 | `attendance.correct`    | Mengoreksi data absensi                          |
 | `attendance.report`     | Mengakses dan mengekspor laporan absensi         |
-| `system.manage_feature` | Mengatur fitur yang tersedia bagi setiap jabatan |
+| `system.view_log`       | Membaca log aktivitas lewat `GET /activity-logs`  |
+| `system.manage_feature` | **Tidak dipakai**, pengelolaan fitur dijaga role admin |
 
-Penambahan fitur baru dilakukan lewat migrasi SQL, karena setiap kode harus punya pasangan pemeriksaan di kode program.
+Penambahan fitur baru dilakukan lewat migrasi SQL, karena setiap kode harus punya pasangan pemeriksaan di kode program. Kode tanpa pemeriksaan tidak boleh dibiarkan ada di katalog: admin akan mencentangnya, lalu heran karena tidak terjadi apa-apa.
+
+`system.manage_feature` adalah kasus seperti itu. Pengelolaan fitur sengaja dijaga role admin, sehingga mencentangnya tidak memberi akses apa pun. Supaya tidak menyesatkan, nonaktifkan dari katalog:
+
+```sql
+UPDATE features SET is_active = false WHERE code = 'system.manage_feature';
+```
+
+Katalog dan matriks hanya menampilkan fitur `is_active = true`, dan pemberian yang terlanjur dibuat ikut diabaikan.
 
 ### Pengelolaan fitur
 
@@ -997,6 +1014,8 @@ Pemohon punya manager_id?
 ```
 
 Direktur tanpa atasan, staf HR yang mengajukan cuti, maupun manajer yang mengajukan ke atasannya sendiri mengikuti aturan yang sama. Pemegang `leave.approve_all` dapat menyetujui pengajuan mana pun sebagai jalur darurat, misalnya ketika atasan berhalangan, dan pemegang `leave.view_all` dapat melihat seluruh pengajuan.
+
+Menjadi atasan saja belum cukup. Penyetuju juga harus memegang `leave.approve_team`, sehingga wewenang menyetujui tetap dapat diatur lewat jabatan. Tanpa fitur itu, `GET /leave-requests/approvals` mengembalikan daftar kosong dan permintaan menyetujui atau menolak dijawab 403.
 
 ### Transisi status
 
@@ -1114,8 +1133,8 @@ Hal-hal berikut disadari dan belum dikerjakan:
 | ------- | ------ | -------------- |
 | Belum ada rate limiter | Endpoint publik seperti login dan register dapat dipanggil tanpa batas | Tambahkan pembatas per IP pada rute `/auth/*` |
 | Konfigurasi ESLint belum ada | `npm run lint` gagal dijalankan | Tambahkan `eslint.config.js` beserta `typescript-eslint` |
-| Belum ada endpoint membaca log aktivitas | Log hanya dapat dibaca langsung dari database | Model sudah menyediakan `listLogs`, tinggal dibuatkan rute dengan fitur `system.view_log` |
 | `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
 | Penyesuaian saldo manual boleh membuat saldo negatif | Admin dapat mengurangi saldo melebihi sisanya | Tentukan kebijakan, lalu tolak di dalam transaksi yang sudah terkunci |
 | `updated_at` masih opsional | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain | Wajibkan setelah seluruh form frontend mengirimnya |
+| `system.manage_feature` tidak diberlakukan | Mencentangnya di matriks tidak memberi akses apa pun | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |
 | Cache fitur per proses | Instance lain tertinggal paling lama satu menit setelah fitur jabatan diubah | Siarkan pembatalan cache lewat `LISTEN`/`NOTIFY` yang sama dengan notifikasi |

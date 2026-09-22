@@ -52,6 +52,17 @@ export const envSchema = z.object({
     blankToUndefined,
     z.string().default("employee-photos"),
   ),
+
+  // Kosong berarti menyala, kecuali saat pengujian. Test lama memanggil login
+  // berkali-kali dengan email yang sama dan akan tertahan oleh batasnya
+  RATE_LIMIT_ENABLED: z.preprocess(
+    blankToUndefined,
+    z.enum(["true", "false"]).optional(),
+  ),
+
+  // Wajib diisi bila server berada di balik reverse proxy atau load balancer.
+  // Tanpa ini semua klien terlihat ber-IP sama, yaitu IP proxy-nya
+  TRUST_PROXY: z.preprocess(blankToUndefined, z.string().optional()),
 });
 
 const parsed = envSchema.safeParse(process.env);

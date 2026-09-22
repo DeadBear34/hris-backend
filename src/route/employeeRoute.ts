@@ -14,6 +14,10 @@ import { authenticate } from "../middlewares/auth.js";
 import { uploadSingleImage } from "../middlewares/upload.js";
 import { requireFeature } from "../middlewares/feature.js";
 import {
+  employeeListRateLimit,
+  employeeCreateRateLimit,
+} from "../middlewares/rateLimit.js";
+import {
   validate,
   validateQuery,
   validateParams,
@@ -32,8 +36,11 @@ const canCreateEmployees = [authenticate, requireFeature("employee.create")];
 const canUpdateEmployees = [authenticate, requireFeature("employee.update")];
 const canDeleteEmployees = [authenticate, requireFeature("employee.delete")];
 
+// Pembatas diletakkan sebelum authenticate dan pemeriksaan fitur, karena
+// keduanya menjalankan query database
 router.get(
   "/employees",
+  employeeListRateLimit,
   ...canViewEmployees,
   validateQuery(listEmployeeQuerySchema),
   ListEmployeeController,
@@ -41,6 +48,7 @@ router.get(
 
 router.post(
   "/employees",
+  employeeCreateRateLimit,
   ...canCreateEmployees,
   validate(createEmployeePayloadSchema),
   CreateEmployeeController,

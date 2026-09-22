@@ -13,8 +13,13 @@ import workScheduleRoute from "./workScheduleRoute.js";
 import attendanceRoute from "./attendanceRoute.js";
 import notificationRoute from "./notificationRoute.js";
 import activityLogRoute from "./activityLogRoute.js";
+import { apiRateLimit } from "../middlewares/rateLimit.js";
 
 const router = Router();
+
+// Dipasang paling depan supaya ikut menghitung permintaan ke route yang
+// tidak ada, misalnya pemindaian endpoint
+router.use(apiRateLimit);
 
 router.use(authRoute);
 router.use(userAccountRoute);

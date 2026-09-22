@@ -42,3 +42,10 @@ export function TooManyRequests(
 ) {
   return new AppError(429, message, "TOO_MANY_REQUESTS", details);
 }
+
+// Dibedakan dari TOO_MANY_REQUESTS: yang itu jeda aturan bisnis (misalnya
+// menunggu sebelum meminta kode verifikasi baru), sedangkan ini batas
+// jumlah panggilan API per klien
+export function RateLimitExceeded(message = "Too many requests") {
+  return new AppError(429, message, "RATE_LIMIT_EXCEEDED");
+}

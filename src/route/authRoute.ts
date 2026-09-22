@@ -17,6 +17,7 @@ import {
   DeleteOwnPhotoController,
 } from "../controller/employeePhotoController.js";
 import { authenticate } from "../middlewares/auth.js";
+import { loginRateLimit } from "../middlewares/rateLimit.js";
 import { uploadSingleImage } from "../middlewares/upload.js";
 import {
   validate,
@@ -39,7 +40,13 @@ const loggedIn = [authenticate];
 
 router.post("/auth/register", validate(registerSchema), RegisterController);
 
-router.post("/auth/login", validate(loginSchema), LoginController);
+// Sebelum validate, supaya percobaan dengan body asal-asalan tetap terhitung
+router.post(
+  "/auth/login",
+  loginRateLimit,
+  validate(loginSchema),
+  LoginController,
+);
 
 router.post(
   "/auth/verify-email",

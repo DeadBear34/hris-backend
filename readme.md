@@ -16,6 +16,7 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Daftar Endpoint](#daftar-endpoint)
 - [Notifikasi Real-time](#notifikasi-real-time)
 - [Keamanan](#keamanan)
+- [Rate Limit](#rate-limit)
 - [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan)
 - [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan)
 - [Pengiriman Email](#pengiriman-email)
@@ -55,7 +56,7 @@ src/
 ├── server.ts           # Titik masuk: koneksi DB, HTTP, WebSocket, pembersihan notifikasi
 ├── config/             # env, koneksi database, logger, daftar origin yang diizinkan
 ├── route/              # Pemetaan URL ke middleware dan controller
-├── middlewares/        # authenticate, requireFeature, validate, upload, error handler
+├── middlewares/        # rateLimit, authenticate, requireFeature, validate, upload, error handler
 ├── controller/         # Alur per endpoint: memeriksa aturan bisnis lalu memanggil model
 ├── models/             # Seluruh query SQL, satu berkas per tabel
 ├── schema/             # Skema Zod untuk body, query, dan parameter
@@ -68,9 +69,9 @@ tests/                  # Mengikuti struktur src/ satu per satu
 Satu request berjalan melewati lapisan yang sama:
 
 ```
-route → authenticate → requireFeature → validate → controller → model → PostgreSQL
-                                                         │
-                                                         └─→ helpers/notify → realtime
+route → rateLimit → authenticate → requireFeature → validate → controller → model → PostgreSQL
+                                                                     │
+                                                                     └─→ helpers/notify → realtime
 ```
 
 Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model tidak tahu soal HTTP, dan route tidak berisi logika.
@@ -148,6 +149,8 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 | `SUPABASE_PHOTO_BUCKET`     | tidak | `employee-photos`              | Nama bucket publik penyimpan foto profil karyawan                    |
 | `TIMEZONE`                  | tidak | `Asia/Jakarta`                 | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja            |
 | `CRON_SECRET`               | tidak | —                              | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi   |
+| `RATE_LIMIT_ENABLED`        | tidak | menyala, kecuali saat test     | `true` atau `false`, lihat [Rate Limit](#rate-limit)                 |
+| `TRUST_PROXY`               | tidak | mati                           | Jumlah proxy di depan server, wajib bila memakai reverse proxy       |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai. Nilai yang tidak valid menghentikan server saat mulai, beserta daftar variabel yang bermasalah.
 
@@ -207,6 +210,7 @@ Respons gagal selalu berbentuk sama:
 | 409    | `CONFLICT`          | Data bentrok atau berubah di tengah jalan                             |
 | 409    | `STALE_DATA`        | Data sudah diubah orang lain sejak dibuka, lihat [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan) |
 | 429    | `TOO_MANY_REQUESTS` | Meminta kode verifikasi baru sebelum jeda berakhir                    |
+| 429    | `RATE_LIMIT_EXCEEDED` | Klien memanggil API melebihi batas per menit, lihat [Rate Limit](#rate-limit) |
 | 500    | —                   | Kesalahan tak terduga, rinciannya hanya dicatat di log server         |
 
 Error validasi merinci setiap field:
@@ -468,11 +472,84 @@ Tidak ada Redis atau layanan tambahan yang diperlukan.
 | Cross-Site WebSocket Hijacking | Jabat tangan WebSocket tidak tunduk pada CORS, sehingga header `Origin` diperiksa sendiri terhadap `CORS_ORIGIN` |
 | CSRF | Tidak berlaku karena autentikasi memakai header `Authorization: Bearer`, bukan cookie yang dikirim peramban secara otomatis |
 | Unggahan berbahaya | Jenis berkas dibaca dari magic bytes isinya, bukan dari nama atau `Content-Type`, maksimal 5 MB |
+| Menebak password | Login dibatasi 5 percobaan per menit untuk setiap pasangan IP dan email, lihat [Rate Limit](#rate-limit) |
 | Menebak kode verifikasi | Maksimal 5 percobaan per kode, dihitung secara atomik sehingga tidak dapat ditembus dengan permintaan bersamaan |
 | Memetakan email terdaftar | `forgot-password` dan `resend-verification` selalu menjawab pesan yang sama |
 | Header HTTP | Helmet |
 
 Origin yang tidak dikirim sama sekali tetap diterima, karena hanya peramban yang dapat disuruh menyambung oleh situs lain. `curl`, aplikasi mobile, dan pengujian tidak mengirim `Origin`.
+
+## Rate Limit
+
+Rate limiting membatasi berapa kali satu klien boleh memanggil API dalam satu periode. Tujuannya dua: menahan tebakan password dan skrip yang membanjiri server, serta memberi frontend aba-aba yang jelas kapan harus menunggu.
+
+### Batas yang berlaku
+
+| Endpoint | Batas | Dihitung per |
+| -------- | ----- | ------------ |
+| `POST /auth/login` | 5 per menit | Pasangan IP dan email |
+| `GET /employees` | 100 per menit | Pengguna |
+| `POST /employees` | 20 per menit | Pengguna |
+| Seluruh `/api/v1` lainnya | 300 per menit | Pengguna, atau IP bila belum login |
+
+Batas khusus endpoint berlaku **di samping** batas umum, bukan menggantikannya. `GET /employees` jadi ikut memakan jatah 300 per menit, tapi jatah POST tidak mengurangi jatah GET. `/health` sengaja tidak dibatasi supaya pemeriksa kesehatan server tidak pernah tertolak.
+
+Angkanya ada di [src/middlewares/rateLimit.ts](src/middlewares/rateLimit.ts). Menambah batas untuk endpoint lain cukup dengan membuat pembatas baru lewat `rateLimit({ name, limit, windowMs })` lalu memasangnya di route.
+
+### Respons saat batas terlampaui
+
+```http
+HTTP/1.1 429 Too Many Requests
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 0
+Retry-After: 53
+```
+
+```json
+{
+  "success": false,
+  "message": "Too many requests",
+  "code": "RATE_LIMIT_EXCEEDED"
+}
+```
+
+`X-RateLimit-Limit` dan `X-RateLimit-Remaining` dikirim di **setiap** respons endpoint yang dibatasi, tidak hanya saat ditolak, sehingga frontend bisa melihat sisa jatahnya sebelum habis. `Retry-After` hanya dikirim saat ditolak, berisi detik sampai jatah kembali penuh.
+
+Ketiga header dibuka lewat `Access-Control-Expose-Headers`. Tanpa itu, peramban menyembunyikan header tersebut dari JavaScript frontend walaupun terlihat di tab Network.
+
+Bila satu permintaan melewati dua pembatas, header yang dikirim milik pembatas yang sisanya paling sedikit, karena pembatas itulah yang akan lebih dulu menolak.
+
+Kode `RATE_LIMIT_EXCEEDED` sengaja dibedakan dari `TOO_MANY_REQUESTS`. Yang terakhir adalah jeda aturan bisnis, misalnya menunggu sebelum meminta kode verifikasi baru.
+
+### Kenapa login dihitung per IP dan email
+
+| Kunci | Masalahnya |
+| ----- | ---------- |
+| Per IP saja | Seluruh karyawan di satu kantor biasanya keluar lewat satu IP publik. Lima salah ketik gabungan saat jam masuk sudah mengunci semua orang |
+| Per email saja | Siapa pun dari mana pun dapat mengunci akun orang lain hanya dengan sengaja salah login lima kali |
+| **IP dan email** | Penebak dari satu tempat tertahan pada satu akun, tanpa mengganggu rekan satu kantor atau pemilik akun di tempat lain |
+
+Email disamakan huruf kecilnya dan dibuang spasinya lebih dulu, jadi `Ismail@Awan.IO` dan `ismail@awan.io` berbagi jatah yang sama. Pembatas dipasang sebelum validasi, sehingga body yang asal-asalan pun tetap terhitung.
+
+### Kenapa dipasang sebelum authenticate
+
+`authenticate` dan `requireFeature` sama-sama menjalankan query database. Pembatas ditaruh di depannya supaya permintaan yang ditolak tidak sempat membebani database, yang justru menjadi salah satu tujuan rate limit.
+
+Karena belum melewati `authenticate`, pembatas memeriksa token sendiri, cukup tanda tangannya tanpa query sesi. Token yang sah dihitung per id pengguna, sehingga karyawan di balik IP kantor yang sama punya jatah masing-masing. Token palsu, rusak, atau kedaluwarsa dihitung per IP, jadi id pengguna tidak bisa diakali untuk mendapat jatah baru.
+
+### Di balik reverse proxy
+
+Tanpa pengaturan, semua permintaan terlihat datang dari IP proxy, sehingga seluruh pengguna yang belum login berbagi satu jatah. Isi `TRUST_PROXY` dengan **jumlah** proxy di depan server, misalnya `1` untuk satu Nginx atau load balancer.
+
+Hindari `TRUST_PROXY=true`. Nilai itu membuat Express memercayai seluruh isi `X-Forwarded-For`, yang dapat ditulis sendiri oleh klien untuk menyamar sebagai IP lain dan mendapat jatah baru di setiap permintaan.
+
+Pengaturan ini juga menentukan `ip_address` yang tercatat di [Log Aktivitas](#log-aktivitas).
+
+### Cara kerja pembatas
+
+Algoritmanya *fixed window*: setiap klien punya satu hitungan per jendela satu menit, dan hitungan itu kembali ke nol saat jendelanya berakhir. Hitungan disimpan di memori proses, dan jendela yang sudah lewat dibuang berkala supaya memori tidak terus membesar.
+
+Rate limit otomatis mati saat `NODE_ENV=test`, karena test lain memanggil login berkali-kali dengan email yang sama. Test khususnya menyalakan kembali lewat `RATE_LIMIT_ENABLED=true`.
 
 ## Perlindungan dari Permintaan Bersamaan
 
@@ -1131,7 +1208,8 @@ Hal-hal berikut disadari dan belum dikerjakan:
 
 | Batasan | Dampak | Arah perbaikan |
 | ------- | ------ | -------------- |
-| Belum ada rate limiter | Endpoint publik seperti login dan register dapat dipanggil tanpa batas | Tambahkan pembatas per IP pada rute `/auth/*` |
+| Hitungan rate limit per proses | Pada penyebaran multi-instance setiap instance menghitung sendiri, sehingga batas efektifnya dikali jumlah instance | Ganti `MemoryRateLimitStore` dengan penyimpanan bersama seperti Redis |
+| Endpoint publik lain belum punya batas khusus | `register`, `forgot-password`, dan `reset-password` hanya tertahan batas umum 300 per menit per IP | Pasang pembatas ketat seperti login bila mulai disalahgunakan |
 | Konfigurasi ESLint belum ada | `npm run lint` gagal dijalankan | Tambahkan `eslint.config.js` beserta `typescript-eslint` |
 | `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
 | Penyesuaian saldo manual boleh membuat saldo negatif | Admin dapat mengurangi saldo melebihi sisanya | Tentukan kebijakan, lalu tolak di dalam transaksi yang sudah terkunci |

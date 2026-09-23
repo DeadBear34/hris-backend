@@ -12,18 +12,16 @@ interface RateWindow {
 
 // Fixed window: setiap klien punya satu hitungan per jendela waktu, dan
 // hitungan itu kembali ke nol saat jendelanya berakhir.
-//
-// Hitungan disimpan di memori proses. Pada penyebaran multi-instance setiap
-// instance menghitung sendiri, sehingga batas efektifnya dikali jumlah
-// instance. Untuk berbagi hitungan, ganti kelas ini dengan penyimpanan
-// bersama seperti Redis tanpa mengubah middleware-nya
 export class MemoryRateLimitStore {
   private windows = new Map<string, RateWindow>();
   private lastSweep = 0;
 
   hit(key: string, windowMs: number, now = Date.now()): RateWindow {
     this.sweep(now, windowMs);
-
+    // Hitungan disimpan di memori proses. Pada penyebaran multi-instance setiap
+    // instance menghitung sendiri, sehingga batas efektifnya dikali jumlah
+    // instance. Untuk berbagi hitungan, ganti kelas ini dengan penyimpanan
+    // bersama seperti Redis tanpa mengubah middleware-nya  
     const current = this.windows.get(key);
 
     if (current && current.resetAt > now) {

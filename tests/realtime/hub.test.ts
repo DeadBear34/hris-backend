@@ -1,0 +1,158 @@
+import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import type { WebSocket } from "ws";
+
+jest.unstable_mockModule("../../src/config/logger.js", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
+const {
+  register,
+  unregister,
+  pushToLocal,
+  pushToMany,
+  connectionCount,
+  isConnected,
+  resetHub,
+} = await import("../../src/realtime/hub.js");
+
+const OPEN = 1;
+const CLOSING = 2;
+
+function fakeSocket(readyState = OPEN) {
+  return { readyState, send: jest.fn() } as unknown as WebSocket & {
+    send: jest.Mock;
+  };
+}
+
+beforeEach(() => {
+  resetHub();
+});
+
+describe("pendaftaran koneksi", () => {
+  it("menyimpan beberapa soket untuk satu pengguna", () => {
+    register("u1", fakeSocket());
+    register("u1", fakeSocket());
+
+    expect(connectionCount()).toBe(2);
+    expect(isConnected("u1")).toBe(true);
+  });
+
+  it("membuang soket saat koneksinya ditutup", () => {
+    const socket = fakeSocket();
+
+    register("u1", socket);
+    unregister(socket);
+
+    expect(connectionCount()).toBe(0);
+    expect(isConnected("u1")).toBe(false);
+  });
+
+  it("tidak menyisakan kunci kosong setelah soket terakhir pergi", () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+
+    register("u1", a);
+    register("u1", b);
+    unregister(a);
+
+    expect(isConnected("u1")).toBe(true);
+
+    unregister(b);
+
+    expect(isConnected("u1")).toBe(false);
+  });
+
+  it("mengabaikan soket yang tidak pernah terdaftar", () => {
+    expect(() => unregister(fakeSocket())).not.toThrow();
+  });
+});
+
+describe("pengiriman pesan", () => {
+  it("mengirim ke semua tab milik pengguna", () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+
+    register("u1", a);
+    register("u1", b);
+
+    const delivered = pushToLocal("u1", { event: "ready", unread: 3 });
+
+    expect(delivered).toBe(2);
+    expect(a.send).toHaveBeenCalled();
+    expect(b.send).toHaveBeenCalled();
+  });
+
+  it("tidak mengirim ke pengguna lain", () => {
+    const someoneElses = fakeSocket();
+
+    register("u1", fakeSocket());
+    register("u2", someoneElses);
+
+    pushToLocal("u1", { event: "ready", unread: 1 });
+
+    expect(someoneElses.send).not.toHaveBeenCalled();
+  });
+
+  it("melewati soket yang sedang menutup", () => {
+    const closing = fakeSocket(CLOSING);
+
+    register("u1", closing);
+
+    expect(pushToLocal("u1", { event: "ready", unread: 0 })).toBe(0);
+    expect(closing.send).not.toHaveBeenCalled();
+  });
+
+  it("aman dipanggil untuk pengguna yang sedang tidak tersambung", () => {
+    expect(pushToLocal("hantu", { event: "ready", unread: 0 })).toBe(0);
+  });
+
+  it("tidak melempar walau pengiriman gagal", () => {
+    const broken = fakeSocket();
+    broken.send.mockImplementation(() => {
+      throw new Error("soket rusak");
+    });
+
+    register("u1", broken);
+
+    expect(() =>
+      pushToLocal("u1", { event: "ready", unread: 0 }),
+    ).not.toThrow();
+  });
+
+  it("mengirim pesan sebagai JSON", () => {
+    const socket = fakeSocket();
+
+    register("u1", socket);
+    pushToLocal("u1", { event: "notification.cleared", ids: ["n1"] });
+
+    const [payload] = socket.send.mock.calls[0] as [string];
+
+    expect(JSON.parse(payload)).toEqual({
+      event: "notification.cleared",
+      ids: ["n1"],
+    });
+  });
+});
+
+describe("pengiriman ke banyak penerima", () => {
+  it("mengirim ke setiap penerima", () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+
+    register("u1", a);
+    register("u2", b);
+
+    expect(pushToMany(["u1", "u2"], { event: "ready", unread: 0 })).toBe(2);
+  });
+
+  it("penerima kembar hanya dikirimi sekali", () => {
+    const socket = fakeSocket();
+
+    register("u1", socket);
+
+    expect(pushToMany(["u1", "u1", "u1"], { event: "ready", unread: 0 })).toBe(
+      1,
+    );
+    expect(socket.send).toHaveBeenCalledTimes(1);
+  });
+});

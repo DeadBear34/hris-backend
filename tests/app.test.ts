@@ -17,14 +17,19 @@ mockClient.query.mockResolvedValue({ rows: [] } as never);
 const { createToken } = await import("../src/helpers/jwt.js");
 const { app } = await import("../src/app.js");
 
-const HR_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const TARGET_ID = "88888888-8888-4888-8888-888888888888";
 
-const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 const employeeToken = createToken({
   id: TARGET_ID,
   email: "karyawan@awan.io",
   role: "employee",
+});
+
+const adminToken = createToken({
+  id: ADMIN_ID,
+  email: "admin@awan.io",
+  role: "admin",
 });
 
 describe("GET /health", () => {
@@ -60,7 +65,7 @@ describe("penanganan route yang tidak dikenal", () => {
   it("menolak metode yang tidak disediakan sebuah route", async () => {
     const res = await request(app)
       .delete("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
   });
@@ -103,12 +108,12 @@ describe("header keamanan", () => {
 });
 
 describe("aturan akses tiap route", () => {
-  const rutePublik = [
+  const publicRoute = [
     ["post", "/api/v1/auth/register"],
     ["post", "/api/v1/auth/login"],
   ] as const;
 
-  const ruteLogin = [
+  const loginRoute = [
     ["get", "/api/v1/auth/me"],
     ["patch", "/api/v1/auth/password"],
     ["get", "/api/v1/departments"],
@@ -117,7 +122,7 @@ describe("aturan akses tiap route", () => {
     ["get", `/api/v1/positions/${TARGET_ID}`],
   ] as const;
 
-  const ruteHr = [
+  const hrRoute = [
     ["get", "/api/v1/users/pending"],
     ["patch", `/api/v1/users/${TARGET_ID}/approve`],
     ["patch", `/api/v1/users/${TARGET_ID}/status`],
@@ -134,7 +139,7 @@ describe("aturan akses tiap route", () => {
     ["delete", `/api/v1/positions/${TARGET_ID}`],
   ] as const;
 
-  it.each(rutePublik)(
+  it.each(publicRoute)(
     "%s %s terpasang tanpa perlu login",
     async (method, path) => {
       const res = await request(app)[method](path).send({});
@@ -144,13 +149,13 @@ describe("aturan akses tiap route", () => {
     },
   );
 
-  it.each(ruteLogin)("%s %s menolak tamu", async (method, path) => {
+  it.each(loginRoute)("%s %s menolak tamu", async (method, path) => {
     const res = await request(app)[method](path).send({});
 
     expect(res.status).toBe(401);
   });
 
-  it.each(ruteLogin)(
+  it.each(loginRoute)(
     "%s %s dapat diakses karyawan biasa",
     async (method, path) => {
       const res = await request(app)
@@ -163,13 +168,13 @@ describe("aturan akses tiap route", () => {
     },
   );
 
-  it.each(ruteHr)("%s %s menolak tamu", async (method, path) => {
+  it.each(hrRoute)("%s %s menolak tamu", async (method, path) => {
     const res = await request(app)[method](path).send({});
 
     expect(res.status).toBe(401);
   });
 
-  it.each(ruteHr)("%s %s menolak karyawan biasa", async (method, path) => {
+  it.each(hrRoute)("%s %s menolak karyawan biasa", async (method, path) => {
     const res = await request(app)
       [method](path)
       .set("Authorization", `Bearer ${employeeToken}`)

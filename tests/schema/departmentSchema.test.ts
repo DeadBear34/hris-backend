@@ -168,3 +168,24 @@ describe("updateDepartmentSchema", () => {
     }
   });
 });
+
+describe("updated_at untuk mendeteksi perubahan orang lain", () => {
+  it("menerima updated_at dalam format ISO", () => {
+    const result = updateDepartmentSchema.safeParse({
+      name: "Keuangan",
+      updated_at: "2026-09-14T08:04:33.373Z",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.updated_at).toBe("2026-09-14T08:04:33.373Z");
+  });
+
+  it("menolak updated_at yang bukan waktu", () => {
+    const result = updateDepartmentSchema.safeParse({
+      name: "Keuangan",
+      updated_at: "kemarin",
+    });
+
+    expect(result.success).toBe(false);
+  });
+});

@@ -8,6 +8,6 @@ export function generateResetToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-export function expiresInMinutes(menit: number): Date {
-  return new Date(Date.now() + menit * 60_000);
+export function expiresInMinutes(minute: number): Date {
+  return new Date(Date.now() + minute * 60_000);
 }

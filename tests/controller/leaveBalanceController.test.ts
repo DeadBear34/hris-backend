@@ -2,9 +2,16 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 
 const mockPoolQuery = jest.fn(() => Promise.resolve({ rows: [] }));
+const mockClient = {
+  query: jest.fn((_sql: string) => Promise.resolve({ rows: [] })),
+  release: jest.fn(),
+};
 
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
-  pool: { connect: jest.fn(), query: mockPoolQuery },
+  pool: {
+    connect: jest.fn(() => Promise.resolve(mockClient)),
+    query: mockPoolQuery,
+  },
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
@@ -29,6 +36,7 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   createTransaction: jest.fn(),
   convertHoldToDeduction: jest.fn(),
   findByRequest: jest.fn(),
+  lockEmployeeBalance: jest.fn(),
 }));
 
 const userModel = await import("../../src/models/user.js");
@@ -40,7 +48,7 @@ const { app } = await import("../../src/app.js");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
-const LAIN_ID = "33333333-3333-4333-8333-333333333333";
+const OTHER_ID = "33333333-3333-4333-8333-333333333333";
 const LEAVE_TYPE_ID = "44444444-4444-4444-8444-444444444444";
 
 const employeeToken = createToken({
@@ -48,9 +56,13 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
-const hrToken = createToken({ id: USER_ID, email: "hr@awan.io", role: "hr" });
+const adminToken = createToken({
+  id: USER_ID,
+  email: "admin2@awan.io",
+  role: "admin",
+});
 
-const TAHUN_INI = new Date().getUTCFullYear();
+const THIS_YEAR = new Date().getUTCFullYear();
 
 const fakeEmployee = {
   id: EMPLOYEE_ID,
@@ -63,7 +75,7 @@ const fakeSummary = [
     leave_type_id: LEAVE_TYPE_ID,
     leave_type_code: "ANNUAL",
     leave_type_name: "Cuti Tahunan",
-    period_year: TAHUN_INI,
+    period_year: THIS_YEAR,
     balance: 9,
   },
 ];
@@ -76,7 +88,7 @@ beforeEach(() => {
   );
   (employeeModel.findById as jest.Mock).mockResolvedValue({
     ...fakeEmployee,
-    id: LAIN_ID,
+    id: OTHER_ID,
   } as never);
   (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
     id: LEAVE_TYPE_ID,
@@ -110,10 +122,10 @@ describe("GET /api/v1/leave-balances/me", () => {
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.period_year).toBe(TAHUN_INI);
+    expect(res.body.data.period_year).toBe(THIS_YEAR);
     expect(balanceModel.summaryFor).toHaveBeenCalledWith(
       EMPLOYEE_ID,
-      TAHUN_INI,
+      THIS_YEAR,
     );
   });
 
@@ -143,7 +155,7 @@ describe("GET /api/v1/leave-balances/me", () => {
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("belum terhubung ke data karyawan");
+    expect(res.body.message).toContain("not linked to an employee record");
   });
 });
 
@@ -182,27 +194,27 @@ describe("GET /api/v1/leave-balances/me/ledger", () => {
 describe("GET /api/v1/leave-balances/:id", () => {
   it("menolak karyawan biasa melihat saldo orang lain", async () => {
     const res = await request(app)
-      .get(`/api/v1/leave-balances/${LAIN_ID}`)
+      .get(`/api/v1/leave-balances/${OTHER_ID}`)
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(403);
   });
 
-  it("mengizinkan HR melihat saldo karyawan lain", async () => {
+  it("mengizinkan admin melihat saldo karyawan lain", async () => {
     const res = await request(app)
-      .get(`/api/v1/leave-balances/${LAIN_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .get(`/api/v1/leave-balances/${OTHER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.employee_id).toBe(LAIN_ID);
+    expect(res.body.data.employee_id).toBe(OTHER_ID);
   });
 
   it("mengembalikan 404 untuk karyawan yang tidak ada", async () => {
     (employeeModel.findById as jest.Mock).mockResolvedValue(null as never);
 
     const res = await request(app)
-      .get(`/api/v1/leave-balances/${LAIN_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .get(`/api/v1/leave-balances/${OTHER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
   });
@@ -210,9 +222,9 @@ describe("GET /api/v1/leave-balances/:id", () => {
 
 describe("POST /api/v1/leave-balances/adjustments", () => {
   const body = {
-    employee_id: LAIN_ID,
+    employee_id: OTHER_ID,
     leave_type_id: LEAVE_TYPE_ID,
-    period_year: TAHUN_INI,
+    period_year: THIS_YEAR,
     amount: 3,
     note: "Kompensasi lembur",
   };
@@ -230,7 +242,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("mencatat penyesuaian sebagai transaksi adjustment", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(201);
@@ -246,7 +258,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("mencatat siapa yang melakukan penyesuaian", async () => {
     await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     const [, data] = (balanceModel.createTransaction as jest.Mock).mock
@@ -258,7 +270,7 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("menerima penyesuaian bernilai negatif", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...body, amount: -2 });
 
     expect(res.status).toBe(201);
@@ -267,19 +279,19 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
   it("menolak penyesuaian bernilai nol", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ ...body, amount: 0 });
 
     expect(res.status).toBe(400);
   });
 
   it("mewajibkan alasan penyesuaian", async () => {
-    const { note, ...tanpaAlasan } = body;
+    const { note, ...withoutReason } = body;
 
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
-      .send(tanpaAlasan);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(withoutReason);
 
     expect(res.status).toBe(400);
   });
@@ -289,11 +301,11 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
 
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("Karyawan tidak ditemukan");
+    expect(res.body.message).toBe("Employee not found");
   });
 
   it("menolak jenis cuti yang tidak ada", async () => {
@@ -301,17 +313,52 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
 
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe("Jenis cuti tidak ditemukan");
+    expect(res.body.message).toBe("Leave type not found");
+  });
+
+  it("mengunci saldo karyawan di dalam transaksi sebelum mencatat", async () => {
+    await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    const sqls = mockClient.query.mock.calls.map(([sql]) => sql);
+    const [lockedAt] = (balanceModel.lockEmployeeBalance as jest.Mock).mock
+      .invocationCallOrder;
+    const [writtenAt] = (balanceModel.createTransaction as jest.Mock).mock
+      .invocationCallOrder;
+
+    expect(balanceModel.lockEmployeeBalance).toHaveBeenCalledWith(
+      mockClient,
+      OTHER_ID,
+    );
+    expect(lockedAt).toBeLessThan(writtenAt!);
+    expect(sqls).toEqual(["BEGIN", "COMMIT"]);
+  });
+
+  it("membatalkan penyesuaian bila penyimpanan gagal", async () => {
+    (balanceModel.createTransaction as jest.Mock).mockRejectedValue(
+      new Error("gagal") as never,
+    );
+
+    const res = await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(res.status).toBe(500);
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(mockClient.release).toHaveBeenCalled();
   });
 
   it("mengembalikan saldo terbaru setelah penyesuaian", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(body);
 
     expect(res.body.data.balance).toBe(9);

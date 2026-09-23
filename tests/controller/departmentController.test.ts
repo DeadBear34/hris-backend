@@ -25,12 +25,11 @@ const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
 const DEPARTMENT_ID = "33333333-3333-4333-8333-333333333333";
-const HR_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "66666666-6666-4666-8666-666666666666";
 
-const hrToken = createToken({ id: HR_ID, email: "hr@awan.io", role: "hr" });
 const adminToken = createToken({
-  id: HR_ID,
+  id: ADMIN_ID,
   email: "admin@awan.io",
   role: "admin",
 });
@@ -79,7 +78,7 @@ describe("GET /api/v1/departments", () => {
 
     const res = await request(app)
       .get("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual([]);
@@ -92,7 +91,7 @@ describe("GET /api/v1/departments", () => {
 
     const res = await request(app)
       .get("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(500);
   });
@@ -108,7 +107,7 @@ describe("GET /api/v1/departments/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .get("/api/v1/departments/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(departmentModel.findById).not.toHaveBeenCalled();
@@ -119,10 +118,10 @@ describe("GET /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .get(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
-    expect(res.body.message).toBe("Departemen tidak ditemukan");
+    expect(res.body.message).toBe("Department not found");
   });
 
   it("mengembalikan detail departemen", async () => {
@@ -175,7 +174,7 @@ describe("POST /api/v1/departments", () => {
   it("menolak body kosong", async () => {
     const res = await request(app)
       .post("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({});
 
     expect(res.status).toBe(400);
@@ -189,7 +188,7 @@ describe("POST /api/v1/departments", () => {
 
     const res = await request(app)
       .post("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validBody);
 
     expect(res.status).toBe(409);
@@ -205,7 +204,7 @@ describe("POST /api/v1/departments", () => {
 
     const res = await request(app)
       .post("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send(validBody);
 
     expect(res.status).toBe(201);
@@ -220,7 +219,7 @@ describe("POST /api/v1/departments", () => {
 
     await request(app)
       .post("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "it", name: "Teknologi Informasi" });
 
     const [data] = (departmentModel.createDepartment as jest.Mock).mock
@@ -237,7 +236,7 @@ describe("POST /api/v1/departments", () => {
 
     await request(app)
       .post("/api/v1/departments")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "  it  ", name: "Teknologi Informasi" });
 
     expect(departmentModel.findByCode).toHaveBeenCalledWith("IT");
@@ -257,7 +256,7 @@ describe("PATCH /api/v1/departments/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .patch("/api/v1/departments/123")
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "Keuangan" });
 
     expect(res.status).toBe(400);
@@ -268,7 +267,7 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "Keuangan" });
 
     expect(res.status).toBe(404);
@@ -285,11 +284,68 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "Keuangan" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.name).toBe("Keuangan");
+  });
+
+  it("meneruskan updated_at dari klien sebagai syarat versi", async () => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan", updated_at: "2026-09-14T08:04:33.373Z" });
+
+    expect(res.status).toBe(200);
+    expect(departmentModel.updateDepartment).toHaveBeenCalledWith(
+      DEPARTMENT_ID,
+      { name: "Keuangan" },
+      "2026-09-14T08:04:33.373Z",
+    );
+  });
+
+  it("menolak dengan 409 dan data terbaru bila sudah diubah orang lain", async () => {
+    const latest = { ...fakeDepartment, name: "Keuangan & Akuntansi" };
+
+    (departmentModel.findById as jest.Mock)
+      .mockResolvedValueOnce(fakeDepartment as never)
+      .mockResolvedValueOnce(latest as never);
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      null as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan", updated_at: "2026-09-14T08:04:33.373Z" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("STALE_DATA");
+    expect(res.body.details.current.name).toBe("Keuangan & Akuntansi");
+  });
+
+  it("menjawab 404 bila departemen dihapus orang lain di tengah jalan", async () => {
+    (departmentModel.findById as jest.Mock)
+      .mockResolvedValueOnce(fakeDepartment as never)
+      .mockResolvedValueOnce(null as never);
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      null as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan" });
+
+    expect(res.status).toBe(404);
   });
 
   it("menolak kode yang sudah dipakai departemen lain", async () => {
@@ -303,7 +359,7 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "HRD" });
 
     expect(res.status).toBe(409);
@@ -320,7 +376,7 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ code: "IT" });
 
     expect(res.status).toBe(200);
@@ -335,11 +391,11 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("5 karyawan");
+    expect(res.body.message).toContain("5 employees");
     expect(res.body.details.employee_count).toBe(5);
     expect(departmentModel.updateDepartment).not.toHaveBeenCalled();
   });
@@ -356,7 +412,7 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: false });
 
     expect(res.status).toBe(200);
@@ -374,7 +430,7 @@ describe("PATCH /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ is_active: true });
 
     expect(res.status).toBe(200);
@@ -384,7 +440,7 @@ describe("PATCH /api/v1/departments/:id", () => {
   it("menolak nama yang terlalu pendek", async () => {
     const res = await request(app)
       .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "IT" });
 
     expect(res.status).toBe(400);
@@ -403,7 +459,7 @@ describe("DELETE /api/v1/departments/:id", () => {
   it("menolak id yang bukan uuid", async () => {
     const res = await request(app)
       .delete("/api/v1/departments/123")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -413,7 +469,7 @@ describe("DELETE /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(404);
     expect(departmentModel.softDeleteDepartment).not.toHaveBeenCalled();
@@ -427,7 +483,7 @@ describe("DELETE /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
     expect(res.body.details.employee_count).toBe(3);
@@ -445,10 +501,10 @@ describe("DELETE /api/v1/departments/:id", () => {
 
     const res = await request(app)
       .delete(`/api/v1/departments/${DEPARTMENT_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toContain("berhasil dihapus");
+    expect(res.body.message).toContain("deleted successfully");
     expect(departmentModel.softDeleteDepartment).toHaveBeenCalledWith(
       DEPARTMENT_ID,
     );

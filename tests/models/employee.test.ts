@@ -97,7 +97,7 @@ describe("insertEmployee", () => {
         "+628123456789",
         "male",
       ),
-    ).rejects.toThrow("Gagal menyimpan data karyawan");
+    ).rejects.toThrow("Failed to save employee data");
   });
 
   it("dapat dijalankan memakai client transaksi", async () => {
@@ -214,7 +214,101 @@ describe("createEmployee", () => {
         phone: "+628123456789",
         gender: "male",
       }),
-    ).rejects.toThrow("Gagal menyimpan data karyawan");
+    ).rejects.toThrow("Failed to save employee data");
+  });
+});
+
+describe("updateOwnProfile", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [fakeEmployee] } as never);
+  });
+
+  it("memperbarui keempat kolom yang diizinkan", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+      phone: "+628990000001",
+      birth_date: "1999-01-15",
+      address: "Jalan Baru 5",
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("full_name =");
+    expect(sql).toContain("phone =");
+    expect(sql).toContain("birth_date =");
+    expect(sql).toContain("address =");
+  });
+
+  it("mengabaikan manager_id walau diselipkan ke dalam data", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+      manager_id: MANAGER_ID,
+    } as never);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toContain("manager_id");
+  });
+
+  it("mengabaikan kolom struktur organisasi dan status kepegawaian", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+      department_id: DEPARTMENT_ID,
+      position_id: DEPARTMENT_ID,
+      employment_status: "permanent",
+      is_active: false,
+      resign_date: "2030-01-01",
+      gender: "female",
+    } as never);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toContain("department_id");
+    expect(sql).not.toContain("position_id");
+    expect(sql).not.toContain("employment_status");
+    expect(sql).not.toContain("is_active");
+    expect(sql).not.toContain("resign_date");
+    expect(sql).not.toContain("gender");
+  });
+
+  it("tetap menambahkan cast tanggal untuk birth_date", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      birth_date: "1999-01-15",
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("::date");
+  });
+
+  it("tidak menyentuh karyawan yang sudah dihapus", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+    });
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("deleted_at IS NULL");
+  });
+
+  it("tidak menjalankan UPDATE jika tidak ada perubahan", async () => {
+    await employeeModel.updateOwnProfile(EMPLOYEE_ID, {});
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).not.toContain("UPDATE");
+    expect(sql).toContain("SELECT");
+  });
+
+  it("mengembalikan null jika karyawan tidak ditemukan", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    const employee = await employeeModel.updateOwnProfile(EMPLOYEE_ID, {
+      full_name: "Nama Baru",
+    });
+
+    expect(employee).toBeNull();
   });
 });
 
@@ -233,7 +327,7 @@ describe("updateEmployee", () => {
 
     expect(sql).toContain("full_name = $1");
     expect(sql).not.toContain("phone =");
-    expect(values).toEqual(["Nama Baru", EMPLOYEE_ID]);
+    expect(values).toEqual(["Nama Baru", EMPLOYEE_ID, null]);
   });
 
   it("mengabaikan kolom yang tidak boleh diubah", async () => {
@@ -468,6 +562,61 @@ describe("findDetailById", () => {
 
     expect(sql).toContain("deleted_at IS NULL");
   });
+
+  // Halaman edit mengirim balik seluruh kolom ini. Kalau salah satu hilang
+  // dari SELECT, form terisi kosong lalu menimpa data yang sebenarnya ada
+  it.each([
+    "e.phone",
+    "e.gender",
+    "e.birth_date",
+    "e.address",
+    "e.employment_status",
+    "e.join_date",
+    "e.resign_date",
+    "e.department_id",
+    "e.position_id",
+    "e.manager_id",
+  ])("menyertakan %s supaya form edit tidak menimpa data", async (column) => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await employeeModel.findDetailById(EMPLOYEE_ID);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain(column);
+  });
+
+  it("mengembalikan nilai kolom yang dapat diubah apa adanya", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          id: EMPLOYEE_ID,
+          employee_number: "002",
+          full_name: "Ratna Puspita",
+          email: "ratna@awan.io",
+          phone: "+628110000002",
+          gender: "female",
+          birth_date: "1995-03-14",
+          address: "Jl. Merdeka 10",
+          employment_status: "permanent",
+          join_date: "2019-02-18",
+          resign_date: null,
+          department_id: "d1",
+          position_id: "p1",
+          manager_id: "m1",
+          is_active: true,
+        },
+      ],
+    } as never);
+
+    const detail = await employeeModel.findDetailById(EMPLOYEE_ID);
+
+    expect(detail?.phone).toBe("+628110000002");
+    expect(detail?.gender).toBe("female");
+    expect(detail?.employment_status).toBe("permanent");
+    // tanggal tetap berupa teks polos, bukan Date yang bergeser zona waktu
+    expect(detail?.birth_date).toBe("1995-03-14");
+  });
 });
 
 describe("listEmployees", () => {
@@ -686,17 +835,17 @@ describe("isDescendantOf", () => {
   it("mengembalikan true jika calon manajer masih bawahan karyawan", async () => {
     mockQuery.mockResolvedValue({ rows: [{ id: EMPLOYEE_ID }] } as never);
 
-    const siklus = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
+    const cycle = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
 
-    expect(siklus).toBe(true);
+    expect(cycle).toBe(true);
   });
 
   it("mengembalikan false jika tidak membentuk lingkaran", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const siklus = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
+    const cycle = await employeeModel.isDescendantOf(MANAGER_ID, EMPLOYEE_ID);
 
-    expect(siklus).toBe(false);
+    expect(cycle).toBe(false);
   });
 
   it("mengabaikan karyawan yang sudah dihapus saat menelusuri", async () => {
@@ -707,5 +856,47 @@ describe("isDescendantOf", () => {
     const [sql] = mockQuery.mock.calls[0] as [string];
 
     expect(sql).toContain("deleted_at IS NULL");
+  });
+});
+
+describe("createEmployees menolak karyawan tanpa akun", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("melempar galat bila ada user_id yang kosong", async () => {
+    await expect(
+      employeeModel.createEmployees(
+        { query: mockQuery } as never,
+        [
+          {
+            user_id: "",
+            data: { full_name: "A", phone: "+62811", gender: "male" },
+          },
+        ] as never,
+      ),
+    ).rejects.toThrow("cannot be saved without an account");
+
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("melempar galat bila baris yang tersimpan tidak sebanyak yang dikirim", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: "e1" }] } as never);
+
+    await expect(
+      employeeModel.createEmployees(
+        { query: mockQuery } as never,
+        [
+          {
+            user_id: "u1",
+            data: { full_name: "A", phone: "+62811", gender: "male" },
+          },
+          {
+            user_id: "u2",
+            data: { full_name: "B", phone: "+62811", gender: "male" },
+          },
+        ] as never,
+      ),
+    ).rejects.toThrow("Failed to save some employee data");
   });
 });

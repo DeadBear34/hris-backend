@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expectedUpdatedAt } from "./commonSchema.js";
 
 export const listHolidayQuerySchema = z.object({
   year: z.coerce.number().int().min(1900).max(2200).optional(),
@@ -7,15 +8,17 @@ export const listHolidayQuerySchema = z.object({
 });
 
 export const createHolidaySchema = z.object({
-  holiday_date: z.iso.date("Tanggal hari libur tidak valid"),
+  holiday_date: z.iso.date("Invalid holiday date"),
 
   name: z
-    .string({ message: "Nama hari libur wajib diisi" })
+    .string({ message: "Holiday name is required" })
     .trim()
-    .min(3, "Nama hari libur minimal 3 karakter")
-    .max(150, "Nama hari libur maksimal 150 karakter"),
+    .min(3, "Holiday name must be at least 3 characters")
+    .max(150, "Holiday name must be at most 150 characters"),
 
   is_collective_leave: z.boolean().optional(),
 });
 
-export const updateHolidaySchema = createHolidaySchema.partial();
+export const updateHolidaySchema = createHolidaySchema
+  .partial()
+  .extend({ updated_at: expectedUpdatedAt });

@@ -88,7 +88,7 @@ describe("createPositionSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain("minimal 1");
+      expect(result.error.issues[0]?.message).toContain("at least 1");
     }
   });
 
@@ -109,7 +109,7 @@ describe("createPositionSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toContain("bilangan bulat");
+      expect(result.error.issues[0]?.message).toContain("an integer");
     }
   });
 

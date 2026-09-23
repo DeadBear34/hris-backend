@@ -1,4 +1,6 @@
 import { pool } from "../config/databaseConnection.js";
+import type { Executor } from "./user.js";
+import { sameVersion } from "../helpers/concurrency.js";
 
 export interface Position {
   id: string;
@@ -53,7 +55,7 @@ export async function createPosition(data: PositionInput): Promise<Position> {
 
   const position = result.rows[0];
   if (!position) {
-    throw new Error("Gagal menyimpan jabatan");
+    throw new Error("Failed to save position");
   }
 
   return position;
@@ -62,6 +64,7 @@ export async function createPosition(data: PositionInput): Promise<Position> {
 export async function updatePosition(
   id: string,
   data: Partial<PositionInput>,
+  expectedUpdatedAt?: string,
 ): Promise<Position | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -80,11 +83,14 @@ export async function updatePosition(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<Position>(
     `UPDATE positions
      SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING *`,
     values,
   );
@@ -111,4 +117,22 @@ export async function countEmployees(id: string): Promise<number> {
     [id],
   );
   return Number(result.rows[0]?.count ?? 0);
+}
+
+// Menandai jabatan berubah saat daftar fiturnya diganti, sekaligus menjadi
+// pemeriksaan versi halaman pengaturan fitur
+export async function touchPosition(
+  db: Executor,
+  id: string,
+  expectedUpdatedAt?: string,
+): Promise<Position | null> {
+  const result = await db.query<Position>(
+    `UPDATE positions SET updated_at = now()
+     WHERE id = $1::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", 2)}
+     RETURNING *`,
+    [id, expectedUpdatedAt ?? null],
+  );
+
+  return result.rows[0] ?? null;
 }

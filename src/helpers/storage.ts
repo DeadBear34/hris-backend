@@ -4,14 +4,14 @@ import { env } from "../config/env.js";
 import type { AllowedMimeType } from "./fileType.js";
 import { extensionFor } from "./fileType.js";
 
-const SIGNED_URL_BERLAKU_DETIK = 15 * 60;
+const SIGNED_URL_TTL_SECONDS = 15 * 60;
 
 let client: SupabaseClient | null = null;
 
-function ambilClient(): SupabaseClient {
+function getStorageClient(): SupabaseClient {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-      "SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY belum diatur, penyimpanan lampiran tidak tersedia",
+      "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not set, attachment storage is unavailable",
     );
   }
 
@@ -42,12 +42,12 @@ export async function uploadAttachment(
   buffer: Buffer,
   contentType: AllowedMimeType,
 ): Promise<void> {
-  const { error } = await ambilClient()
+  const { error } = await getStorageClient()
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
     .upload(storagePath, buffer, { contentType, upsert: false });
 
   if (error) {
-    throw new Error(`Gagal mengunggah lampiran: ${error.message}`);
+    throw new Error(`Failed to upload attachment: ${error.message}`);
   }
 }
 
@@ -55,15 +55,56 @@ export async function createSignedUrl(storagePath: string): Promise<{
   url: string;
   expires_in: number;
 }> {
-  const { data, error } = await ambilClient()
+  const { data, error } = await getStorageClient()
     .storage.from(env.SUPABASE_STORAGE_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_BERLAKU_DETIK);
+    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
 
   if (error || !data) {
     throw new Error(
-      `Gagal membuat tautan lampiran: ${error?.message ?? "tidak diketahui"}`,
+      `Failed to create attachment link: ${error?.message ?? "unknown"}`,
     );
   }
 
-  return { url: data.signedUrl, expires_in: SIGNED_URL_BERLAKU_DETIK };
+  return { url: data.signedUrl, expires_in: SIGNED_URL_TTL_SECONDS };
+}
+
+export function buildPhotoPath(
+  employeeId: string,
+  mime: AllowedMimeType,
+): string {
+  return `${employeeId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
+}
+
+export async function uploadPhoto(
+  storagePath: string,
+  buffer: Buffer,
+  contentType: AllowedMimeType,
+): Promise<void> {
+  const { error } = await getStorageClient()
+    .storage.from(env.SUPABASE_PHOTO_BUCKET)
+    .upload(storagePath, buffer, { contentType, upsert: false });
+
+  if (error) {
+    throw new Error(`Failed to upload profile photo: ${error.message}`);
+  }
+}
+
+export async function deletePhoto(storagePath: string): Promise<void> {
+  const { error } = await getStorageClient()
+    .storage.from(env.SUPABASE_PHOTO_BUCKET)
+    .remove([storagePath]);
+
+  if (error) {
+    throw new Error(`Failed to delete profile photo: ${error.message}`);
+  }
+}
+
+export function photoUrlFor(storagePath: string | null): string | null {
+  if (!storagePath || !isStorageConfigured()) return null;
+
+  const { data } = getStorageClient()
+    .storage.from(env.SUPABASE_PHOTO_BUCKET)
+    .getPublicUrl(storagePath);
+
+  return data.publicUrl;
 }

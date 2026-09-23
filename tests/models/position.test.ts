@@ -166,7 +166,7 @@ describe("createPosition", () => {
 
     await expect(
       positionModel.createPosition({ code: "SWE", name: "Software Engineer" }),
-    ).rejects.toThrow("Gagal menyimpan jabatan");
+    ).rejects.toThrow("Failed to save position");
   });
 });
 
@@ -183,7 +183,7 @@ describe("updatePosition", () => {
 
     expect(sql).toContain("level = $1");
     expect(sql).not.toContain("name =");
-    expect(values).toEqual([5, POSITION_ID]);
+    expect(values).toEqual([5, POSITION_ID, null]);
   });
 
   it("mengabaikan kolom yang tidak boleh diubah", async () => {
@@ -203,7 +203,7 @@ describe("updatePosition", () => {
 
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
-    expect(values).toEqual([false, POSITION_ID]);
+    expect(values).toEqual([false, POSITION_ID, null]);
   });
 
   it("selalu memperbarui kolom updated_at", async () => {
@@ -274,17 +274,17 @@ describe("countEmployees", () => {
   it("menghitung karyawan yang memakai jabatan tersebut", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "3" }] } as never);
 
-    const jumlah = await positionModel.countEmployees(POSITION_ID);
+    const count = await positionModel.countEmployees(POSITION_ID);
 
-    expect(jumlah).toBe(3);
+    expect(count).toBe(3);
   });
 
   it("mengembalikan nol jika hasil hitungan kosong", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const jumlah = await positionModel.countEmployees(POSITION_ID);
+    const count = await positionModel.countEmployees(POSITION_ID);
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
   });
 
   it("menyaring berdasarkan position_id", async () => {

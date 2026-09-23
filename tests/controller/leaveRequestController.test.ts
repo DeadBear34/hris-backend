@@ -25,6 +25,12 @@ jest.unstable_mockModule("../../src/models/holiday.js", () => ({
   findDatesBetween: jest.fn(),
 }));
 
+jest.unstable_mockModule("../../src/models/feature.js", () => ({
+  findCodesByPosition: jest.fn(),
+  findAllCodes: jest.fn(() => Promise.resolve([])),
+  findUserIdsWithFeature: jest.fn(() => Promise.resolve([])),
+}));
+
 jest.unstable_mockModule("../../src/models/leaveType.js", () => ({
   findById: jest.fn(),
 }));
@@ -43,6 +49,7 @@ jest.unstable_mockModule("../../src/models/leaveRequest.js", () => ({
 jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   createTransaction: jest.fn(),
   balanceFor: jest.fn(),
+  lockEmployeeBalance: jest.fn(),
   convertHoldToDeduction: jest.fn(),
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
@@ -56,6 +63,18 @@ jest.unstable_mockModule("../../src/models/leaveAttachment.js", () => ({
   createAttachment: jest.fn(),
 }));
 
+jest.unstable_mockModule("../../src/models/attendance.js", () => ({
+  upsertLeaveDays: jest.fn(),
+  deleteLeaveDays: jest.fn(),
+}));
+
+jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
+  resolveForEmployee: jest.fn(),
+  resolveForAllActive: jest.fn(),
+  workingDatesInRange: jest.fn(),
+  isWorkingDay: jest.fn(() => true),
+}));
+
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
@@ -67,6 +86,12 @@ const leaveTypeModel = await import("../../src/models/leaveType.js");
 const leaveRequestModel = await import("../../src/models/leaveRequest.js");
 const balanceModel = await import("../../src/models/leaveBalance.js");
 const attachmentModel = await import("../../src/models/leaveAttachment.js");
+const attendanceModel = await import("../../src/models/attendance.js");
+const workScheduleModel = await import("../../src/models/workSchedule.js");
+const { logger } = await import("../../src/config/logger.js");
+const featureModel = await import("../../src/models/feature.js");
+const { invalidateFeatureCache } =
+  await import("../../src/helpers/featureCache.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { toIsoDate } = await import("../../src/helpers/workdays.js");
 const { app } = await import("../../src/app.js");
@@ -76,41 +101,48 @@ const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const MANAGER_ID = "33333333-3333-4333-8333-333333333333";
 const LEAVE_TYPE_ID = "44444444-4444-4444-8444-444444444444";
 const REQUEST_ID = "55555555-5555-4555-8555-555555555555";
-const LAIN_ID = "66666666-6666-4666-8666-666666666666";
+const OTHER_ID = "66666666-6666-4666-8666-666666666666";
 
 const employeeToken = createToken({
   id: USER_ID,
   email: "karyawan@awan.io",
   role: "employee",
 });
-const hrToken = createToken({ id: USER_ID, email: "hr@awan.io", role: "hr" });
+const adminToken = createToken({
+  id: USER_ID,
+  email: "admin@awan.io",
+  role: "admin",
+});
 
 /** Senin jauh di depan supaya tidak pernah dianggap tanggal lampau. */
-function seninDiMasaDepan(): string {
-  const tanggal = new Date();
-  tanggal.setUTCDate(tanggal.getUTCDate() + 40);
+function futureMonday(): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 40);
 
-  while (tanggal.getUTCDay() !== 1) {
-    tanggal.setUTCDate(tanggal.getUTCDate() + 1);
+  while (date.getUTCDay() !== 1) {
+    date.setUTCDate(date.getUTCDate() + 1);
   }
 
-  return toIsoDate(tanggal);
+  return toIsoDate(date);
 }
 
-function geser(dari: string, hari: number): string {
-  const tanggal = new Date(`${dari}T00:00:00Z`);
-  tanggal.setUTCDate(tanggal.getUTCDate() + hari);
+function shiftDays(from: string, day: number): string {
+  const date = new Date(`${from}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + day);
 
-  return toIsoDate(tanggal);
+  return toIsoDate(date);
 }
 
-const MULAI = seninDiMasaDepan();
-const SELESAI = geser(MULAI, 2); // Senin sampai Rabu, tiga hari kerja
-const TOTAL_HARI = 3;
+const START_DATE = futureMonday();
+const END_DATE = shiftDays(START_DATE, 2); // Senin sampai Rabu, tiga hari kerja
+const TOTAL_DAYS = 3;
+
+const POSITION_ID = "77777777-7777-4777-8777-777777777777";
 
 const fakeEmployee = {
   id: EMPLOYEE_ID,
   user_id: USER_ID,
+  position_id: POSITION_ID,
   employee_number: "001",
   full_name: "Ismail Muhammad",
   phone: "+628123456789",
@@ -135,14 +167,36 @@ const fakeLeaveType = {
   deleted_at: null,
 };
 
+const fakeSchedule = {
+  id: "77777777-7777-4777-8777-777777777777",
+  name: "Jadwal Kerja Umum",
+  department_id: null,
+  start_time: "08:00:00",
+  works_saturday: false,
+  works_sunday: false,
+};
+
+// Tanggal lampau yang dijamin hari kerja. Memakai "kemarin" begitu saja membuat
+// pengujian gagal setiap Minggu dan Senin, karena rentang tanpa hari kerja
+// memicu galat yang berbeda sebelum aturan yang sedang diuji sempat berjalan.
+function pastWorkday(): string {
+  const cursor = new Date();
+
+  do {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  } while (cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6);
+
+  return toIsoDate(cursor);
+}
+
 function fakeRequest(override: Record<string, unknown> = {}) {
   return {
     id: REQUEST_ID,
     employee_id: EMPLOYEE_ID,
     leave_type_id: LEAVE_TYPE_ID,
-    start_date: MULAI,
-    end_date: SELESAI,
-    total_days: TOTAL_HARI,
+    start_date: START_DATE,
+    end_date: END_DATE,
+    total_days: TOTAL_DAYS,
     reason: "Keperluan keluarga",
     status: "pending",
     approver_id: MANAGER_ID,
@@ -155,22 +209,32 @@ function fakeRequest(override: Record<string, unknown> = {}) {
   };
 }
 
-const bodyPengajuan = {
+const requestBody = {
   leave_type_id: LEAVE_TYPE_ID,
-  start_date: MULAI,
-  end_date: SELESAI,
+  start_date: START_DATE,
+  end_date: END_DATE,
   reason: "Keperluan keluarga",
 };
 
-/** Mengambil transaksi ledger bertipe tertentu dari pemanggilan model. */
-function transaksiBertipe(tipe: string) {
+function transactionsOfType(txType: string) {
   return (balanceModel.createTransaction as jest.Mock).mock.calls
     .map(([, data]) => data as Record<string, unknown>)
-    .filter((data) => data.type === tipe);
+    .filter((data) => data.type === txType);
+}
+
+// Fitur penyetuju dipegang atasan langsung. Tanpa ini, menyetujui cuti
+// bawahan ditolak, jadi dipasang sebagai keadaan bawaan pengujian
+function grantFeatures(codes: string[]) {
+  (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue(
+    codes as never,
+  );
+  invalidateFeatureCache();
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  invalidateFeatureCache();
+  grantFeatures(["leave.approve_team"]);
   mockClient.query.mockResolvedValue({ rows: [] } as never);
   (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
@@ -193,9 +257,18 @@ beforeEach(() => {
   );
   (attachmentModel.countByRequest as jest.Mock).mockResolvedValue(0 as never);
   (attachmentModel.findByRequest as jest.Mock).mockResolvedValue([] as never);
+  (attendanceModel.upsertLeaveDays as jest.Mock).mockResolvedValue(0 as never);
+  (attendanceModel.deleteLeaveDays as jest.Mock).mockResolvedValue(0 as never);
+  (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
+    fakeSchedule as never,
+  );
+  (workScheduleModel.workingDatesInRange as jest.Mock).mockReturnValue([
+    START_DATE,
+    END_DATE,
+  ] as never);
 });
 
-function ajukan(body: Record<string, unknown> = bodyPengajuan) {
+function submitRequest(body: Record<string, unknown> = requestBody) {
   return request(app)
     .post("/api/v1/leave-requests")
     .set("Authorization", `Bearer ${employeeToken}`)
@@ -206,57 +279,57 @@ describe("POST /api/v1/leave-requests", () => {
   it("menolak request tanpa token", async () => {
     const res = await request(app)
       .post("/api/v1/leave-requests")
-      .send(bodyPengajuan);
+      .send(requestBody);
 
     expect(res.status).toBe(401);
   });
 
   it("membuat pengajuan dan mengembalikan 201", async () => {
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(201);
     expect(res.body.data.id).toBe(REQUEST_ID);
   });
 
   it("menghitung total hari kerja tanpa akhir pekan", async () => {
-    await ajukan();
+    await submitRequest();
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { total_days: number }];
 
-    expect(data.total_days).toBe(TOTAL_HARI);
+    expect(data.total_days).toBe(TOTAL_DAYS);
   });
 
   it("mengurangi hari libur dari perhitungan", async () => {
     (holidayModel.findDatesBetween as jest.Mock).mockResolvedValue([
-      geser(MULAI, 1),
+      shiftDays(START_DATE, 1),
     ] as never);
 
-    await ajukan();
+    await submitRequest();
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { total_days: number }];
 
-    expect(data.total_days).toBe(TOTAL_HARI - 1);
+    expect(data.total_days).toBe(TOTAL_DAYS - 1);
   });
 
   it("menolak rentang yang tidak memuat hari kerja", async () => {
     (holidayModel.findDatesBetween as jest.Mock).mockResolvedValue([
-      MULAI,
-      geser(MULAI, 1),
-      geser(MULAI, 2),
+      START_DATE,
+      shiftDays(START_DATE, 1),
+      shiftDays(START_DATE, 2),
     ] as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("tidak memuat satu pun hari kerja");
+    expect(res.body.message).toContain("contains no workdays");
   });
 });
 
 describe("penentuan penyetuju", () => {
   it("mengarahkan pengajuan ke atasan langsung", async () => {
-    await ajukan();
+    await submitRequest();
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { approver_id: string | null }];
@@ -270,7 +343,7 @@ describe("penentuan penyetuju", () => {
       manager_id: null,
     } as never);
 
-    await ajukan();
+    await submitRequest();
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { approver_id: string | null }];
@@ -278,7 +351,7 @@ describe("penentuan penyetuju", () => {
     expect(data.approver_id).toBeNull();
   });
 
-  it("aturan yang sama berlaku untuk pemohon berperan HR", async () => {
+  it("aturan yang sama berlaku untuk pemohon berperan admin", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       manager_id: MANAGER_ID,
@@ -286,8 +359,8 @@ describe("penentuan penyetuju", () => {
 
     await request(app)
       .post("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${hrToken}`)
-      .send(bodyPengajuan);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(requestBody);
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { approver_id: string | null }];
@@ -295,7 +368,7 @@ describe("penentuan penyetuju", () => {
     expect(data.approver_id).toBe(MANAGER_ID);
   });
 
-  it("HR tanpa atasan juga memakai jalur tanpa penyetuju", async () => {
+  it("admin tanpa atasan juga memakai jalur tanpa penyetuju", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       manager_id: null,
@@ -303,8 +376,8 @@ describe("penentuan penyetuju", () => {
 
     await request(app)
       .post("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${hrToken}`)
-      .send(bodyPengajuan);
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(requestBody);
 
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { approver_id: string | null }];
@@ -316,33 +389,33 @@ describe("penentuan penyetuju", () => {
 describe("validasi pengajuan", () => {
   it("menolak pengajuan yang tumpang tindih", async () => {
     (leaveRequestModel.findOverlapping as jest.Mock).mockResolvedValue(
-      fakeRequest({ id: LAIN_ID }) as never,
+      fakeRequest({ id: OTHER_ID }) as never,
     );
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(409);
-    expect(res.body.details.conflicting_request_id).toBe(LAIN_ID);
+    expect(res.body.details.conflicting_request_id).toBe(OTHER_ID);
     expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
   });
 
   it("menolak saat saldo tidak mencukupi", async () => {
     (balanceModel.balanceFor as jest.Mock).mockResolvedValue(2 as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("tidak mencukupi");
-    expect(res.body.details).toEqual({ balance: 2, requested: TOTAL_HARI });
+    expect(res.body.message).toContain("Insufficient");
+    expect(res.body.details).toEqual({ balance: 2, requested: TOTAL_DAYS });
     expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
   });
 
   it("mengizinkan saldo yang pas", async () => {
     (balanceModel.balanceFor as jest.Mock).mockResolvedValue(
-      TOTAL_HARI as never,
+      TOTAL_DAYS as never,
     );
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(201);
   });
@@ -353,7 +426,7 @@ describe("validasi pengajuan", () => {
       deducts_balance: false,
     } as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(201);
     expect(balanceModel.balanceFor).not.toHaveBeenCalled();
@@ -367,10 +440,10 @@ describe("validasi pengajuan", () => {
       gender_restriction: "female",
     } as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("tidak tersedia untuk gender kamu");
+    expect(res.body.message).toContain("not available for your gender");
     expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
   });
 
@@ -384,7 +457,7 @@ describe("validasi pengajuan", () => {
       gender_restriction: "female",
     } as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(201);
   });
@@ -395,10 +468,10 @@ describe("validasi pengajuan", () => {
       max_days_per_request: 2,
     } as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("maksimal 2 hari kerja");
+    expect(res.body.message).toContain("at most 2 workdays");
   });
 
   it("menolak pengajuan yang tidak memenuhi minimal pemberitahuan", async () => {
@@ -407,23 +480,23 @@ describe("validasi pengajuan", () => {
       min_notice_days: 90,
     } as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("minimal 90 hari sebelum");
+    expect(res.body.message).toContain("at least 90 days before");
   });
 
   it("menolak tanggal lampau untuk jenis cuti selain sakit", async () => {
-    const kemarin = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const past = pastWorkday();
 
-    const res = await ajukan({
-      ...bodyPengajuan,
-      start_date: kemarin,
-      end_date: kemarin,
+    const res = await submitRequest({
+      ...requestBody,
+      start_date: past,
+      end_date: past,
     });
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("hanya diperbolehkan untuk cuti sakit");
+    expect(res.body.message).toContain("only allowed for sick leave");
   });
 
   it("mengizinkan tanggal lampau untuk cuti sakit", async () => {
@@ -434,19 +507,15 @@ describe("validasi pengajuan", () => {
       deducts_balance: false,
     } as never);
 
-    const kemarin = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const past = pastWorkday();
 
-    const res = await ajukan({
-      ...bodyPengajuan,
-      start_date: kemarin,
-      end_date: kemarin,
+    const res = await submitRequest({
+      ...requestBody,
+      start_date: past,
+      end_date: past,
     });
 
-    // hanya lolos kalau kemarin bukan akhir pekan
-    expect([201, 400]).toContain(res.status);
-    if (res.status === 400) {
-      expect(res.body.message).toContain("hari kerja");
-    }
+    expect(res.status).toBe(201);
   });
 
   it("menolak jenis cuti yang tidak aktif", async () => {
@@ -455,17 +524,17 @@ describe("validasi pengajuan", () => {
       is_active: false,
     } as never);
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("sedang tidak aktif");
+    expect(res.body.message).toContain("currently inactive");
   });
 
   it("menolak tanggal selesai yang mendahului tanggal mulai", async () => {
-    const res = await ajukan({
-      ...bodyPengajuan,
-      start_date: SELESAI,
-      end_date: MULAI,
+    const res = await submitRequest({
+      ...requestBody,
+      start_date: END_DATE,
+      end_date: START_DATE,
     });
 
     expect(res.status).toBe(400);
@@ -475,17 +544,17 @@ describe("validasi pengajuan", () => {
 
 describe("ledger saat pengajuan dibuat", () => {
   it("mencatat penahanan saldo bernilai negatif", async () => {
-    await ajukan();
+    await submitRequest();
 
-    const holds = transaksiBertipe("hold");
+    const holds = transactionsOfType("hold");
 
     expect(holds).toHaveLength(1);
-    expect(holds[0]!.amount).toBe(-TOTAL_HARI);
+    expect(holds[0]!.amount).toBe(-TOTAL_DAYS);
     expect(holds[0]!.leave_request_id).toBe(REQUEST_ID);
   });
 
   it("membungkus pengajuan dan ledger dalam satu transaksi", async () => {
-    await ajukan();
+    await submitRequest();
 
     expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
@@ -502,7 +571,7 @@ describe("ledger saat pengajuan dibuat", () => {
       deducts_balance: false,
     } as never);
 
-    await ajukan();
+    await submitRequest();
 
     expect(balanceModel.createTransaction).not.toHaveBeenCalled();
   });
@@ -512,7 +581,7 @@ describe("ledger saat pengajuan dibuat", () => {
       new Error("ledger gagal") as never,
     );
 
-    const res = await ajukan();
+    const res = await submitRequest();
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
@@ -524,14 +593,14 @@ describe("ledger saat pengajuan dibuat", () => {
       new Error("gagal") as never,
     );
 
-    await ajukan();
+    await submitRequest();
 
     expect(mockClient.release).toHaveBeenCalled();
   });
 });
 
 describe("PATCH /api/v1/leave-requests/:id/approve", () => {
-  function setujui(token = employeeToken) {
+  function approve(token = employeeToken) {
     return request(app)
       .patch(`/api/v1/leave-requests/${REQUEST_ID}/approve`)
       .set("Authorization", `Bearer ${token}`)
@@ -548,10 +617,10 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
   });
 
   it("menolak pengguna yang bukan penyetuju", async () => {
-    const res = await setujui();
+    const res = await approve();
 
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain("bukan penyetuju");
+    expect(res.body.message).toContain("not the approver");
     expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
   });
 
@@ -561,19 +630,32 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       id: MANAGER_ID,
     } as never);
 
-    const res = await setujui();
+    const res = await approve();
 
     expect(res.status).toBe(200);
   });
 
-  it("mengizinkan HR sebagai jalur darurat", async () => {
-    const res = await setujui(hrToken);
+  it("menolak penyetuju yang jabatannya tidak punya leave.approve_team", async () => {
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: MANAGER_ID,
+    } as never);
+    grantFeatures([]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
+  it("mengizinkan admin sebagai jalur darurat", async () => {
+    const res = await approve(adminToken);
 
     expect(res.status).toBe(200);
   });
 
   it("mengubah penahanan saldo menjadi pemotongan", async () => {
-    await setujui(hrToken);
+    await approve(adminToken);
 
     expect(balanceModel.convertHoldToDeduction).toHaveBeenCalledWith(
       mockClient,
@@ -582,7 +664,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
   });
 
   it("membungkus keputusan dan ledger dalam satu transaksi", async () => {
-    await setujui(hrToken);
+    await approve(adminToken);
 
     expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
     expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
@@ -593,7 +675,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       new Error("ledger gagal") as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await approve(adminToken);
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
@@ -605,10 +687,10 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       fakeRequest({ status: "approved" }) as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await approve(adminToken);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("disetujui tidak dapat disetujui");
+    expect(res.body.message).toContain("status approved cannot be approved");
   });
 
   it("menolak pengajuan yang sudah ditolak", async () => {
@@ -616,7 +698,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       fakeRequest({ status: "rejected" }) as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await approve(adminToken);
 
     expect(res.status).toBe(400);
   });
@@ -626,7 +708,7 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
       fakeRequest({ status: "cancelled" }) as never,
     );
 
-    const res = await setujui(hrToken);
+    const res = await approve(adminToken);
 
     expect(res.status).toBe(400);
   });
@@ -634,14 +716,14 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
   it("mengembalikan 404 jika pengajuan tidak ada", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await setujui(hrToken);
+    const res = await approve(adminToken);
 
     expect(res.status).toBe(404);
   });
 });
 
 describe("kewajiban lampiran saat persetujuan", () => {
-  const cutiSakit = {
+  const sickLeave = {
     ...fakeLeaveType,
     code: "SICK",
     name: "Cuti Sakit",
@@ -649,16 +731,16 @@ describe("kewajiban lampiran saat persetujuan", () => {
     attachment_required_after: 2,
   };
 
-  function setujui() {
+  function approve() {
     return request(app)
       .patch(`/api/v1/leave-requests/${REQUEST_ID}/approve`)
-      .set("Authorization", `Bearer ${hrToken}`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({});
   }
 
   beforeEach(() => {
     (leaveTypeModel.findById as jest.Mock).mockResolvedValue(
-      cutiSakit as never,
+      sickLeave as never,
     );
     (leaveRequestModel.approveRequest as jest.Mock).mockResolvedValue(
       fakeRequest({ status: "approved" }) as never,
@@ -671,10 +753,10 @@ describe("kewajiban lampiran saat persetujuan", () => {
     );
     (attachmentModel.countByRequest as jest.Mock).mockResolvedValue(0 as never);
 
-    const res = await setujui();
+    const res = await approve();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("wajib melampirkan bukti");
+    expect(res.body.message).toContain("needs supporting evidence");
     expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
   });
 
@@ -684,7 +766,7 @@ describe("kewajiban lampiran saat persetujuan", () => {
     );
     (attachmentModel.countByRequest as jest.Mock).mockResolvedValue(1 as never);
 
-    const res = await setujui();
+    const res = await approve();
 
     expect(res.status).toBe(200);
   });
@@ -695,7 +777,7 @@ describe("kewajiban lampiran saat persetujuan", () => {
     );
     (attachmentModel.countByRequest as jest.Mock).mockResolvedValue(0 as never);
 
-    const res = await setujui();
+    const res = await approve();
 
     expect(res.status).toBe(200);
   });
@@ -708,14 +790,14 @@ describe("kewajiban lampiran saat persetujuan", () => {
       fakeRequest({ total_days: 10 }) as never,
     );
 
-    const res = await setujui();
+    const res = await approve();
 
     expect(res.status).toBe(200);
   });
 });
 
 describe("PATCH /api/v1/leave-requests/:id/reject", () => {
-  function tolak(token = hrToken) {
+  function reject(token = adminToken) {
     return request(app)
       .patch(`/api/v1/leave-requests/${REQUEST_ID}/reject`)
       .set("Authorization", `Bearer ${token}`)
@@ -732,29 +814,29 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
   });
 
   it("menolak pengguna yang bukan penyetuju", async () => {
-    const res = await tolak(employeeToken);
+    const res = await reject(employeeToken);
 
     expect(res.status).toBe(403);
     expect(leaveRequestModel.rejectRequest).not.toHaveBeenCalled();
   });
 
   it("mencatat pengembalian saldo bernilai positif", async () => {
-    await tolak();
+    await reject();
 
-    const refunds = transaksiBertipe("refund");
+    const refunds = transactionsOfType("refund");
 
     expect(refunds).toHaveLength(1);
-    expect(refunds[0]!.amount).toBe(TOTAL_HARI);
+    expect(refunds[0]!.amount).toBe(TOTAL_DAYS);
     expect(refunds[0]!.leave_request_id).toBe(REQUEST_ID);
   });
 
   it("meneruskan catatan keputusan ke model", async () => {
-    await tolak();
+    await reject();
 
-    const [, , , catatan] = (leaveRequestModel.rejectRequest as jest.Mock).mock
-      .calls[0] as [unknown, string, string, string | null];
+    const [, , , noteField] = (leaveRequestModel.rejectRequest as jest.Mock)
+      .mock.calls[0] as [unknown, string, string, string | null];
 
-    expect(catatan).toBe("Kebutuhan tim sedang tinggi");
+    expect(noteField).toBe("Kebutuhan tim sedang tinggi");
   });
 
   it("menjalankan ROLLBACK saat pencatatan pengembalian gagal", async () => {
@@ -762,7 +844,7 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
       new Error("ledger gagal") as never,
     );
 
-    const res = await tolak();
+    const res = await reject();
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(res.status).toBe(500);
@@ -773,14 +855,14 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
       fakeRequest({ status: "approved" }) as never,
     );
 
-    const res = await tolak();
+    const res = await reject();
 
     expect(res.status).toBe(400);
   });
 });
 
 describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
-  function batalkan(token = employeeToken) {
+  function cancelLeave(token = employeeToken) {
     return request(app)
       .patch(`/api/v1/leave-requests/${REQUEST_ID}/cancel`)
       .set("Authorization", `Bearer ${token}`);
@@ -796,42 +878,51 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
   });
 
   it("mengizinkan pemohon membatalkan pengajuannya sendiri", async () => {
-    const res = await batalkan();
+    const res = await cancelLeave();
 
     expect(res.status).toBe(200);
+  });
+
+  it("menyertakan status yang sudah diperiksa sebagai syarat pembatalan", async () => {
+    await cancelLeave();
+
+    const args = (leaveRequestModel.cancelRequest as jest.Mock).mock
+      .calls[0] as unknown[];
+
+    expect(args[3]).toBe(fakeRequest().status);
   });
 
   it("menolak pembatalan oleh orang lain", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
-      id: LAIN_ID,
+      id: OTHER_ID,
     } as never);
 
-    const res = await batalkan();
+    const res = await cancelLeave();
 
     expect(res.status).toBe(403);
-    expect(res.body.message).toContain("membatalkan pengajuan cuti sendiri");
+    expect(res.body.message).toContain("cancel your own leave requests");
     expect(leaveRequestModel.cancelRequest).not.toHaveBeenCalled();
   });
 
-  it("menolak pembatalan oleh HR sekalipun", async () => {
+  it("menolak pembatalan oleh admin sekalipun", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
       id: MANAGER_ID,
     } as never);
 
-    const res = await batalkan(hrToken);
+    const res = await cancelLeave(adminToken);
 
     expect(res.status).toBe(403);
   });
 
   it("mencatat pengembalian saldo", async () => {
-    await batalkan();
+    await cancelLeave();
 
-    const refunds = transaksiBertipe("refund");
+    const refunds = transactionsOfType("refund");
 
     expect(refunds).toHaveLength(1);
-    expect(refunds[0]!.amount).toBe(TOTAL_HARI);
+    expect(refunds[0]!.amount).toBe(TOTAL_DAYS);
   });
 
   it("mengizinkan pembatalan pengajuan yang sudah disetujui", async () => {
@@ -839,22 +930,22 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
       fakeRequest({ status: "approved" }) as never,
     );
 
-    const res = await batalkan();
+    const res = await cancelLeave();
 
     expect(res.status).toBe(200);
   });
 
   it("menolak pembatalan cuti disetujui yang sudah berjalan", async () => {
-    const kemarin = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const yesterday = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
 
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "approved", start_date: kemarin }) as never,
+      fakeRequest({ status: "approved", start_date: yesterday }) as never,
     );
 
-    const res = await batalkan();
+    const res = await cancelLeave();
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toContain("sudah berjalan tidak dapat dibatalkan");
+    expect(res.body.message).toContain("already started cannot be cancelled");
   });
 
   it("menolak pembatalan pengajuan yang sudah ditolak", async () => {
@@ -862,7 +953,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
       fakeRequest({ status: "rejected" }) as never,
     );
 
-    const res = await batalkan();
+    const res = await cancelLeave();
 
     expect(res.status).toBe(400);
   });
@@ -872,7 +963,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
       new Error("ledger gagal") as never,
     );
 
-    const res = await batalkan();
+    const res = await cancelLeave();
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(res.status).toBe(500);
@@ -898,6 +989,18 @@ describe("daftar dan detail pengajuan", () => {
     expect(params.employee_id).toBe(EMPLOYEE_ID);
   });
 
+  it("daftar persetujuan kosong tanpa fitur penyetuju", async () => {
+    grantFeatures([]);
+
+    const res = await request(app)
+      .get("/api/v1/leave-requests/approvals")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(leaveRequestModel.listRequests).not.toHaveBeenCalled();
+  });
+
   it("daftar persetujuan disaring berdasarkan penyetuju", async () => {
     await request(app)
       .get("/api/v1/leave-requests/approvals")
@@ -910,10 +1013,10 @@ describe("daftar dan detail pengajuan", () => {
     expect(params.include_unassigned).toBe(false);
   });
 
-  it("HR ikut melihat pengajuan yang belum punya penyetuju", async () => {
+  it("admin ikut melihat pengajuan yang belum punya penyetuju", async () => {
     await request(app)
       .get("/api/v1/leave-requests/approvals")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
       .calls[0] as [{ include_unassigned: boolean }];
@@ -921,7 +1024,7 @@ describe("daftar dan detail pengajuan", () => {
     expect(params.include_unassigned).toBe(true);
   });
 
-  it("daftar seluruh pengajuan hanya untuk HR dan admin", async () => {
+  it("daftar seluruh pengajuan hanya untuk pemegang leave.view_all", async () => {
     const res = await request(app)
       .get("/api/v1/leave-requests")
       .set("Authorization", `Bearer ${employeeToken}`);
@@ -932,7 +1035,7 @@ describe("daftar dan detail pengajuan", () => {
   it("memakai bentuk meta paginasi yang sama dengan daftar karyawan", async () => {
     const res = await request(app)
       .get("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.body.meta).toEqual({
       page: 1,
@@ -946,7 +1049,7 @@ describe("daftar dan detail pengajuan", () => {
     await request(app)
       .get("/api/v1/leave-requests")
       .query({ status: "pending", limit: "5" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
       .calls[0] as [{ status: string; limit: number }];
@@ -959,7 +1062,7 @@ describe("daftar dan detail pengajuan", () => {
     const res = await request(app)
       .get("/api/v1/leave-requests")
       .query({ status: "entahlah" })
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(400);
   });
@@ -978,7 +1081,7 @@ describe("daftar dan detail pengajuan", () => {
 
   it("detail ditolak untuk pengguna yang tidak berkepentingan", async () => {
     (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
-      fakeRequest({ employee_id: LAIN_ID, approver_id: LAIN_ID }) as never,
+      fakeRequest({ employee_id: OTHER_ID, approver_id: OTHER_ID }) as never,
     );
 
     const res = await request(app)
@@ -988,15 +1091,260 @@ describe("daftar dan detail pengajuan", () => {
     expect(res.status).toBe(403);
   });
 
-  it("detail dapat dilihat HR", async () => {
+  it("detail dapat dilihat admin", async () => {
     (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
-      fakeRequest({ employee_id: LAIN_ID, approver_id: LAIN_ID }) as never,
+      fakeRequest({ employee_id: OTHER_ID, approver_id: OTHER_ID }) as never,
     );
 
     const res = await request(app)
       .get(`/api/v1/leave-requests/${REQUEST_ID}`)
-      .set("Authorization", `Bearer ${hrToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe("penandaan absensi saat cuti disetujui", () => {
+  function approve() {
+    return request(app)
+      .patch(`/api/v1/leave-requests/${REQUEST_ID}/approve`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({});
+  }
+
+  beforeEach(() => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest() as never,
+    );
+    (leaveRequestModel.approveRequest as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "approved" }) as never,
+    );
+  });
+
+  it("membuat baris absensi cuti untuk setiap hari kerja dalam rentangnya", async () => {
+    const res = await approve();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.upsertLeaveDays).toHaveBeenCalledWith(
+      mockClient,
+      EMPLOYEE_ID,
+      [START_DATE, END_DATE],
+      REQUEST_ID,
+    );
+  });
+
+  it("mengeluarkan hari libur dari tanggal yang ditandai", async () => {
+    (holidayModel.findDatesBetween as jest.Mock).mockResolvedValue([
+      END_DATE,
+    ] as never);
+
+    await approve();
+
+    expect(workScheduleModel.workingDatesInRange).toHaveBeenCalledWith(
+      fakeSchedule,
+      START_DATE,
+      END_DATE,
+      [END_DATE],
+    );
+  });
+
+  it("menandai absensi di dalam transaksi yang sama dengan persetujuannya", async () => {
+    await approve();
+
+    const order = mockClient.query.mock.calls.map(([sql]) => sql);
+
+    expect(order).toContain("BEGIN");
+    expect(order).toContain("COMMIT");
+    expect(attendanceModel.upsertLeaveDays).toHaveBeenCalledWith(
+      mockClient,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("membatalkan persetujuan ketika penandaan absensi gagal", async () => {
+    (attendanceModel.upsertLeaveDays as jest.Mock).mockRejectedValue(
+      new Error("gagal menandai") as never,
+    );
+
+    const res = await approve();
+
+    expect(res.status).toBe(500);
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+
+  it("tetap menyetujui cuti meski karyawan belum punya jadwal kerja", async () => {
+    (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
+      null as never,
+    );
+
+    const res = await approve();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.upsertLeaveDays).not.toHaveBeenCalled();
+  });
+});
+
+describe("penghapusan absensi saat cuti dibatalkan", () => {
+  function cancelLeave() {
+    return request(app)
+      .patch(`/api/v1/leave-requests/${REQUEST_ID}/cancel`)
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send({});
+  }
+
+  beforeEach(() => {
+    (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "cancelled" }) as never,
+    );
+  });
+
+  it("menghapus baris absensi cuti dari pengajuan yang sudah disetujui", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "approved" }) as never,
+    );
+
+    const res = await cancelLeave();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.deleteLeaveDays).toHaveBeenCalledWith(
+      mockClient,
+      REQUEST_ID,
+    );
+  });
+
+  it("tidak menghapus apa pun untuk pengajuan yang masih menunggu", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "pending" }) as never,
+    );
+
+    const res = await cancelLeave();
+
+    expect(res.status).toBe(200);
+    expect(attendanceModel.deleteLeaveDays).not.toHaveBeenCalled();
+  });
+
+  it("membatalkan transaksi ketika penghapusan absensi gagal", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "approved" }) as never,
+    );
+    (attendanceModel.deleteLeaveDays as jest.Mock).mockRejectedValue(
+      new Error("gagal menghapus") as never,
+    );
+
+    const res = await cancelLeave();
+
+    expect(res.status).toBe(500);
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+});
+
+// Saldo pernah bisa jadi minus karena diperiksa di luar transaksi: dua
+// pengajuan bersamaan sama-sama membaca saldo lama lalu keduanya lolos
+describe("saldo tidak boleh bisa ditembus permintaan bersamaan", () => {
+  beforeEach(() => {
+    (balanceModel.balanceFor as jest.Mock).mockResolvedValue(12 as never);
+  });
+
+  it("mengunci baris karyawan sebelum menulis pengajuan", async () => {
+    await submitRequest();
+
+    expect(balanceModel.lockEmployeeBalance).toHaveBeenCalled();
+  });
+
+  it("mengunci di dalam transaksi, bukan sebelum BEGIN", async () => {
+    await submitRequest();
+
+    const queryOrder = mockClient.query.mock.calls.map(([sql]) => String(sql));
+
+    expect(queryOrder[0]).toBe("BEGIN");
+    expect(
+      (balanceModel.lockEmployeeBalance as jest.Mock).mock
+        .invocationCallOrder[0],
+    ).toBeGreaterThan(0);
+  });
+
+  it("memeriksa saldo memakai klien transaksi, bukan pool", async () => {
+    await submitRequest();
+
+    // panggilan terakhir balanceFor adalah pemeriksaan yang menentukan,
+    // dan argumen keempatnya harus klien transaksi
+    const calls = (balanceModel.balanceFor as jest.Mock).mock.calls;
+    const lastCall = calls[calls.length - 1] as unknown[];
+
+    expect(lastCall[3]).toBe(mockClient);
+  });
+
+  it("memeriksa saldo SESUDAH mengunci, bukan sebelum", async () => {
+    await submitRequest();
+
+    const lockOrder = (balanceModel.lockEmployeeBalance as jest.Mock).mock
+      .invocationCallOrder[0]!;
+    const balanceCalls = (balanceModel.balanceFor as jest.Mock).mock
+      .invocationCallOrder;
+    const lastBalanceCall = balanceCalls[balanceCalls.length - 1]!;
+
+    expect(lastBalanceCall).toBeGreaterThan(lockOrder);
+  });
+
+  it("tidak menulis apa pun kalau saldo kurang saat diperiksa ulang", async () => {
+    // lolos penyaring awal, tapi habis saat pemeriksaan di dalam transaksi
+    (balanceModel.balanceFor as jest.Mock)
+      .mockResolvedValueOnce(12 as never)
+      .mockResolvedValueOnce(0 as never);
+
+    const res = await submitRequest();
+
+    expect(res.status).toBe(400);
+    expect(leaveRequestModel.createRequest).not.toHaveBeenCalled();
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+});
+
+describe("catatan aktivitas cuti", () => {
+  function lastActivity(mock: jest.Mock) {
+    const calls = mock.mock.calls.at(-1) as [
+      { activity: Record<string, unknown> },
+      string,
+    ];
+
+    return calls[0].activity;
+  }
+
+  it("mencatat pengajuan cuti baru", async () => {
+    const res = await submitRequest();
+
+    expect(res.status).toBe(201);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("leave.create");
+    expect(note.entity_id).toBe(REQUEST_ID);
+    expect((note.metadata as { total_days: number }).total_days).toBe(
+      TOTAL_DAYS,
+    );
+  });
+
+  it("mencatat pembatalan beserta status sebelumnya", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      fakeRequest() as never,
+    );
+    (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
+      fakeRequest({ status: "cancelled" }) as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/leave-requests/${REQUEST_ID}/cancel`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+
+    const note = lastActivity(logger.info as jest.Mock);
+
+    expect(note.action).toBe("leave.cancel");
+    expect((note.metadata as { previous_status: string }).previous_status).toBe(
+      "pending",
+    );
   });
 });

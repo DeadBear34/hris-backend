@@ -1,7 +1,7 @@
 import pg from "pg";
 import { pool } from "../config/databaseConnection.js";
 
-export type UserRole = "employee" | "hr" | "admin";
+export type UserRole = "employee" | "admin";
 export type Executor = pg.Pool | pg.PoolClient;
 
 export interface User {
@@ -57,7 +57,7 @@ export async function insertUser(
 
   const user = result.rows[0];
   if (!user) {
-    throw new Error("Gagal menyimpan user");
+    throw new Error("Failed to save user");
   }
 
   return user;
@@ -73,15 +73,17 @@ export async function insertUserByAdmin(
   const result = await db.query<User>(
     `INSERT INTO users
        (email, password, role, is_active, terms_accepted_at,
-        approved_at, approved_by, must_change_password)
-     VALUES ($1, $2, $3::user_role, true, now(), now(), $4::uuid, true)
+        password_changed_at, email_verified_at, approved_at, approved_by,
+        must_change_password)
+     VALUES ($1, $2, $3::user_role, true, now(), now(), now(), now(),
+             $4::uuid, true)
      RETURNING ${SAFE_COLUMNS}`,
     [email, password, role, approved_by],
   );
 
   const user = result.rows[0];
   if (!user) {
-    throw new Error("Gagal menyimpan akun");
+    throw new Error("Failed to save account");
   }
 
   return user;
@@ -152,7 +154,7 @@ export async function approveUser(
     `UPDATE users
      SET is_active = true, approved_at = now(),
          approved_by = $2::uuid, updated_at = now()
-     WHERE id = $1 AND deleted_at IS NULL
+     WHERE id = $1 AND deleted_at IS NULL AND approved_at IS NULL
      RETURNING ${SAFE_COLUMNS}`,
     [id, approved_by],
   );
@@ -192,4 +194,50 @@ export async function findPending(): Promise<PendingUser[]> {
      ORDER BY u.created_at ASC`,
   );
   return result.rows;
+}
+
+// Membuat banyak akun sekaligus dalam satu query, biar tidak bolak-balik
+// ke database sebanyak jumlah barisnya
+export async function insertUsersByAdmin(
+  db: Executor,
+  items: { email: string; password: string; role: UserRole }[],
+  approved_by: string,
+): Promise<User[]> {
+  if (items.length === 0) return [];
+
+  const result = await db.query<User>(
+    `INSERT INTO users
+       (email, password, role, is_active, terms_accepted_at,
+        password_changed_at, email_verified_at, approved_at, approved_by,
+        must_change_password)
+     SELECT baris.email, baris.password, baris.role::user_role, true, now(),
+            now(), now(), now(), $4::uuid, true
+     FROM unnest($1::text[], $2::text[], $3::text[])
+       AS baris(email, password, role)
+     RETURNING ${SAFE_COLUMNS}`,
+    [
+      items.map((row) => row.email),
+      items.map((row) => row.password),
+      items.map((row) => row.role),
+      approved_by,
+    ],
+  );
+
+  if (result.rows.length !== items.length) {
+    throw new Error("Failed to save some accounts");
+  }
+
+  return result.rows;
+}
+
+// Cek banyak email sekaligus, biar tidak satu query per baris
+export async function findExistingEmails(emails: string[]): Promise<string[]> {
+  if (emails.length === 0) return [];
+
+  const result = await pool.query<{ email: string }>(
+    `SELECT email FROM users WHERE email = ANY($1::text[])`,
+    [emails],
+  );
+
+  return result.rows.map((row) => row.email);
 }

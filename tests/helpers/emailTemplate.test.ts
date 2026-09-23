@@ -6,7 +6,7 @@ import {
   accountApprovedEmail,
 } from "../../src/helpers/emailTemplate.js";
 
-const SEMUA_TEMPLATE = [
+const ALL_TEMPLATES = [
   verificationCodeEmail("123456", 10, "Ismail Muhammad"),
   passwordResetEmail("https://hris.test/reset?token=abc", 15, "Ismail"),
   passwordResetSuccessEmail("Ismail"),
@@ -15,34 +15,34 @@ const SEMUA_TEMPLATE = [
 
 describe("seluruh template email", () => {
   it("selalu memiliki subjek dan isi", () => {
-    for (const template of SEMUA_TEMPLATE) {
+    for (const template of ALL_TEMPLATES) {
       expect(template.subject.length).toBeGreaterThan(0);
       expect(template.html.length).toBeGreaterThan(0);
     }
   });
 
   it("menyapa penerima dengan namanya", () => {
-    for (const template of SEMUA_TEMPLATE) {
+    for (const template of ALL_TEMPLATES) {
       expect(template.html).toContain("Ismail");
     }
   });
 
   it("tetap dapat dipakai tanpa nama penerima", () => {
-    const tanpaNama = [
+    const withoutName = [
       verificationCodeEmail("123456", 10),
       passwordResetEmail("https://hris.test/reset", 15),
       passwordResetSuccessEmail(),
       accountApprovedEmail("https://hris.test/login"),
     ];
 
-    for (const template of tanpaNama) {
-      expect(template.html).toContain("Halo,");
+    for (const template of withoutName) {
+      expect(template.html).toContain("Hi,");
     }
   });
 
   it("ditulis dalam bahasa Indonesia", () => {
-    for (const template of SEMUA_TEMPLATE) {
-      expect(template.html).toContain("HRIS Awanio");
+    for (const template of ALL_TEMPLATES) {
+      expect(template.html).toContain("Awanio HRIS");
     }
   });
 });
@@ -58,29 +58,29 @@ describe("verificationCodeEmail", () => {
   it("menyebutkan masa berlaku kode", () => {
     const template = verificationCodeEmail("123456", 10);
 
-    expect(template.html).toContain("10 menit");
+    expect(template.html).toContain("10 minutes");
   });
 });
 
 describe("passwordResetEmail", () => {
   it("menyertakan tautan reset sebagai tombol dan teks", () => {
-    const tautan = "https://hris.test/reset-password?token=abc&email=a%40b.io";
-    const template = passwordResetEmail(tautan, 15);
+    const link = "https://hris.test/reset-password?token=abc&email=a%40b.io";
+    const template = passwordResetEmail(link, 15);
 
-    expect(template.html).toContain(`href="${tautan}"`);
-    expect(template.html).toContain(tautan);
+    expect(template.html).toContain(`href="${link}"`);
+    expect(template.html).toContain(link);
   });
 
   it("menyebutkan masa berlaku tautan", () => {
     const template = passwordResetEmail("https://hris.test/reset", 15);
 
-    expect(template.html).toContain("15 menit");
+    expect(template.html).toContain("15 minutes");
   });
 
   it("memberi tahu bahwa password tidak berubah jika bukan pengguna yang meminta", () => {
     const template = passwordResetEmail("https://hris.test/reset", 15);
 
-    expect(template.html).toContain("tidak akan berubah");
+    expect(template.html).toContain("will not change");
   });
 });
 
@@ -93,13 +93,13 @@ describe("accountApprovedEmail", () => {
 });
 
 describe("kerahasiaan isi email", () => {
-  const RAHASIA = ["password123", "Password123", "$argon2id$"];
+  const SECRET = ["password123", "Password123", "$argon2id$"];
 
   it("tidak pernah memuat password pengguna", () => {
-    for (const template of SEMUA_TEMPLATE) {
-      for (const rahasia of RAHASIA) {
-        expect(template.html).not.toContain(rahasia);
-        expect(template.subject).not.toContain(rahasia);
+    for (const template of ALL_TEMPLATES) {
+      for (const secret of SECRET) {
+        expect(template.html).not.toContain(secret);
+        expect(template.subject).not.toContain(secret);
       }
     }
   });
@@ -107,7 +107,7 @@ describe("kerahasiaan isi email", () => {
   it("pemberitahuan reset tidak memuat password baru", () => {
     const template = passwordResetSuccessEmail("Ismail");
 
-    expect(template.html.toLowerCase()).not.toContain("password baru kamu:");
-    expect(template.html).toContain("login kembali");
+    expect(template.html.toLowerCase()).not.toContain("your new password:");
+    expect(template.html).toContain("log in again");
   });
 });

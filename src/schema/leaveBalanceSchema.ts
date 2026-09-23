@@ -1,34 +1,34 @@
 import { z } from "zod";
 
-const tahunPeriode = z.coerce
+const periodYear = z.coerce
   .number()
-  .int("Tahun periode harus bilangan bulat")
-  .min(2000, "Tahun periode minimal 2000")
-  .max(2100, "Tahun periode maksimal 2100");
+  .int("Period year must be an integer")
+  .min(2000, "Period year must be at least 2000")
+  .max(2100, "Period year must be at most 2100");
 
 export const balanceQuerySchema = z.object({
-  period_year: tahunPeriode.optional(),
+  period_year: periodYear.optional(),
 });
 
 export const listLedgerQuerySchema = z.object({
-  period_year: tahunPeriode.optional(),
-  leave_type_id: z.uuid("Jenis cuti tidak valid").optional(),
+  period_year: periodYear.optional(),
+  leave_type_id: z.uuid("Invalid leave type").optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
 export const adjustBalanceSchema = z.object({
-  employee_id: z.uuid("Karyawan wajib dipilih"),
-  leave_type_id: z.uuid("Jenis cuti wajib dipilih"),
-  period_year: tahunPeriode,
+  employee_id: z.uuid("Employee is required"),
+  leave_type_id: z.uuid("Leave type is required"),
+  period_year: periodYear,
 
   amount: z.coerce
     .number()
-    .refine((nilai) => nilai !== 0, "Jumlah penyesuaian tidak boleh nol"),
+    .refine((value) => value !== 0, "Adjustment amount cannot be zero"),
 
   note: z
-    .string({ message: "Alasan penyesuaian wajib diisi" })
+    .string({ message: "Adjustment reason is required" })
     .trim()
-    .min(3, "Alasan penyesuaian minimal 3 karakter")
-    .max(500, "Alasan penyesuaian maksimal 500 karakter"),
+    .min(3, "Adjustment reason must be at least 3 characters")
+    .max(500, "Adjustment reason must be at most 500 characters"),
 });

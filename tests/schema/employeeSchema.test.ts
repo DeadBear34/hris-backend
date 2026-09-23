@@ -3,6 +3,7 @@ import {
   listEmployeeQuerySchema,
   createEmployeeSchema,
   updateEmployeeSchema,
+  updateOwnProfileSchema,
 } from "../../src/schema/employeeSchema.js";
 
 const DEPARTMENT_ID = "33333333-3333-4333-8333-333333333333";
@@ -102,7 +103,7 @@ describe("listEmployeeQuerySchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe("Department tidak valid");
+      expect(result.error.issues[0]?.message).toBe("Invalid department");
     }
   });
 
@@ -162,7 +163,7 @@ describe("createEmployeeSchema", () => {
   it("menerima data lengkap", () => {
     const result = createEmployeeSchema.safeParse({
       ...validCreate,
-      role: "hr",
+      role: "admin",
       birth_date: "1998-05-20",
       address: "Jalan Merdeka 10",
       department_id: DEPARTMENT_ID,
@@ -233,7 +234,7 @@ describe("createEmployeeSchema", () => {
   });
 
   it("menerima seluruh pilihan role", () => {
-    for (const role of ["employee", "hr", "admin"]) {
+    for (const role of ["employee", "admin"]) {
       const result = createEmployeeSchema.safeParse({ ...validCreate, role });
 
       expect(result.success).toBe(true);
@@ -373,6 +374,111 @@ describe("createEmployeeSchema", () => {
   });
 });
 
+describe("updateOwnProfileSchema", () => {
+  it("menerima keempat field yang diizinkan", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      full_name: "Ismail Muhammad",
+      phone: "+628123456789",
+      birth_date: "1998-05-20",
+      address: "Jalan Merdeka 10",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("menerima objek kosong karena seluruh field opsional", () => {
+    expect(updateOwnProfileSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("membuang manager_id sehingga penyetuju cuti tidak dapat diubah sendiri", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      full_name: "Ismail Muhammad",
+      manager_id: MANAGER_ID,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("manager_id");
+    }
+  });
+
+  it("membuang departemen dan jabatan", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      department_id: DEPARTMENT_ID,
+      position_id: POSITION_ID,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("department_id");
+      expect(result.data).not.toHaveProperty("position_id");
+    }
+  });
+
+  it("membuang gender, status kepegawaian, dan tanggal bergabung", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      gender: "female",
+      employment_status: "permanent",
+      join_date: "2020-01-01",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("gender");
+      expect(result.data).not.toHaveProperty("employment_status");
+      expect(result.data).not.toHaveProperty("join_date");
+    }
+  });
+
+  it("membuang email, password, dan role", () => {
+    const result = updateOwnProfileSchema.safeParse({
+      email: "penyerang@awan.io",
+      password: "password123",
+      role: "admin",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("email");
+      expect(result.data).not.toHaveProperty("password");
+      expect(result.data).not.toHaveProperty("role");
+    }
+  });
+
+  it("membuang is_active sehingga karyawan tidak dapat menonaktifkan dirinya", () => {
+    const result = updateOwnProfileSchema.safeParse({ is_active: false });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("is_active");
+    }
+  });
+
+  it("tetap menerapkan aturan nomor telepon", () => {
+    expect(
+      updateOwnProfileSchema.safeParse({ phone: "08123456789" }).success,
+    ).toBe(false);
+  });
+
+  it("tetap menerapkan aturan panjang nama", () => {
+    expect(updateOwnProfileSchema.safeParse({ full_name: "Is" }).success).toBe(
+      false,
+    );
+  });
+
+  it("tetap menerapkan format tanggal lahir", () => {
+    expect(
+      updateOwnProfileSchema.safeParse({ birth_date: "20-05-1998" }).success,
+    ).toBe(false);
+  });
+
+  it("tetap menerapkan batas panjang alamat", () => {
+    expect(
+      updateOwnProfileSchema.safeParse({ address: "a".repeat(501) }).success,
+    ).toBe(false);
+  });
+});
+
 describe("updateEmployeeSchema", () => {
   it("menerima objek kosong karena semua field opsional", () => {
     const result = updateEmployeeSchema.safeParse({});
@@ -451,5 +557,222 @@ describe("updateEmployeeSchema", () => {
     const result = updateEmployeeSchema.safeParse({ full_name: "Is" });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("mengosongkan kolom lewat update", () => {
+  it("menerima null untuk melepas manajer, departemen, dan jabatan", () => {
+    const result = updateEmployeeSchema.safeParse({
+      manager_id: null,
+      department_id: null,
+      position_id: null,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({
+      manager_id: null,
+      department_id: null,
+      position_id: null,
+    });
+  });
+
+  it("menerima null untuk alamat dan tanggal resign", () => {
+    const result = updateEmployeeSchema.safeParse({
+      address: null,
+      resign_date: null,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("kolom yang tidak dikirim tidak ikut dikosongkan", () => {
+    const result = updateEmployeeSchema.safeParse({ full_name: "Nama Baru" });
+
+    expect(result.data?.manager_id).toBeUndefined();
+  });
+
+  it("null tidak berlaku untuk kolom wajib seperti nama", () => {
+    const result = updateEmployeeSchema.safeParse({ full_name: null });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("kolom opsional yang dikirim kosong", () => {
+  const base = {
+    email: "ujang@awan.io",
+    password: "12345678",
+    full_name: "Ujang Sutisna",
+    phone: "+628110000001",
+    gender: "male",
+  };
+
+  it("sel CSV kosong diperlakukan sebagai tidak diisi, bukan ditolak", () => {
+    const result = createEmployeeSchema.safeParse({
+      ...base,
+      birth_date: "",
+      address: "",
+      department_id: "",
+      position_id: "",
+      manager_id: "",
+      employment_status: "",
+      join_date: "",
+      role: "",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("kolom kosong menjadi undefined, bukan string kosong", () => {
+    const result = createEmployeeSchema.parse({
+      ...base,
+      address: "",
+      birth_date: "",
+    });
+
+    expect(result.address).toBeUndefined();
+    expect(result.birth_date).toBeUndefined();
+  });
+
+  it("alamat berisi spasi saja dianggap kosong", () => {
+    const result = createEmployeeSchema.parse({ ...base, address: "   " });
+
+    expect(result.address).toBeUndefined();
+  });
+
+  it("kolom yang benar-benar diisi tetap tersimpan", () => {
+    const result = createEmployeeSchema.parse({
+      ...base,
+      address: "Jl. Merdeka No. 10",
+      birth_date: "1998-05-20",
+    });
+
+    expect(result.address).toBe("Jl. Merdeka No. 10");
+    expect(result.birth_date).toBe("1998-05-20");
+  });
+});
+
+describe("kewajaran tanggal", () => {
+  const base = {
+    email: "ujang@awan.io",
+    password: "12345678",
+    full_name: "Ujang Sutisna",
+    phone: "+628110000001",
+    gender: "male",
+  };
+
+  function rejectionMessage(data: Record<string, unknown>): string {
+    const result = createEmployeeSchema.safeParse({ ...base, ...data });
+
+    expect(result.success).toBe(false);
+
+    return result.success ? "" : result.error.issues[0]!.message;
+  }
+
+  it("menolak tanggal lahir di masa depan", () => {
+    expect(rejectionMessage({ birth_date: "2090-01-01" })).toContain(
+      "at least",
+    );
+  });
+
+  it("menolak karyawan di bawah usia kerja", () => {
+    const fiveYearsAgo = new Date();
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+
+    expect(
+      rejectionMessage({ birth_date: fiveYearsAgo.toISOString().slice(0, 10) }),
+    ).toContain("at least 15 years");
+  });
+
+  it("menolak tanggal lahir yang terlalu jauh ke belakang", () => {
+    expect(rejectionMessage({ birth_date: "1850-01-01" })).toContain("too far");
+  });
+
+  it("menerima usia kerja yang wajar", () => {
+    const twentyFive = new Date();
+    twentyFive.setFullYear(twentyFive.getFullYear() - 25);
+
+    const result = createEmployeeSchema.safeParse({
+      ...base,
+      birth_date: twentyFive.toISOString().slice(0, 10),
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("menolak tanggal bergabung yang terlalu jauh ke depan", () => {
+    expect(rejectionMessage({ join_date: "2200-01-01" })).toContain("365 days");
+  });
+
+  it("menerima tanggal bergabung yang belum tiba tetapi masih wajar", () => {
+    const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    const result = createEmployeeSchema.safeParse({
+      ...base,
+      join_date: nextMonth.toISOString().slice(0, 10),
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("menolak bergabung sebelum tanggal lahir", () => {
+    expect(
+      rejectionMessage({ birth_date: "2000-01-01", join_date: "1990-01-01" }),
+    ).toContain("before birth date");
+  });
+
+  it("aturan tanggal juga berlaku saat mengubah karyawan", () => {
+    const result = updateEmployeeSchema.safeParse({
+      birth_date: "2000-01-01",
+      join_date: "1990-01-01",
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("usia dihitung secara kalender", () => {
+  const base = {
+    email: "batas@awan.io",
+    password: "12345678",
+    full_name: "Uji Batas",
+    phone: "+628110000001",
+    gender: "male",
+  };
+
+  function dateForAge(years: number, dayOffset = 0): string {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - years);
+    d.setDate(d.getDate() + dayOffset);
+
+    return d.toISOString().slice(0, 10);
+  }
+
+  function accepted(birth_date: string): boolean {
+    return createEmployeeSchema.safeParse({ ...base, birth_date }).success;
+  }
+
+  it("menerima yang tepat berulang tahun ke-15 hari ini", () => {
+    expect(accepted(dateForAge(15))).toBe(true);
+  });
+
+  it("menolak yang baru berusia 15 besok", () => {
+    expect(accepted(dateForAge(15, 1))).toBe(false);
+  });
+
+  it("menerima yang tepat berusia 100 tahun", () => {
+    // pembagian selisih milidetik sempat menolak kasus ini karena Date.now()
+    // membawa jam saat ini sedangkan tanggal lahir dihitung dari tengah malam
+    expect(accepted(dateForAge(100))).toBe(true);
+  });
+
+  it("menolak yang sudah lewat 101 tahun", () => {
+    expect(accepted(dateForAge(101, -1))).toBe(false);
+  });
+
+  it("hasilnya tidak bergantung pada jam saat pengujian dijalankan", () => {
+    // usia kalender hanya melihat bagian tanggal, bukan jam
+    expect(accepted(dateForAge(30))).toBe(true);
+    expect(accepted(dateForAge(16))).toBe(true);
   });
 });

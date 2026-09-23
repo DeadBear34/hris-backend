@@ -2,6 +2,9 @@ import type { Request, Response, NextFunction } from "express";
 import * as departmentModel from "../models/department.js";
 import type { DepartmentInput } from "../models/department.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
+import { plural } from "../helpers/plural.js";
 
 export async function ListDepartmentController(
   _req: Request,
@@ -25,7 +28,7 @@ export async function DetailDepartmentController(
     const { id } = res.locals.params as { id: string };
 
     const department = await departmentModel.findById(id);
-    if (!department) throw NotFound("Departemen tidak ditemukan");
+    if (!department) throw NotFound("Department not found");
 
     res.json({ success: true, data: department });
   } catch (err) {
@@ -39,12 +42,20 @@ export async function CreateDepartmentController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const data = req.body as DepartmentInput;
 
     const existing = await departmentModel.findByCode(data.code);
-    if (existing) throw Conflict("Kode departemen sudah digunakan");
+    if (existing) throw Conflict("Department code is already in use");
 
     const department = await departmentModel.createDepartment(data);
+
+    activity.success({
+      action: "department.create",
+      entity: "department",
+      entity_id: department.id,
+      summary: `Department ${department.name} created`,
+    });
 
     res.status(201).json({ success: true, data: department });
   } catch (err) {
@@ -58,29 +69,53 @@ export async function UpdateDepartmentController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<DepartmentInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<DepartmentInput> & {
+        updated_at?: string;
+      };
 
     const existing = await departmentModel.findById(id);
-    if (!existing) throw NotFound("Departemen tidak ditemukan");
+    if (!existing) throw NotFound("Department not found");
 
     if (data.code && data.code !== existing.code) {
       const duplicate = await departmentModel.findByCode(data.code);
-      if (duplicate) throw Conflict("Kode departemen sudah digunakan");
+      if (duplicate) throw Conflict("Department code is already in use");
     }
 
     if (data.is_active === false && existing.is_active) {
-      const jumlah = await departmentModel.countEmployees(id);
+      const count = await departmentModel.countEmployees(id);
 
-      if (jumlah > 0) {
+      if (count > 0) {
         throw BadRequest(
-          `Departemen tidak dapat dinonaktifkan karena masih memiliki ${jumlah} karyawan`,
-          { employee_count: jumlah },
+          `Department cannot be deactivated because it still has ${plural(count, "employee")}`,
+          { employee_count: count },
         );
       }
     }
 
-    const department = await departmentModel.updateDepartment(id, data);
+    const department = await departmentModel.updateDepartment(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!department) {
+      throw await rejectStaleUpdate(
+        "department",
+        () => departmentModel.findById(id),
+        "Department not found",
+      );
+    }
+
+    activity.success({
+      action: "department.update",
+      entity: "department",
+      entity_id: id,
+      summary: `Department ${existing.name} updated`,
+      metadata: { fields: Object.keys(data) },
+    });
 
     res.json({ success: true, data: department });
   } catch (err) {
@@ -89,27 +124,35 @@ export async function UpdateDepartmentController(
 }
 
 export async function DeleteDepartmentController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await departmentModel.findById(id);
-    if (!existing) throw NotFound("Departemen tidak ditemukan");
+    if (!existing) throw NotFound("Department not found");
 
-    const jumlah = await departmentModel.countEmployees(id);
-    if (jumlah > 0) {
+    const count = await departmentModel.countEmployees(id);
+    if (count > 0) {
       throw BadRequest(
-        `Departemen tidak dapat dihapus karena masih memiliki ${jumlah} karyawan. Pindahkan karyawan ke departemen lain terlebih dahulu.`,
-        { employee_count: jumlah },
+        `Department cannot be deleted because it still has ${plural(count, "employee")}. Move them to another department first.`,
+        { employee_count: count },
       );
     }
 
     await departmentModel.softDeleteDepartment(id);
 
-    res.json({ success: true, message: "Departemen berhasil dihapus" });
+    activity.success({
+      action: "department.delete",
+      entity: "department",
+      entity_id: id,
+      summary: `Department ${existing.name} deleted`,
+    });
+
+    res.json({ success: true, message: "Department deleted successfully" });
   } catch (err) {
     next(err);
   }

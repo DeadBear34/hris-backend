@@ -49,7 +49,7 @@ export interface ListLedgerParams {
   limit: number;
 }
 
-const KOLOM = `id, employee_id, leave_type_id, period_year,
+const COLUMNS = `id, employee_id, leave_type_id, period_year,
   amount::float8 AS amount, type, leave_request_id, note,
   created_by, created_at`;
 
@@ -63,7 +63,7 @@ export async function createTransaction(
         leave_request_id, note, created_by)
      VALUES ($1::uuid, $2::uuid, $3::int, $4::numeric,
              $5::leave_transaction_type, $6::uuid, $7, $8::uuid)
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [
       data.employee_id,
       data.leave_type_id,
@@ -76,12 +76,12 @@ export async function createTransaction(
     ],
   );
 
-  const transaksi = result.rows[0];
-  if (!transaksi) {
-    throw new Error("Gagal menyimpan transaksi saldo cuti");
+  const transaction = result.rows[0];
+  if (!transaction) {
+    throw new Error("Failed to save leave balance transaction");
   }
 
-  return transaksi;
+  return transaction;
 }
 
 export async function summaryFor(
@@ -111,8 +111,9 @@ export async function balanceFor(
   employee_id: string,
   leave_type_id: string,
   period_year: number,
+  db: Executor = pool,
 ): Promise<number> {
-  const result = await pool.query<{ balance: string }>(
+  const result = await db.query<{ balance: string }>(
     `SELECT COALESCE(SUM(amount), 0)::float8 AS balance
      FROM leave_balance_transactions
      WHERE employee_id = $1::uuid AND leave_type_id = $2::uuid
@@ -175,7 +176,7 @@ export async function convertHoldToDeduction(
      SET type = 'deduction'::leave_transaction_type
      WHERE leave_request_id = $1::uuid
        AND type = 'hold'::leave_transaction_type
-     RETURNING ${KOLOM}`,
+     RETURNING ${COLUMNS}`,
     [leave_request_id],
   );
 
@@ -186,11 +187,22 @@ export async function findByRequest(
   leave_request_id: string,
 ): Promise<LeaveBalanceTransaction[]> {
   const result = await pool.query<LeaveBalanceTransaction>(
-    `SELECT ${KOLOM} FROM leave_balance_transactions
+    `SELECT ${COLUMNS} FROM leave_balance_transactions
      WHERE leave_request_id = $1::uuid
      ORDER BY created_at ASC`,
     [leave_request_id],
   );
 
   return result.rows;
+}
+
+// Mengunci baris karyawan sampai transaksi selesai. Dua pengajuan cuti
+// dari orang yang sama jadi berurutan, bukan saling mendahului
+export async function lockEmployeeBalance(
+  db: Executor,
+  employee_id: string,
+): Promise<void> {
+  await db.query(`SELECT id FROM employees WHERE id = $1::uuid FOR UPDATE`, [
+    employee_id,
+  ]);
 }

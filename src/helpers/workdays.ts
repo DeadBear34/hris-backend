@@ -1,43 +1,42 @@
-/** Format tanggal yang dipakai lintas lapisan: YYYY-MM-DD. */
 export type IsoDate = string;
 
-const HARI_MINGGU = 0;
-const HARI_SABTU = 6;
+const SUNDAY = 0;
+const SATURDAY = 6;
 
-export function parseIsoDate(tanggal: IsoDate): Date {
-  const [tahun, bulan, hari] = tanggal.split("-").map(Number);
+export function parseIsoDate(date: IsoDate): Date {
+  const [year, month, day] = date.split("-").map(Number);
 
-  if (!tahun || !bulan || !hari) {
-    throw new Error(`Tanggal tidak valid: ${tanggal}`);
+  if (!year || !month || !day) {
+    throw new Error(`Invalid date: ${date}`);
   }
 
-  return new Date(Date.UTC(tahun, bulan - 1, hari));
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
-export function toIsoDate(tanggal: Date): IsoDate {
-  return tanggal.toISOString().slice(0, 10);
+export function toIsoDate(date: Date): IsoDate {
+  return date.toISOString().slice(0, 10);
 }
 
-export function isWeekend(tanggal: Date): boolean {
-  const hari = tanggal.getUTCDay();
+export function isWeekend(date: Date): boolean {
+  const day = date.getUTCDay();
 
-  return hari === HARI_MINGGU || hari === HARI_SABTU;
+  return day === SUNDAY || day === SATURDAY;
 }
 
 export function eachDateInRange(start: IsoDate, end: IsoDate): Date[] {
-  const awal = parseIsoDate(start);
-  const akhir = parseIsoDate(end);
-  const hasil: Date[] = [];
+  const first = parseIsoDate(start);
+  const last = parseIsoDate(end);
+  const result: Date[] = [];
 
   for (
-    let kursor = new Date(awal);
-    kursor.getTime() <= akhir.getTime();
-    kursor.setUTCDate(kursor.getUTCDate() + 1)
+    let cursor = new Date(first);
+    cursor.getTime() <= last.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
   ) {
-    hasil.push(new Date(kursor));
+    result.push(new Date(cursor));
   }
 
-  return hasil;
+  return result;
 }
 
 export function countWorkdays(
@@ -45,22 +44,22 @@ export function countWorkdays(
   end: IsoDate,
   holidays: IsoDate[] = [],
 ): number {
-  const libur = new Set(holidays);
+  const holidaySet = new Set(holidays);
 
   return eachDateInRange(start, end).filter(
-    (tanggal) => !isWeekend(tanggal) && !libur.has(toIsoDate(tanggal)),
+    (date) => !isWeekend(date) && !holidaySet.has(toIsoDate(date)),
   ).length;
 }
 
-export function daysFromToday(tanggal: IsoDate): number {
-  const hariIni = parseIsoDate(toIsoDate(new Date()));
-  const target = parseIsoDate(tanggal);
+export function daysFromToday(date: IsoDate): number {
+  const today = parseIsoDate(toIsoDate(new Date()));
+  const target = parseIsoDate(date);
 
   return Math.round(
-    (target.getTime() - hariIni.getTime()) / (24 * 60 * 60 * 1000),
+    (target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
   );
 }
 
-export function isPastDate(tanggal: IsoDate): boolean {
-  return daysFromToday(tanggal) < 0;
+export function isPastDate(date: IsoDate): boolean {
+  return daysFromToday(date) < 0;
 }

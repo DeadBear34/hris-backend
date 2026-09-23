@@ -12,7 +12,7 @@ const schema = z.object({
   page: z.coerce.number().default(1),
 });
 
-function siapkanRes() {
+function makeRes() {
   return { locals: {} } as unknown as Response;
 }
 
@@ -26,7 +26,7 @@ describe("validate", () => {
   it("meneruskan request yang lolos validasi", () => {
     const req = { body: { email: "ismail@awan.io" } } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     expect(next).toHaveBeenCalledWith();
   });
@@ -34,7 +34,7 @@ describe("validate", () => {
   it("mengganti body dengan hasil parsing", () => {
     const req = { body: { email: "  Ismail@Awan.IO  " } } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     expect(req.body.email).toBe("ismail@awan.io");
   });
@@ -42,7 +42,7 @@ describe("validate", () => {
   it("mengisi nilai bawaan ke dalam body", () => {
     const req = { body: { email: "ismail@awan.io" } } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     expect(req.body.page).toBe(1);
   });
@@ -52,7 +52,7 @@ describe("validate", () => {
       body: { email: "ismail@awan.io", role: "admin" },
     } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     expect(req.body).not.toHaveProperty("role");
   });
@@ -60,7 +60,7 @@ describe("validate", () => {
   it("meneruskan ZodError ke penanganan error saat validasi gagal", () => {
     const req = { body: { email: "bukanemail" } } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     const [err] = (next as jest.Mock).mock.calls[0] as [unknown];
 
@@ -70,7 +70,7 @@ describe("validate", () => {
   it("tidak mengubah body saat validasi gagal", () => {
     const req = { body: { email: "bukanemail" } } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     expect(req.body).toEqual({ email: "bukanemail" });
   });
@@ -78,7 +78,7 @@ describe("validate", () => {
   it("hanya memanggil next satu kali saat validasi gagal", () => {
     const req = { body: {} } as Request;
 
-    validate(schema)(req, siapkanRes(), next);
+    validate(schema)(req, makeRes(), next);
 
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -95,7 +95,7 @@ describe("validateQuery", () => {
     const req = {
       query: { email: "ismail@awan.io", page: "3" },
     } as unknown as Request;
-    const res = siapkanRes();
+    const res = makeRes();
 
     validateQuery(schema)(req, res, next);
 
@@ -106,14 +106,14 @@ describe("validateQuery", () => {
     const query = { email: "ismail@awan.io" };
     const req = { query } as unknown as Request;
 
-    validateQuery(schema)(req, siapkanRes(), next);
+    validateQuery(schema)(req, makeRes(), next);
 
     expect(req.query).toBe(query);
   });
 
   it("meneruskan ZodError saat query tidak valid", () => {
     const req = { query: { email: "bukanemail" } } as unknown as Request;
-    const res = siapkanRes();
+    const res = makeRes();
 
     validateQuery(schema)(req, res, next);
 
@@ -136,7 +136,7 @@ describe("validateParams", () => {
 
   it("menyimpan hasil parsing ke res.locals.params", () => {
     const req = { params: { id: VALID_UUID } } as unknown as Request;
-    const res = siapkanRes();
+    const res = makeRes();
 
     validateParams(paramSchema)(req, res, next);
 
@@ -146,7 +146,7 @@ describe("validateParams", () => {
 
   it("meneruskan ZodError saat parameter tidak valid", () => {
     const req = { params: { id: "123" } } as unknown as Request;
-    const res = siapkanRes();
+    const res = makeRes();
 
     validateParams(paramSchema)(req, res, next);
 

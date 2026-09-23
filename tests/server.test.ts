@@ -7,8 +7,19 @@ import {
   afterEach,
 } from "@jest/globals";
 
-const mockClose = jest.fn((selesai: () => void) => selesai());
-const mockListen = jest.fn(() => ({ close: mockClose }));
+const mockClose = jest.fn((finish: () => void) => finish());
+
+// WebSocketServer memasang listener di http.Server, jadi tiruannya harus
+// punya on/once/removeListener supaya menyerupai server sungguhan
+const mockListen = jest.fn(() => ({
+  close: mockClose,
+  on: jest.fn(),
+  once: jest.fn(),
+  off: jest.fn(),
+  removeListener: jest.fn(),
+  emit: jest.fn(),
+  address: () => ({ port: 0 }),
+}));
 const mockTestConnection = jest.fn();
 const mockLoggerInfo = jest.fn();
 const mockLoggerError = jest.fn();
@@ -22,35 +33,44 @@ jest.unstable_mockModule("../src/config/databaseConnection.js", () => ({
   testConnection: mockTestConnection,
 }));
 
+// Pendengar antar-instance membuka koneksi database sendiri, jadi dimatikan
+// di sini supaya pengujian tidak menyentuh database sungguhan
+jest.unstable_mockModule("../src/realtime/crossInstance.js", () => ({
+  startCrossInstance: jest.fn(() => Promise.resolve()),
+  stopCrossInstance: jest.fn(() => Promise.resolve()),
+  announce: jest.fn(),
+  instanceId: () => "uji",
+}));
+
 jest.unstable_mockModule("../src/config/logger.js", () => ({
   logger: { info: mockLoggerInfo, error: mockLoggerError, warn: jest.fn() },
 }));
 
 const { env } = await import("../src/config/env.js");
 
-let keluarDenganKode: number[] = [];
+let exitCodes: number[] = [];
 
 // server.ts memanggil start() saat diimpor tanpa mengekspor promise-nya
-async function tunggu(kondisi: () => boolean) {
+async function waitFor(condition: () => boolean) {
   for (let i = 0; i < 200; i++) {
-    if (kondisi()) return;
-    await new Promise((selesai) => setTimeout(selesai, 5));
+    if (condition()) return;
+    await new Promise((finish) => setTimeout(finish, 5));
   }
 
   throw new Error("server tidak selesai dijalankan tepat waktu");
 }
 
-async function jalankanServer() {
+async function bootServer() {
   jest.resetModules();
   await import("../src/server.js");
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  keluarDenganKode = [];
+  exitCodes = [];
 
-  jest.spyOn(process, "exit").mockImplementation(((kode?: number) => {
-    keluarDenganKode.push(kode ?? 0);
+  jest.spyOn(process, "exit").mockImplementation(((code?: number) => {
+    exitCodes.push(code ?? 0);
     return undefined as never;
   }) as never);
 });
@@ -66,15 +86,15 @@ describe("server berhasil dijalankan", () => {
   });
 
   it("memeriksa koneksi database sebelum melayani request", async () => {
-    await jalankanServer();
-    await tunggu(() => mockListen.mock.calls.length > 0);
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
 
     expect(mockTestConnection).toHaveBeenCalled();
   });
 
   it("mendengarkan pada port dari environment", async () => {
-    await jalankanServer();
-    await tunggu(() => mockListen.mock.calls.length > 0);
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
 
     const [port] = mockListen.mock.calls[0] as unknown as [number];
 
@@ -82,43 +102,43 @@ describe("server berhasil dijalankan", () => {
   });
 
   it("mencatat bahwa database sudah terhubung", async () => {
-    await jalankanServer();
-    await tunggu(() => mockListen.mock.calls.length > 0);
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
 
-    expect(mockLoggerInfo).toHaveBeenCalledWith("Database terhubung");
+    expect(mockLoggerInfo).toHaveBeenCalledWith("Database connected");
   });
 
   it("mencatat alamat server saat sudah siap", async () => {
-    await jalankanServer();
-    await tunggu(() => mockListen.mock.calls.length > 0);
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
 
-    const [, siap] = mockListen.mock.calls[0] as unknown as [
+    const [, ready] = mockListen.mock.calls[0] as unknown as [
       number,
       () => void,
     ];
-    siap();
+    ready();
 
-    const pesan = mockLoggerInfo.mock.calls.map(([p]) => String(p));
+    const message = mockLoggerInfo.mock.calls.map(([p]) => String(p));
 
-    expect(pesan.some((p) => p.includes(String(env.PORT)))).toBe(true);
+    expect(message.some((p) => p.includes(String(env.PORT)))).toBe(true);
   });
 
   it("tidak menghentikan proses saat database sehat", async () => {
-    await jalankanServer();
-    await tunggu(() => mockListen.mock.calls.length > 0);
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
 
-    expect(keluarDenganKode).toEqual([]);
+    expect(exitCodes).toEqual([]);
   });
 
   it("memasang penanganan SIGINT untuk mematikan server dengan rapi", async () => {
-    await jalankanServer();
-    await tunggu(() => mockListen.mock.calls.length > 0);
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
 
-    const penangan = process.listeners("SIGINT").at(-1) as () => void;
-    penangan();
+    const handler = process.listeners("SIGINT").at(-1) as () => void;
+    handler();
 
     expect(mockClose).toHaveBeenCalled();
-    expect(keluarDenganKode).toEqual([0]);
+    expect(exitCodes).toEqual([0]);
   });
 });
 
@@ -130,26 +150,26 @@ describe("server gagal terhubung ke database", () => {
   });
 
   it("menghentikan proses dengan kode kegagalan", async () => {
-    await jalankanServer();
-    await tunggu(() => keluarDenganKode.length > 0);
+    await bootServer();
+    await waitFor(() => exitCodes.length > 0);
 
-    expect(keluarDenganKode).toContain(1);
+    expect(exitCodes).toContain(1);
   });
 
   it("mencatat penyebab kegagalan", async () => {
-    await jalankanServer();
-    await tunggu(() => keluarDenganKode.length > 0);
+    await bootServer();
+    await waitFor(() => exitCodes.length > 0);
 
     expect(mockLoggerError).toHaveBeenCalledWith(
       expect.any(Error),
-      "Gagal terhubung ke database",
+      "Failed to connect to the database",
     );
   });
 
   it("tidak mengumumkan database terhubung", async () => {
-    await jalankanServer();
-    await tunggu(() => keluarDenganKode.length > 0);
+    await bootServer();
+    await waitFor(() => exitCodes.length > 0);
 
-    expect(mockLoggerInfo).not.toHaveBeenCalledWith("Database terhubung");
+    expect(mockLoggerInfo).not.toHaveBeenCalledWith("Database connected");
   });
 });

@@ -2,6 +2,8 @@ import type { Request, Response, NextFunction } from "express";
 import * as holidayModel from "../models/holiday.js";
 import type { HolidayInput, ListHolidayParams } from "../models/holiday.js";
 import { Conflict, NotFound } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
 
 export async function ListHolidayController(
   _req: Request,
@@ -36,7 +38,7 @@ export async function DetailHolidayController(
     const { id } = res.locals.params as { id: string };
 
     const holiday = await holidayModel.findById(id);
-    if (!holiday) throw NotFound("Hari libur tidak ditemukan");
+    if (!holiday) throw NotFound("Holiday not found");
 
     res.json({ success: true, data: holiday });
   } catch (err) {
@@ -50,12 +52,21 @@ export async function CreateHolidayController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const data = req.body as HolidayInput;
 
     const existing = await holidayModel.findByDate(data.holiday_date);
-    if (existing) throw Conflict("Tanggal tersebut sudah terdaftar hari libur");
+    if (existing)
+      throw Conflict("That date is already registered as a holiday");
 
     const holiday = await holidayModel.createHoliday(data);
+
+    activity.success({
+      action: "holiday.create",
+      entity: "holiday",
+      entity_id: holiday.id,
+      summary: `Holiday ${holiday.name} created`,
+    });
 
     res.status(201).json({ success: true, data: holiday });
   } catch (err) {
@@ -69,20 +80,44 @@ export async function UpdateHolidayController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<HolidayInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<HolidayInput> & {
+        updated_at?: string;
+      };
 
     const existing = await holidayModel.findById(id);
-    if (!existing) throw NotFound("Hari libur tidak ditemukan");
+    if (!existing) throw NotFound("Holiday not found");
 
     if (data.holiday_date && data.holiday_date !== existing.holiday_date) {
       const duplicate = await holidayModel.findByDate(data.holiday_date);
       if (duplicate) {
-        throw Conflict("Tanggal tersebut sudah terdaftar hari libur");
+        throw Conflict("That date is already registered as a holiday");
       }
     }
 
-    const holiday = await holidayModel.updateHoliday(id, data);
+    const holiday = await holidayModel.updateHoliday(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!holiday) {
+      throw await rejectStaleUpdate(
+        "holiday",
+        () => holidayModel.findById(id),
+        "Holiday not found",
+      );
+    }
+
+    activity.success({
+      action: "holiday.update",
+      entity: "holiday",
+      entity_id: id,
+      summary: `Holiday ${existing.name} updated`,
+      metadata: { fields: Object.keys(data) },
+    });
 
     res.json({ success: true, data: holiday });
   } catch (err) {
@@ -91,19 +126,27 @@ export async function UpdateHolidayController(
 }
 
 export async function DeleteHolidayController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await holidayModel.findById(id);
-    if (!existing) throw NotFound("Hari libur tidak ditemukan");
+    if (!existing) throw NotFound("Holiday not found");
 
     await holidayModel.deleteHoliday(id);
 
-    res.json({ success: true, message: "Hari libur berhasil dihapus" });
+    activity.success({
+      action: "holiday.delete",
+      entity: "holiday",
+      entity_id: id,
+      summary: `Holiday ${existing.name} deleted`,
+    });
+
+    res.json({ success: true, message: "Holiday deleted successfully" });
   } catch (err) {
     next(err);
   }

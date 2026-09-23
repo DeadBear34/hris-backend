@@ -17,14 +17,18 @@ export function uploadSingleImage(field: string) {
 
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          return next(BadRequest("Ukuran berkas maksimal 5 MB"));
+          return next(BadRequest("File must be 5 MB or smaller"));
         }
 
         if (err.code === "LIMIT_UNEXPECTED_FILE") {
-          return next(BadRequest(`Berkas harus dikirim pada field '${field}'`));
+          return next(BadRequest(`File must be sent in the '${field}' field`));
         }
 
-        return next(BadRequest("Berkas yang diunggah tidak dapat diproses"));
+        return next(
+          BadRequest(
+            "The uploaded file could not be read, please upload it again",
+          ),
+        );
       }
 
       next(err);

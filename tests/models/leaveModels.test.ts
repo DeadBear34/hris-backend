@@ -49,12 +49,12 @@ describe("model holiday", () => {
       rows: [{ holiday_date: "2026-08-17" }],
     } as never);
 
-    const tanggal = await holidayModel.findDatesBetween(
+    const date = await holidayModel.findDatesBetween(
       "2026-08-01",
       "2026-08-31",
     );
 
-    expect(tanggal).toEqual(["2026-08-17"]);
+    expect(date).toEqual(["2026-08-17"]);
   });
 
   it("menyaring daftar berdasarkan tahun", async () => {
@@ -120,7 +120,7 @@ describe("model holiday", () => {
         { holiday_date: "2026-08-17", name: "Kemerdekaan" },
         fakeDb as never,
       ),
-    ).rejects.toThrow("Gagal menyimpan hari libur");
+    ).rejects.toThrow("Failed to save holiday");
   });
 });
 
@@ -175,9 +175,9 @@ describe("model leaveType", () => {
   it("menghitung pengajuan yang memakai jenis cuti", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "4" }] } as never);
 
-    const jumlah = await leaveTypeModel.countLeaveRequests(LEAVE_TYPE_ID);
+    const count = await leaveTypeModel.countLeaveRequests(LEAVE_TYPE_ID);
 
-    expect(jumlah).toBe(4);
+    expect(count).toBe(4);
   });
 });
 
@@ -269,12 +269,30 @@ describe("model leaveRequest", () => {
       fakeDb as never,
       REQUEST_ID,
       EMPLOYEE_ID,
+      "approved",
     );
 
-    const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
+    const [sql] = (fakeDb.query as jest.Mock).mock.calls.at(-1) as [string];
 
     expect(sql).toContain("'pending'::leave_status");
     expect(sql).toContain("'approved'::leave_status");
+  });
+
+  it("pembatalan hanya berhasil bila status belum berubah sejak diperiksa", async () => {
+    await leaveRequestModel.cancelRequest(
+      fakeDb as never,
+      REQUEST_ID,
+      EMPLOYEE_ID,
+      "pending",
+    );
+
+    const [sql, values] = (fakeDb.query as jest.Mock).mock.calls.at(-1) as [
+      string,
+      unknown[],
+    ];
+
+    expect(sql).toContain("status = $3::leave_status");
+    expect(values).toEqual([REQUEST_ID, EMPLOYEE_ID, "pending"]);
   });
 
   it("menyaring daftar berdasarkan penyetuju tanpa menyertakan yang kosong", async () => {
@@ -294,7 +312,7 @@ describe("model leaveRequest", () => {
     expect(sql).not.toContain("approver_id IS NULL");
   });
 
-  it("menyertakan pengajuan tanpa penyetuju untuk HR", async () => {
+  it("menyertakan pengajuan tanpa penyetuju untuk admin", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ count: "0" }] } as never)
       .mockResolvedValueOnce({ rows: [] } as never);
@@ -359,13 +377,13 @@ describe("model leaveBalance", () => {
         amount: 1,
         type: "accrual",
       }),
-    ).rejects.toThrow("Gagal menyimpan transaksi saldo cuti");
+    ).rejects.toThrow("Failed to save leave balance transaction");
   });
 
   it("menghitung saldo dari penjumlahan seluruh baris", async () => {
     mockQuery.mockResolvedValue({ rows: [{ balance: 9 }] } as never);
 
-    const saldo = await balanceModel.balanceFor(
+    const balance = await balanceModel.balanceFor(
       EMPLOYEE_ID,
       LEAVE_TYPE_ID,
       2026,
@@ -374,19 +392,19 @@ describe("model leaveBalance", () => {
     const [sql] = mockQuery.mock.calls[0] as [string];
 
     expect(sql).toContain("SUM(amount)");
-    expect(saldo).toBe(9);
+    expect(balance).toBe(9);
   });
 
   it("mengembalikan nol saat belum ada transaksi", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const saldo = await balanceModel.balanceFor(
+    const balanceValue = await balanceModel.balanceFor(
       EMPLOYEE_ID,
       LEAVE_TYPE_ID,
       2026,
     );
 
-    expect(saldo).toBe(0);
+    expect(balanceValue).toBe(0);
   });
 
   it("ringkasan hanya memuat jenis cuti yang memotong saldo", async () => {
@@ -464,7 +482,7 @@ describe("model leaveAttachment", () => {
         },
         fakeDb as never,
       ),
-    ).rejects.toThrow("Gagal menyimpan lampiran");
+    ).rejects.toThrow("Failed to save attachment");
   });
 
   it("mengambil lampiran milik satu pengajuan", async () => {
@@ -479,9 +497,9 @@ describe("model leaveAttachment", () => {
   it("menghitung lampiran untuk pemeriksaan kewajiban bukti", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "2" }] } as never);
 
-    const jumlah = await attachmentModel.countByRequest(REQUEST_ID);
+    const count = await attachmentModel.countByRequest(REQUEST_ID);
 
-    expect(jumlah).toBe(2);
+    expect(count).toBe(2);
   });
 
   it("mencari lampiran berdasarkan id", async () => {

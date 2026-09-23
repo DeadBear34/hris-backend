@@ -18,7 +18,7 @@ describe("idParamSchema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe("ID tidak valid");
+      expect(result.error.issues[0]?.message).toBe("Invalid ID");
     }
   });
 

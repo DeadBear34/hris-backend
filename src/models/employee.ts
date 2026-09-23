@@ -1,4 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
+import { sameVersion } from "../helpers/concurrency.js";
 import type { Executor } from "./user.js";
 
 export type EmployeeGender = "male" | "female";
@@ -13,14 +14,15 @@ export interface Employee {
   full_name: string;
   phone: string;
   gender: EmployeeGender;
-  birth_date: Date | null;
+  birth_date: string | null;
   address: string | null;
+  photo_path: string | null;
   department_id: string | null;
   position_id: string | null;
   manager_id: string | null;
   employment_status: EmploymentStatus;
-  join_date: Date;
-  resign_date: Date | null;
+  join_date: string;
+  resign_date: string | null;
   is_active: boolean;
   deleted_at: Date | null;
   created_at: Date;
@@ -35,7 +37,26 @@ export interface EmployeeListItem {
   position_name: string | null;
   department_name: string | null;
   manager_name: string | null;
+  photo_path: string | null;
   is_active: boolean;
+}
+
+// Halaman edit membutuhkan seluruh kolom yang bisa diubah, bukan hanya
+// yang tampil di daftar. Tanpa ini form edit terisi kosong lalu menimpa
+// data yang sebenarnya masih ada
+export interface EmployeeDetail extends EmployeeListItem {
+  user_id: string | null;
+  updated_at: Date;
+  phone: string;
+  gender: EmployeeGender;
+  birth_date: string | null;
+  address: string | null;
+  employment_status: EmploymentStatus;
+  join_date: string;
+  resign_date: string | null;
+  department_id: string | null;
+  position_id: string | null;
+  manager_id: string | null;
 }
 
 export interface ListParams {
@@ -59,10 +80,33 @@ export interface CreateEmployeeInput {
   join_date?: string;
 }
 
-export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
+// null berarti nilainya dikosongkan, tidak dikirim berarti dibiarkan
+type ClearableColumn =
+  "address" | "department_id" | "position_id" | "manager_id";
+
+export type UpdateEmployeeInput = Omit<
+  Partial<CreateEmployeeInput>,
+  ClearableColumn
+> & {
+  [K in ClearableColumn]?: string | null;
+} & {
   is_active?: boolean;
-  resign_date?: string;
+  resign_date?: string | null;
 };
+
+export interface UpdateOwnProfileInput {
+  full_name?: string;
+  phone?: string;
+  birth_date?: string;
+  address?: string;
+}
+
+const OWN_PROFILE_COLUMNS = [
+  "full_name",
+  "phone",
+  "birth_date",
+  "address",
+] as const;
 
 const UPDATABLE_COLUMNS = [
   "full_name",
@@ -106,7 +150,7 @@ export async function insertEmployee(
 
   const employee = result.rows[0];
   if (!employee) {
-    throw new Error("Gagal menyimpan data karyawan");
+    throw new Error("Failed to save employee data");
   }
 
   return employee;
@@ -143,22 +187,24 @@ export async function createEmployee(
 
   const employee = result.rows[0];
   if (!employee) {
-    throw new Error("Gagal menyimpan data karyawan");
+    throw new Error("Failed to save employee data");
   }
 
   return employee;
 }
 
-export async function updateEmployee(
+async function updateColumns(
   id: string,
-  data: UpdateEmployeeInput,
+  data: Record<string, unknown>,
+  allowed: readonly string[],
+  expectedUpdatedAt?: string,
 ): Promise<Employee | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
 
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
+    if (!allowed.includes(key)) continue;
 
     values.push(value);
     const cast = COLUMN_CAST[key] ?? "";
@@ -171,16 +217,35 @@ export async function updateEmployee(
 
   fields.push("updated_at = now()");
   values.push(id);
+  const idParam = values.length;
+  values.push(expectedUpdatedAt ?? null);
 
   const result = await pool.query<Employee>(
     `UPDATE employees
      SET ${fields.join(", ")}
-     WHERE id = $${values.length}::uuid AND deleted_at IS NULL
+     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
+       AND ${sameVersion("updated_at", values.length)}
      RETURNING *`,
     values,
   );
 
   return result.rows[0] ?? null;
+}
+
+export async function updateEmployee(
+  id: string,
+  data: UpdateEmployeeInput,
+  expectedUpdatedAt?: string,
+): Promise<Employee | null> {
+  return updateColumns(id, data, UPDATABLE_COLUMNS, expectedUpdatedAt);
+}
+
+export async function updateOwnProfile(
+  id: string,
+  data: UpdateOwnProfileInput,
+  expectedUpdatedAt?: string,
+): Promise<Employee | null> {
+  return updateColumns(id, { ...data }, OWN_PROFILE_COLUMNS, expectedUpdatedAt);
 }
 
 export async function softDeleteEmployee(
@@ -216,12 +281,21 @@ export async function findByUserId(user_id: string): Promise<Employee | null> {
 
 export async function findDetailById(
   id: string,
-): Promise<EmployeeListItem | null> {
-  const result = await pool.query<EmployeeListItem>(
+): Promise<EmployeeDetail | null> {
+  const result = await pool.query<EmployeeDetail>(
     `SELECT
        e.id, e.employee_number, e.full_name, u.email,
        p.name AS position_name, d.name AS department_name,
-       m.full_name AS manager_name, e.is_active
+       m.full_name AS manager_name, e.photo_path, e.is_active,
+
+       -- kolom yang dapat diubah lewat halaman edit. Nama relasi di atas
+       -- untuk ditampilkan, id di bawah untuk dikirim balik saat menyimpan
+       e.user_id, e.phone, e.gender, e.birth_date, e.address,
+       e.employment_status, e.join_date, e.resign_date,
+       e.department_id, e.position_id, e.manager_id,
+
+       -- dikirim balik saat menyimpan untuk mendeteksi perubahan orang lain
+       e.updated_at
      FROM employees e
      LEFT JOIN users u       ON u.id = e.user_id
      LEFT JOIN departments d ON d.id = e.department_id
@@ -281,7 +355,7 @@ export async function listEmployees(
     `SELECT
        e.id, e.employee_number, e.full_name, u.email,
        p.name AS position_name, d.name AS department_name,
-       m.full_name AS manager_name, e.is_active
+       m.full_name AS manager_name, e.photo_path, e.is_active
      ${baseFrom}
      ORDER BY e.employee_number ASC
      LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -330,4 +404,71 @@ export async function isDescendantOf(
   );
 
   return result.rows.length > 0;
+}
+
+export async function updatePhotoPath(
+  id: string,
+  photo_path: string | null,
+): Promise<Employee | null> {
+  const result = await pool.query<Employee>(
+    `UPDATE employees SET photo_path = $2, updated_at = now()
+     WHERE id = $1::uuid AND deleted_at IS NULL
+     RETURNING *`,
+    [id, photo_path],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+// Membuat banyak karyawan sekaligus dalam satu query
+// user_id wajib terisi: karyawan yang dibuat admin selalu punya akun, dan tipe
+// yang mengizinkan null membuka jalan bagi baris karyawan yatim
+export async function createEmployees(
+  db: Executor,
+  rows: { user_id: string; data: CreateEmployeeInput }[],
+): Promise<Employee[]> {
+  if (rows.length === 0) return [];
+
+  if (rows.some((row) => !row.user_id)) {
+    throw new Error("An employee cannot be saved without an account");
+  }
+
+  const column = <T>(read: (row: (typeof rows)[number]) => T) => rows.map(read);
+
+  const result = await db.query<Employee>(
+    `INSERT INTO employees
+       (user_id, full_name, phone, gender, birth_date, address,
+        department_id, position_id, manager_id, employment_status, join_date)
+     SELECT b.user_id::uuid, b.full_name, b.phone, b.gender::employee_gender,
+            b.birth_date::date, b.address,
+            b.department_id::uuid, b.position_id::uuid, b.manager_id::uuid,
+            COALESCE(b.employment_status::employment_status, 'probation'),
+            COALESCE(b.join_date::date, current_date)
+     FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[],
+                 $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+                 $11::text[])
+       AS b(user_id, full_name, phone, gender, birth_date, address,
+            department_id, position_id, manager_id, employment_status,
+            join_date)
+     RETURNING *`,
+    [
+      column((b) => b.user_id),
+      column((b) => b.data.full_name),
+      column((b) => b.data.phone),
+      column((b) => b.data.gender),
+      column((b) => b.data.birth_date ?? null),
+      column((b) => b.data.address ?? null),
+      column((b) => b.data.department_id ?? null),
+      column((b) => b.data.position_id ?? null),
+      column((b) => b.data.manager_id ?? null),
+      column((b) => b.data.employment_status ?? null),
+      column((b) => b.data.join_date ?? null),
+    ],
+  );
+
+  if (result.rows.length !== rows.length) {
+    throw new Error("Failed to save some employee data");
+  }
+
+  return result.rows;
 }

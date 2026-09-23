@@ -165,7 +165,7 @@ describe("createDepartment", () => {
 
     await expect(
       departmentModel.createDepartment({ code: "IT", name: "Teknologi" }),
-    ).rejects.toThrow("Gagal menyimpan departemen");
+    ).rejects.toThrow("Failed to save department");
   });
 });
 
@@ -182,7 +182,26 @@ describe("updateDepartment", () => {
 
     expect(sql).toContain("name = $1");
     expect(sql).not.toContain("code =");
-    expect(values).toEqual(["Keuangan", DEPARTMENT_ID]);
+    expect(values).toEqual(["Keuangan", DEPARTMENT_ID, null]);
+  });
+
+  it("menjadikan updated_at dari klien sebagai syarat perubahan", async () => {
+    await departmentModel.updateDepartment(
+      DEPARTMENT_ID,
+      { name: "Keuangan" },
+      "2026-09-14T08:04:33.373Z",
+    );
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain(
+      "date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $3::timestamptz)",
+    );
+    expect(values).toEqual([
+      "Keuangan",
+      DEPARTMENT_ID,
+      "2026-09-14T08:04:33.373Z",
+    ]);
   });
 
   it("mengabaikan kolom yang tidak boleh diubah", async () => {
@@ -203,7 +222,7 @@ describe("updateDepartment", () => {
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("is_active = $1");
-    expect(values).toEqual([false, DEPARTMENT_ID]);
+    expect(values).toEqual([false, DEPARTMENT_ID, null]);
   });
 
   it("selalu memperbarui kolom updated_at", async () => {
@@ -275,18 +294,18 @@ describe("countEmployees", () => {
   it("menghitung karyawan pada departemen tersebut", async () => {
     mockQuery.mockResolvedValue({ rows: [{ count: "7" }] } as never);
 
-    const jumlah = await departmentModel.countEmployees(DEPARTMENT_ID);
+    const count = await departmentModel.countEmployees(DEPARTMENT_ID);
 
-    expect(jumlah).toBe(7);
-    expect(typeof jumlah).toBe("number");
+    expect(count).toBe(7);
+    expect(typeof count).toBe("number");
   });
 
   it("mengembalikan nol jika hasil hitungan kosong", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const jumlah = await departmentModel.countEmployees(DEPARTMENT_ID);
+    const count = await departmentModel.countEmployees(DEPARTMENT_ID);
 
-    expect(jumlah).toBe(0);
+    expect(count).toBe(0);
   });
 
   it("tidak menghitung karyawan yang sudah dihapus", async () => {

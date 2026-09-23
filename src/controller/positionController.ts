@@ -2,6 +2,9 @@ import type { Request, Response, NextFunction } from "express";
 import * as positionModel from "../models/position.js";
 import type { PositionInput } from "../models/position.js";
 import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
+import { rejectStaleUpdate } from "../helpers/concurrency.js";
+import { plural } from "../helpers/plural.js";
 
 export async function ListPositionController(
   _req: Request,
@@ -25,7 +28,7 @@ export async function DetailPositionController(
     const { id } = res.locals.params as { id: string };
 
     const position = await positionModel.findById(id);
-    if (!position) throw NotFound("Jabatan tidak ditemukan");
+    if (!position) throw NotFound("Position not found");
 
     res.json({ success: true, data: position });
   } catch (err) {
@@ -39,12 +42,20 @@ export async function CreatePositionController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const data = req.body as PositionInput;
 
     const existing = await positionModel.findByCode(data.code);
-    if (existing) throw Conflict("Kode jabatan sudah digunakan");
+    if (existing) throw Conflict("Position code is already in use");
 
     const position = await positionModel.createPosition(data);
+
+    activity.success({
+      action: "position.create",
+      entity: "position",
+      entity_id: position.id,
+      summary: `Position ${position.name} created`,
+    });
 
     res.status(201).json({ success: true, data: position });
   } catch (err) {
@@ -58,29 +69,53 @@ export async function UpdatePositionController(
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
-    const data = req.body as Partial<PositionInput>;
+    const { updated_at: expectedUpdatedAt, ...data } =
+      req.body as Partial<PositionInput> & {
+        updated_at?: string;
+      };
 
     const existing = await positionModel.findById(id);
-    if (!existing) throw NotFound("Jabatan tidak ditemukan");
+    if (!existing) throw NotFound("Position not found");
 
     if (data.code && data.code !== existing.code) {
       const duplicate = await positionModel.findByCode(data.code);
-      if (duplicate) throw Conflict("Kode jabatan sudah digunakan");
+      if (duplicate) throw Conflict("Position code is already in use");
     }
 
     if (data.is_active === false && existing.is_active) {
-      const jumlah = await positionModel.countEmployees(id);
+      const count = await positionModel.countEmployees(id);
 
-      if (jumlah > 0) {
+      if (count > 0) {
         throw BadRequest(
-          `Jabatan tidak dapat dinonaktifkan karena masih digunakan oleh ${jumlah} karyawan`,
-          { employee_count: jumlah },
+          `Position cannot be deactivated because it is still used by ${plural(count, "employee")}`,
+          { employee_count: count },
         );
       }
     }
 
-    const position = await positionModel.updatePosition(id, data);
+    const position = await positionModel.updatePosition(
+      id,
+      data,
+      expectedUpdatedAt,
+    );
+
+    if (!position) {
+      throw await rejectStaleUpdate(
+        "position",
+        () => positionModel.findById(id),
+        "Position not found",
+      );
+    }
+
+    activity.success({
+      action: "position.update",
+      entity: "position",
+      entity_id: id,
+      summary: `Position ${existing.name} updated`,
+      metadata: { fields: Object.keys(data) },
+    });
 
     res.json({ success: true, data: position });
   } catch (err) {
@@ -89,27 +124,35 @@ export async function UpdatePositionController(
 }
 
 export async function DeletePositionController(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
+    const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
 
     const existing = await positionModel.findById(id);
-    if (!existing) throw NotFound("Jabatan tidak ditemukan");
+    if (!existing) throw NotFound("Position not found");
 
-    const jumlah = await positionModel.countEmployees(id);
-    if (jumlah > 0) {
+    const count = await positionModel.countEmployees(id);
+    if (count > 0) {
       throw BadRequest(
-        `Jabatan tidak dapat dihapus karena masih digunakan oleh ${jumlah} karyawan. Pindahkan karyawan ke jabatan lain terlebih dahulu.`,
-        { employee_count: jumlah },
+        `Position cannot be deleted because it is still used by ${plural(count, "employee")}. Move them to another position first.`,
+        { employee_count: count },
       );
     }
 
     await positionModel.softDeletePosition(id);
 
-    res.json({ success: true, message: "Jabatan berhasil dihapus" });
+    activity.success({
+      action: "position.delete",
+      entity: "position",
+      entity_id: id,
+      summary: `Position ${existing.name} deleted`,
+    });
+
+    res.json({ success: true, message: "Position deleted successfully" });
   } catch (err) {
     next(err);
   }

@@ -5,23 +5,15 @@ import * as leaveTypeModel from "../models/leaveType.js";
 import * as balanceModel from "../models/leaveBalance.js";
 import type { ListLedgerParams } from "../models/leaveBalance.js";
 import { BadRequest, NotFound, Unauthorized } from "../helpers/appError.js";
+import { startActivity } from "../helpers/activityLog.js";
+import { plural } from "../helpers/plural.js";
+import {
+  findRequestEmployee,
+  requireRequestEmployee,
+} from "../helpers/requestEmployee.js";
 
-function tahunBerjalan(): number {
+function currentYear(): number {
   return new Date().getUTCFullYear();
-}
-
-async function ambilKaryawanPengguna(req: Request) {
-  if (!req.user) throw Unauthorized("Belum login");
-
-  const employee = await employeeModel.findByUserId(req.user.id);
-
-  if (!employee) {
-    throw BadRequest(
-      "Akun kamu belum terhubung ke data karyawan, hubungi HR terlebih dahulu",
-    );
-  }
-
-  return employee;
 }
 
 export async function MyLeaveBalanceController(
@@ -30,15 +22,15 @@ export async function MyLeaveBalanceController(
   next: NextFunction,
 ) {
   try {
-    const employee = await ambilKaryawanPengguna(req);
+    const employee = await requireRequestEmployee(req, res);
     const { period_year } = res.locals.query as { period_year?: number };
-    const periode = period_year ?? tahunBerjalan();
+    const period = period_year ?? currentYear();
 
-    const balances = await balanceModel.summaryFor(employee.id, periode);
+    const balances = await balanceModel.summaryFor(employee.id, period);
 
     res.json({
       success: true,
-      data: { employee_id: employee.id, period_year: periode, balances },
+      data: { employee_id: employee.id, period_year: period, balances },
     });
   } catch (err) {
     next(err);
@@ -53,19 +45,19 @@ export async function EmployeeLeaveBalanceController(
   try {
     const { id } = res.locals.params as { id: string };
     const { period_year } = res.locals.query as { period_year?: number };
-    const periode = period_year ?? tahunBerjalan();
+    const period = period_year ?? currentYear();
 
     const employee = await employeeModel.findById(id);
-    if (!employee) throw NotFound("Karyawan tidak ditemukan");
+    if (!employee) throw NotFound("Employee not found");
 
-    const balances = await balanceModel.summaryFor(employee.id, periode);
+    const balances = await balanceModel.summaryFor(employee.id, period);
 
     res.json({
       success: true,
       data: {
         employee_id: employee.id,
         employee_name: employee.full_name,
-        period_year: periode,
+        period_year: period,
         balances,
       },
     });
@@ -80,7 +72,7 @@ export async function MyLeaveLedgerController(
   next: NextFunction,
 ) {
   try {
-    const employee = await ambilKaryawanPengguna(req);
+    const employee = await requireRequestEmployee(req, res);
     const query = res.locals.query as Omit<ListLedgerParams, "employee_id">;
 
     const { rows, total } = await balanceModel.listLedger({
@@ -109,7 +101,9 @@ export async function AdjustLeaveBalanceController(
   next: NextFunction,
 ) {
   try {
-    if (!req.user) throw Unauthorized("Belum login");
+    const activity = startActivity(req);
+    if (!req.user)
+      throw Unauthorized("You are not logged in, please log in first");
 
     const { employee_id, leave_type_id, period_year, amount, note } =
       req.body as {
@@ -121,33 +115,60 @@ export async function AdjustLeaveBalanceController(
       };
 
     const employee = await employeeModel.findById(employee_id);
-    if (!employee) throw BadRequest("Karyawan tidak ditemukan");
+    if (!employee) throw BadRequest("Employee not found");
 
     const leaveType = await leaveTypeModel.findById(leave_type_id);
-    if (!leaveType) throw BadRequest("Jenis cuti tidak ditemukan");
+    if (!leaveType) throw BadRequest("Leave type not found");
 
-    const pelaku = await employeeModel.findByUserId(req.user.id);
+    const actor = await findRequestEmployee(req, res);
 
-    const transaksi = await balanceModel.createTransaction(pool, {
-      employee_id,
-      leave_type_id,
-      period_year,
-      amount,
-      type: "adjustment",
-      note,
-      created_by: pelaku?.id ?? null,
+    // Dikunci sama seperti pengajuan cuti, supaya penyesuaian dan pengajuan
+    // yang datang bersamaan tidak menghitung saldo dari angka lama
+    const client = await pool.connect();
+    let transaction: Awaited<ReturnType<typeof balanceModel.createTransaction>>;
+    let balance: number;
+
+    try {
+      await client.query("BEGIN");
+      await balanceModel.lockEmployeeBalance(client, employee_id);
+
+      transaction = await balanceModel.createTransaction(client, {
+        employee_id,
+        leave_type_id,
+        period_year,
+        amount,
+        type: "adjustment",
+        note,
+        created_by: actor?.id ?? null,
+      });
+
+      balance = await balanceModel.balanceFor(
+        employee_id,
+        leave_type_id,
+        period_year,
+        client,
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    activity.success({
+      action: "leave.balance_adjust",
+      entity: "employee",
+      entity_id: employee_id,
+      summary: `${leaveType.name} balance for ${employee.full_name} adjusted by ${amount > 0 ? "+" : ""}${plural(amount, "day")}`,
+      metadata: { leave_type_id, period_year, amount, note: note ?? null },
     });
-
-    const saldo = await balanceModel.balanceFor(
-      employee_id,
-      leave_type_id,
-      period_year,
-    );
 
     res.status(201).json({
       success: true,
-      message: "Saldo cuti berhasil disesuaikan",
-      data: { transaction: transaksi, balance: saldo },
+      message: "Leave balance adjusted successfully",
+      data: { transaction, balance },
     });
   } catch (err) {
     next(err);

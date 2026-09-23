@@ -3,94 +3,94 @@ export interface EmailContent {
   html: string;
 }
 
-const WARNA_UTAMA = "#0f172a";
-const WARNA_REDUP = "#64748b";
+const PRIMARY_COLOR = "#0f172a";
+const MUTED_COLOR = "#64748b";
 
-function bungkus(judul: string, isi: string): string {
-  return `<div style="font-family: Arial, Helvetica, sans-serif; color: ${WARNA_UTAMA}; line-height: 1.6; max-width: 560px;">
-  <h2 style="margin-bottom: 16px;">${judul}</h2>
-  ${isi}
+function wrap(title: string, body: string): string {
+  return `<div style="font-family: Arial, Helvetica, sans-serif; color: ${PRIMARY_COLOR}; line-height: 1.6; max-width: 560px;">
+  <h2 style="margin-bottom: 16px;">${title}</h2>
+  ${body}
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-  <p style="color: ${WARNA_REDUP}; font-size: 13px;">
-    Email ini dikirim otomatis oleh sistem HRIS Awanio. Mohon tidak membalas email ini.
+  <p style="color: ${MUTED_COLOR}; font-size: 13px;">
+    This email was sent automatically by the Awanio HRIS system. Please do not reply to this email.
   </p>
 </div>`;
 }
 
-function sapaan(nama?: string | null): string {
-  return nama ? `<p>Halo ${nama},</p>` : "<p>Halo,</p>";
+function greeting(name?: string | null): string {
+  return name ? `<p>Hi ${name},</p>` : "<p>Hi,</p>";
 }
 
 export function verificationCodeEmail(
-  kode: string,
-  berlakuMenit: number,
-  nama?: string | null,
+  code: string,
+  validMinutes: number,
+  name?: string | null,
 ): EmailContent {
   return {
-    subject: `Kode verifikasi HRIS: ${kode}`,
-    html: bungkus(
-      "Verifikasi alamat email kamu",
-      `${sapaan(nama)}
-  <p>Masukkan kode berikut untuk menyelesaikan pendaftaran akun HRIS kamu.</p>
-  <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 24px 0;">${kode}</p>
-  <p>Kode ini berlaku selama ${berlakuMenit} menit dan hanya dapat dipakai satu kali.</p>
-  <p>Kalau kamu merasa tidak mendaftar di HRIS Awanio, abaikan saja email ini.</p>`,
+    subject: `HRIS verification code: ${code}`,
+    html: wrap(
+      "Verify your email address",
+      `${greeting(name)}
+  <p>Enter the following code to finish setting up your HRIS account.</p>
+  <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 24px 0;">${code}</p>
+  <p>This code is valid for ${validMinutes} minutes and can only be used once.</p>
+  <p>If you didn't sign up for Awanio HRIS, you can ignore this email.</p>`,
     ),
   };
 }
 
 export function passwordResetEmail(
-  tautan: string,
-  berlakuMenit: number,
-  nama?: string | null,
+  link: string,
+  validMinutes: number,
+  name?: string | null,
 ): EmailContent {
   return {
-    subject: "Permintaan atur ulang password HRIS",
-    html: bungkus(
-      "Atur ulang password kamu",
-      `${sapaan(nama)}
-  <p>Kami menerima permintaan untuk mengatur ulang password akun HRIS kamu.</p>
+    subject: "HRIS password reset request",
+    html: wrap(
+      "Reset your password",
+      `${greeting(name)}
+  <p>We received a request to reset the password for your HRIS account.</p>
   <p style="margin: 24px 0;">
-    <a href="${tautan}" style="background-color: ${WARNA_UTAMA}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
-      Atur Ulang Password
+    <a href="${link}" style="background-color: ${PRIMARY_COLOR}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
+      Reset Password
     </a>
   </p>
-  <p>Kalau tombol di atas tidak berfungsi, salin tautan berikut ke peramban kamu:</p>
-  <p style="word-break: break-all; color: ${WARNA_REDUP}; font-size: 13px;">${tautan}</p>
-  <p>Tautan ini berlaku selama ${berlakuMenit} menit dan hanya dapat dipakai satu kali.</p>
-  <p>Kalau kamu tidak meminta hal ini, abaikan email ini. Password kamu tidak akan berubah.</p>`,
+  <p>If the button above doesn't work, copy this link into your browser:</p>
+  <p style="word-break: break-all; color: ${MUTED_COLOR}; font-size: 13px;">${link}</p>
+  <p>This link is valid for ${validMinutes} minutes and can only be used once.</p>
+  <p>If you didn't request this, ignore this email. Your password will not change.</p>`,
     ),
   };
 }
 
-export function passwordResetSuccessEmail(nama?: string | null): EmailContent {
+export function passwordResetSuccessEmail(name?: string | null): EmailContent {
   return {
-    subject: "Password HRIS kamu telah diubah",
-    html: bungkus(
-      "Password berhasil diubah",
-      `${sapaan(nama)}
-  <p>Password akun HRIS kamu baru saja berhasil diubah. Seluruh sesi login lama sudah dihentikan, jadi silakan login kembali memakai password barumu.</p>
-  <p>Kalau perubahan ini bukan kamu yang melakukan, segera hubungi tim HR agar akun kamu dapat diamankan.</p>`,
+    subject: "Your HRIS password has been changed",
+    html: wrap(
+      "Password changed successfully",
+      `${greeting(name)}
+  <p>The password for your HRIS account was just changed. All previous login sessions have been signed out, so please log in again with your new password.</p>
+  <p>If you didn't make this change, contact the HR team right away so your account can be secured.</p>`,
     ),
   };
 }
 
 export function accountApprovedEmail(
-  tautanLogin: string,
-  nama?: string | null,
+  loginLink: string,
+  name?: string | null,
 ): EmailContent {
   return {
-    subject: "Akun HRIS kamu telah disetujui",
-    html: bungkus(
-      "Akun kamu sudah aktif",
-      `${sapaan(nama)}
-  <p>Kabar baik, akun HRIS kamu sudah disetujui oleh tim HR dan sekarang dapat digunakan.</p>
+    subject: "Your HRIS account has been approved",
+    html: wrap(
+      "Your account is now active",
+      `${greeting(name)}
+  <p>Good news, your HRIS account has been approved by the HR team and is ready to use.</p>
   <p style="margin: 24px 0;">
-    <a href="${tautanLogin}" style="background-color: ${WARNA_UTAMA}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
-      Masuk ke HRIS
+    <a href="${loginLink}" style="background-color: ${PRIMARY_COLOR}; color: #ffffff; padding: 12px 20px; border-radius: 6px; text-decoration: none; display: inline-block;">
+      Log in to HRIS
     </a>
   </p>
-  <p>Gunakan email dan password yang kamu daftarkan sebelumnya untuk login.</p>`,
+  <p>Use the email and password you registered with to log in.</p>`,
     ),
   };
 }

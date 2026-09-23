@@ -31,6 +31,7 @@
   "homepage": "https://github.com/DeadBear34/hris-backend#readme",
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
+    "@types/ws": "^8.18.1",
     "argon2": "^0.45.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -42,6 +43,7 @@
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "resend": "^6.19.0",
+    "ws": "^8.21.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -61,7 +63,6 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
     "tsx": "^4.23.5",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "typescript": "^5.9.3"
   }
 }

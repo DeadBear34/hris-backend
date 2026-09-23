@@ -44,7 +44,7 @@ export async function createToken(
 
   const token = result.rows[0];
   if (!token) {
-    throw new Error("Gagal menyimpan token verifikasi");
+    throw new Error("Failed to save verification token");
   }
 
   return token;
@@ -81,15 +81,21 @@ export async function findLatestActive(
   return result.rows[0] ?? null;
 }
 
-export async function incrementAttempts(
+// Jatah percobaan diambil dalam satu query. Tebakan yang dikirim bersamaan
+// tidak bisa sama-sama membaca sisa jatah lama lalu lolos semua
+export async function claimAttempt(
   id: string,
+  maxAttempts: number,
 ): Promise<VerificationToken | null> {
   const result = await pool.query<VerificationToken>(
     `UPDATE verification_tokens
      SET attempts = attempts + 1
      WHERE id = $1::uuid
+       AND consumed_at IS NULL
+       AND expires_at > now()
+       AND attempts < $2::int
      RETURNING *`,
-    [id],
+    [id, maxAttempts],
   );
 
   return result.rows[0] ?? null;

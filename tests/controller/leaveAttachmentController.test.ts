@@ -50,6 +50,7 @@ jest.unstable_mockModule("../../src/helpers/storage.js", () => ({
   checksumOf: () => "checksum-palsu",
   buildPhotoPath: (id: string, mime: string) =>
     `${id}/foto.${mime.split("/")[1]}`,
+  deleteAttachments: jest.fn(() => Promise.resolve()),
   uploadPhoto: jest.fn(),
   deletePhoto: jest.fn(),
   photoUrlFor: (path: string | null) =>

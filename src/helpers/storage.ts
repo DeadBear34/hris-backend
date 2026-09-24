@@ -51,6 +51,20 @@ export async function uploadAttachment(
   }
 }
 
+// Dipanggil sekali untuk banyak berkas sekaligus, bukan satu per satu, karena
+// satu pengajuan cuti dapat memiliki beberapa lampiran
+export async function deleteAttachments(storagePaths: string[]): Promise<void> {
+  if (storagePaths.length === 0) return;
+
+  const { error } = await getStorageClient()
+    .storage.from(env.SUPABASE_STORAGE_BUCKET)
+    .remove(storagePaths);
+
+  if (error) {
+    throw new Error(`Failed to delete attachments: ${error.message}`);
+  }
+}
+
 export async function createSignedUrl(storagePath: string): Promise<{
   url: string;
   expires_in: number;

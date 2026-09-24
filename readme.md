@@ -1154,7 +1154,29 @@ Bucket lampiran bersifat privat. Yang disimpan di database hanya `storage_path`,
 
 Tipe berkas ditentukan dari magic bytes, bukan dari ekstensi maupun `Content-Type`. Hanya JPEG, PNG, dan WebP yang diterima, maksimal 5 MB. Berkas disimpan dengan nama UUID di bawah folder id pengajuan, dan nama aslinya dicatat pada kolom `file_name`.
 
-Berkas tidak dihapus saat pengajuan ditolak atau dibatalkan, karena tetap dibutuhkan sebagai bukti riwayat.
+### Penghapusan saat pengajuan dibatalkan
+
+Membatalkan pengajuan ikut menghapus lampirannya, baris database maupun berkasnya di storage. Lampiran cuti sering berupa surat keterangan dokter, dan pengajuan yang batal tidak akan pernah memerlukannya lagi.
+
+Penghapusan dikerjakan di dalam `PATCH /leave-requests/:id/cancel`, bukan lewat endpoint terpisah yang dipanggil frontend. Kalau frontend yang memanggilnya, setiap gangguan setelah pembatalan berhasil — koneksi putus, tab ditutup, browser tertutup — akan meninggalkan berkas yang tidak pernah terhapus, dan tidak ada lagi yang tahu berkas itu pernah ada.
+
+Urutannya menentukan:
+
+```
+BEGIN
+  ... pembatalan, pengembalian saldo, pembersihan hari cuti ...
+  DELETE FROM leave_attachments WHERE leave_request_id = $1 RETURNING storage_path
+COMMIT
+  hapus berkas dari storage
+```
+
+Storage bukan bagian dari transaksi database, jadi berkas hanya boleh dihapus **setelah** COMMIT. Kalau dihapus lebih dulu lalu transaksinya dibatalkan, barisnya kembali ada sedangkan berkasnya sudah hilang permanen. Sebaliknya, gagal menghapus setelah COMMIT hanya menyisakan berkas yatim yang tercatat di log.
+
+`DELETE ... RETURNING storage_path` membuat satu query menghapus barisnya sekaligus menyebutkan berkas mana yang harus dibuang, sehingga tidak ada celah antara membaca daftar dan menghapusnya.
+
+Kegagalan menghapus berkas tidak menggagalkan pembatalan. Pengajuannya sudah batal dan tercatat; membatalkan seluruh operasi hanya karena satu berkas justru merugikan pengguna. Jumlah lampiran yang dihapus dicatat pada metadata log aktivitas `leave.cancel` sebagai `attachments_deleted`.
+
+Berkas milik pengajuan yang **ditolak** tetap disimpan, karena masih dibutuhkan sebagai bukti riwayat keputusan.
 
 ## Alur Verifikasi Email
 

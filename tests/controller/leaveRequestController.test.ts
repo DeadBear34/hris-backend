@@ -61,6 +61,22 @@ jest.unstable_mockModule("../../src/models/leaveAttachment.js", () => ({
   countByRequest: jest.fn(),
   findById: jest.fn(),
   createAttachment: jest.fn(),
+  deleteByRequest: jest.fn(() => Promise.resolve([])),
+}));
+
+const mockDeleteAttachments = jest.fn(() => Promise.resolve());
+
+jest.unstable_mockModule("../../src/helpers/storage.js", () => ({
+  isStorageConfigured: jest.fn(() => true),
+  deleteAttachments: mockDeleteAttachments,
+  uploadAttachment: jest.fn(),
+  createSignedUrl: jest.fn(),
+  buildStoragePath: jest.fn(),
+  checksumOf: jest.fn(),
+  buildPhotoPath: jest.fn(),
+  uploadPhoto: jest.fn(),
+  deletePhoto: jest.fn(),
+  photoUrlFor: jest.fn(() => null),
 }));
 
 jest.unstable_mockModule("../../src/models/attendance.js", () => ({
@@ -138,6 +154,11 @@ const END_DATE = shiftDays(START_DATE, 2); // Senin sampai Rabu, tiga hari kerja
 const TOTAL_DAYS = 3;
 
 const POSITION_ID = "77777777-7777-4777-8777-777777777777";
+
+interface ActivityEntry {
+  action: string;
+  metadata: Record<string, unknown>;
+}
 
 const fakeEmployee = {
   id: EMPLOYEE_ID,
@@ -967,6 +988,91 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
 
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(res.status).toBe(500);
+  });
+
+  describe("penghapusan lampiran", () => {
+    const PATHS = [`${REQUEST_ID}/surat-dokter.jpg`];
+
+    beforeEach(() => {
+      (attachmentModel.deleteByRequest as jest.Mock).mockResolvedValue(
+        PATHS as never,
+      );
+    });
+
+    it("menghapus baris lampiran di dalam transaksi yang sama", async () => {
+      await cancelLeave();
+
+      const args = (attachmentModel.deleteByRequest as jest.Mock).mock
+        .calls[0] as unknown[];
+
+      expect(args[0]).toBe(REQUEST_ID);
+      expect(args[1]).toBe(mockClient);
+    });
+
+    it("menghapus berkasnya dari storage", async () => {
+      await cancelLeave();
+
+      expect(mockDeleteAttachments).toHaveBeenCalledWith(PATHS);
+    });
+
+    it("berkas baru dihapus setelah COMMIT, bukan sebelumnya", async () => {
+      let queriesSaatMenghapus: string[] = [];
+
+      mockDeleteAttachments.mockImplementation(() => {
+        queriesSaatMenghapus = mockClient.query.mock.calls.map(([sql]) =>
+          String(sql),
+        );
+        return Promise.resolve();
+      });
+
+      await cancelLeave();
+
+      expect(queriesSaatMenghapus).toContain("COMMIT");
+    });
+
+    it("tidak menyentuh storage bila transaksinya dibatalkan", async () => {
+      (balanceModel.createTransaction as jest.Mock).mockRejectedValue(
+        new Error("ledger gagal") as never,
+      );
+
+      await cancelLeave();
+
+      expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(mockDeleteAttachments).not.toHaveBeenCalled();
+    });
+
+    it("pembatalan tetap berhasil walau berkasnya gagal dihapus", async () => {
+      mockDeleteAttachments.mockRejectedValue(
+        new Error("storage mati") as never,
+      );
+
+      const res = await cancelLeave();
+
+      expect(res.status).toBe(200);
+      expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it("tidak memanggil storage bila pengajuan tidak punya lampiran", async () => {
+      (attachmentModel.deleteByRequest as jest.Mock).mockResolvedValue(
+        [] as never,
+      );
+
+      await cancelLeave();
+
+      expect(mockDeleteAttachments).not.toHaveBeenCalled();
+    });
+
+    it("mencatat jumlah lampiran yang dihapus di log aktivitas", async () => {
+      await cancelLeave();
+
+      const entries = (logger.info as jest.Mock).mock.calls
+        .map(([payload]) => (payload as { activity?: ActivityEntry }).activity)
+        .filter(
+          (entry): entry is ActivityEntry => entry?.action === "leave.cancel",
+        );
+
+      expect(entries[0]?.metadata.attachments_deleted).toBe(PATHS.length);
+    });
   });
 });
 

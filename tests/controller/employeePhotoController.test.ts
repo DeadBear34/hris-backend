@@ -48,6 +48,7 @@ jest.unstable_mockModule("../../src/helpers/storage.js", () => ({
     path ? `https://contoh.supabase.co/storage/v1/object/public/${path}` : null,
   uploadAttachment: jest.fn(),
   createSignedUrl: jest.fn(),
+  deleteAttachments: jest.fn(),
   buildStoragePath: jest.fn(),
   checksumOf: jest.fn(),
 }));

@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "../config/env.js";
 import type { AllowedMimeType } from "./fileType.js";
 import { extensionFor } from "./fileType.js";
+import { fileStampOf, monthFolderOf } from "./timezone.js";
 
 const SIGNED_URL_TTL_SECONDS = 15 * 60;
 
@@ -26,11 +27,25 @@ export function isStorageConfigured(): boolean {
   return Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+// Bagian acak di belakang penanda waktu menjaga dua hal sekaligus: dua
+// unggahan pada detik yang sama tidak bertabrakan, karena unggahan memakai
+// upsert: false dan akan gagal bila namanya sudah ada, dan nama berkas tidak
+// dapat ditebak hanya dari waktu unggahnya
+function fileNameFor(mime: AllowedMimeType, at: Date): string {
+  const suffix = crypto.randomBytes(3).toString("hex");
+
+  return `${fileStampOf(at)}-${suffix}.${extensionFor(mime)}`;
+}
+
+// Lampiran cuti adalah berkas kejadian yang terus menumpuk, jadi diarsipkan
+// per bulan agar mudah ditelusuri dan dibersihkan per periode
 export function buildStoragePath(
   leaveRequestId: string,
   mime: AllowedMimeType,
 ): string {
-  return `${leaveRequestId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
+  const at = new Date();
+
+  return `${monthFolderOf(at)}/${leaveRequestId}/${fileNameFor(mime, at)}`;
 }
 
 export function checksumOf(buffer: Buffer): string {
@@ -82,11 +97,15 @@ export async function createSignedUrl(storagePath: string): Promise<{
   return { url: data.signedUrl, expires_in: SIGNED_URL_TTL_SECONDS };
 }
 
+// Foto profil tetap dikelompokkan per karyawan, bukan per bulan. Foto lama
+// selalu dihapus saat diganti, sehingga setiap karyawan hanya menyisakan satu
+// berkas, dan mencarinya lewat id karyawan jauh lebih langsung daripada harus
+// menebak bulan unggahnya
 export function buildPhotoPath(
   employeeId: string,
   mime: AllowedMimeType,
 ): string {
-  return `${employeeId}/${crypto.randomUUID()}.${extensionFor(mime)}`;
+  return `${employeeId}/${fileNameFor(mime, new Date())}`;
 }
 
 export async function uploadPhoto(

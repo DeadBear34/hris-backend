@@ -276,6 +276,57 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
     expect(res.status).toBe(201);
   });
 
+  it("menolak pengurangan yang membuat saldo menjadi minus", async () => {
+    // Sisa saldo 9 hari, dikurangi 10, sehingga hasilnya -1
+    (balanceModel.balanceFor as jest.Mock).mockResolvedValue(-1 as never);
+
+    const res = await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, amount: -10 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("negative");
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+
+  it("menyebutkan sisa saldo dan batas pengurangan pada penolakan", async () => {
+    (balanceModel.balanceFor as jest.Mock).mockResolvedValue(-1 as never);
+
+    const res = await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, amount: -10 });
+
+    expect(res.body.details).toMatchObject({
+      current_balance: 9,
+      requested_amount: -10,
+      max_deduction: 9,
+    });
+  });
+
+  it("tetap mengizinkan penambahan walau saldo sedang minus, supaya dapat diperbaiki", async () => {
+    // Saldo tetap minus setelah ditambah, tetapi arahnya membaik
+    (balanceModel.balanceFor as jest.Mock).mockResolvedValue(-2 as never);
+
+    const res = await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, amount: 3 });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("menolak jumlah penyesuaian yang tidak masuk akal", async () => {
+    const res = await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, amount: -999999 });
+
+    expect(res.status).toBe(400);
+    expect(balanceModel.createTransaction).not.toHaveBeenCalled();
+  });
+
   it("menolak penyesuaian bernilai nol", async () => {
     const res = await request(app)
       .post("/api/v1/leave-balances/adjustments")

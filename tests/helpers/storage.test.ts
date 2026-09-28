@@ -8,12 +8,31 @@ const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 // Ketepatan waktunya sendiri diuji pada fileStampOf di timezone.test.ts
 
 describe("jalurLampiran", () => {
-  it("mengarsipkan per bulan lalu per pengajuan", () => {
+  it("diarsipkan per bulan dengan id pengajuan di nama berkas", () => {
     expect(buildStoragePath(REQUEST_ID, "image/jpeg")).toMatch(
       new RegExp(
-        `^\\d{4}/\\d{2}/${REQUEST_ID}/\\d{8}-\\d{6}-[0-9a-f]{6}\\.jpg$`,
+        String.raw`^\d{4}/\d{2}/${REQUEST_ID}-\d{8}-\d{6}-[0-9a-f]{6}\.jpg$`,
       ),
     );
+  });
+
+  it("id pengajuan tidak lagi menjadi folder tersendiri", () => {
+    const path = buildStoragePath(REQUEST_ID, "image/jpeg");
+
+    // Folder bulan berisi berkasnya langsung, jadi hanya ada tiga bagian:
+    // tahun, bulan, lalu nama berkas
+    expect(path.split("/")).toHaveLength(3);
+    expect(path).not.toContain(`${REQUEST_ID}/`);
+  });
+
+  it("dua unggahan berturut-turut tidak menghasilkan nama yang sama", () => {
+    const names = new Set(
+      Array.from({ length: 50 }, () =>
+        buildStoragePath(REQUEST_ID, "image/jpeg"),
+      ),
+    );
+
+    expect(names.size).toBe(50);
   });
 
   it("memakai ekstensi sesuai jenis berkas", () => {

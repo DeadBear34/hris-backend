@@ -38,14 +38,16 @@ function fileNameFor(mime: AllowedMimeType, at: Date): string {
 }
 
 // Lampiran cuti adalah berkas kejadian yang terus menumpuk, jadi diarsipkan
-// per bulan agar mudah ditelusuri dan dibersihkan per periode
+// per bulan agar mudah ditelusuri dan dibersihkan per periode. Id pengajuan
+// berada di depan nama berkas, bukan menjadi folder tersendiri, supaya
+// membuka satu folder bulan langsung memperlihatkan seluruh berkas bulan itu
 export function buildStoragePath(
   leaveRequestId: string,
   mime: AllowedMimeType,
 ): string {
   const at = new Date();
 
-  return `${monthFolderOf(at)}/${leaveRequestId}/${fileNameFor(mime, at)}`;
+  return `${monthFolderOf(at)}/${leaveRequestId}-${fileNameFor(mime, at)}`;
 }
 
 export function checksumOf(buffer: Buffer): string {

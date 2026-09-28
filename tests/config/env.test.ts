@@ -24,6 +24,29 @@ describe("envSchema", () => {
     }
   });
 
+  it("menolak PORT di luar rentang yang dikenal jaringan", () => {
+    // Persis kejadian di production: 8080 tertulis 80808
+    const result = envSchema.safeParse({ ...validEnv, PORT: "80808" });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("65535");
+    }
+  });
+
+  it("menolak PORT nol dan PORT berupa pecahan", () => {
+    expect(envSchema.safeParse({ ...validEnv, PORT: "0" }).success).toBe(false);
+    expect(envSchema.safeParse({ ...validEnv, PORT: "80.5" }).success).toBe(
+      false,
+    );
+  });
+
+  it("menerima batas atas yang masih sah", () => {
+    const result = envSchema.safeParse({ ...validEnv, PORT: "65535" });
+
+    expect(result.success).toBe(true);
+  });
+
   it("mengubah PORT dari string menjadi angka", () => {
     const result = envSchema.safeParse({ ...validEnv, PORT: "3000" });
 

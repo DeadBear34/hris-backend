@@ -77,7 +77,18 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.restoreAllMocks();
-  process.removeAllListeners("SIGINT");
+
+  // Penanganan dipasang pada process yang sama dengan proses Jest, jadi harus
+  // dilepas lagi. Kalau tidak, uncaughtException dan unhandledRejection akan
+  // menghentikan worker Jest saat berkas pengujian berikutnya berjalan
+  for (const signal of [
+    "SIGINT",
+    "SIGTERM",
+    "uncaughtException",
+    "unhandledRejection",
+  ] as const) {
+    process.removeAllListeners(signal);
+  }
 });
 
 describe("server berhasil dijalankan", () => {
@@ -139,6 +150,55 @@ describe("server berhasil dijalankan", () => {
 
     expect(mockClose).toHaveBeenCalled();
     expect(exitCodes).toEqual([0]);
+  });
+
+  // Railway, Docker, dan systemd mengirim SIGTERM, bukan SIGINT. Tanpa ini
+  // penutupan rapi tidak pernah berjalan di production
+  it("menutup server dengan rapi saat menerima SIGTERM", async () => {
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
+
+    const handler = process.listeners("SIGTERM").at(-1) as () => void;
+    handler();
+
+    expect(mockClose).toHaveBeenCalled();
+    expect(exitCodes).toEqual([0]);
+  });
+
+  it("sinyal kedua tidak menutup ulang server yang sedang berhenti", async () => {
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
+
+    (process.listeners("SIGTERM").at(-1) as () => void)();
+    (process.listeners("SIGINT").at(-1) as () => void)();
+
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("mencatat penyebab sebelum berhenti saat ada error yang tak tertangkap", async () => {
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
+
+    const handler = process.listeners("uncaughtException").at(-1) as (
+      err: Error,
+    ) => void;
+    handler(new Error("kegagalan tak terduga"));
+
+    expect(mockLoggerError).toHaveBeenCalled();
+    expect(exitCodes).toContain(1);
+  });
+
+  it("mencatat penyebab sebelum berhenti saat ada promise yang gagal tanpa penanganan", async () => {
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
+
+    const handler = process.listeners("unhandledRejection").at(-1) as (
+      reason: unknown,
+    ) => void;
+    handler(new Error("promise gagal"));
+
+    expect(mockLoggerError).toHaveBeenCalled();
+    expect(exitCodes).toContain(1);
   });
 });
 

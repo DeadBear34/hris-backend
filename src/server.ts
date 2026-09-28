@@ -44,8 +44,15 @@ async function start() {
     if (event) pushToMany(user_ids, event);
   });
 
-  process.on("SIGINT", () => {
-    logger.info("Server shut down");
+  let shuttingDown = false;
+
+  function shutdown(signal: string) {
+    // Sinyal kedua saat penutupan sedang berjalan diabaikan, supaya soket
+    // tidak ditutup dua kali
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    logger.info({ signal }, "Server shut down");
 
     void stopCrossInstance();
 
@@ -55,6 +62,27 @@ async function start() {
     wss.close();
 
     server.close(() => process.exit(0));
+  }
+
+  // SIGINT datang dari Ctrl+C saat pengembangan, SIGTERM dari Railway, Docker,
+  // dan systemd setiap kali versi lama diganti. Tanpa SIGTERM, penutupan rapi
+  // tidak pernah berjalan di production dan koneksi LISTEN ditinggalkan begitu
+  // saja sampai dimatikan paksa
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  // Keduanya menandakan keadaan proses sudah tidak dapat dipercaya, jadi
+  // sengaja tidak ditahan. Yang ditambahkan hanya catatan penyebabnya sebelum
+  // proses berhenti, supaya kegagalan terlihat di log dan bukan mati diam-diam.
+  // Sesudahnya Railway yang menyalakan ulang
+  process.on("uncaughtException", (err) => {
+    logger.error({ err }, "Uncaught exception, shutting down");
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logger.error({ err: reason }, "Unhandled promise rejection, shutting down");
+    process.exit(1);
   });
 }
 

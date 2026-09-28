@@ -14,6 +14,7 @@ jest.unstable_mockModule("../../src/models/position.js", () => ({
   findAll: jest.fn(),
   findById: jest.fn(),
   findByCode: jest.fn(),
+  findByName: jest.fn(),
   createPosition: jest.fn(),
   updatePosition: jest.fn(),
   softDeletePosition: jest.fn(),
@@ -450,5 +451,58 @@ describe("DELETE /api/v1/positions/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body.message).toContain("deleted successfully");
     expect(positionModel.softDeletePosition).toHaveBeenCalledWith(POSITION_ID);
+  });
+});
+
+describe("nama jabatan tidak boleh kembar", () => {
+  it("menolak pembuatan dengan nama yang sudah dipakai", async () => {
+    (positionModel.findByCode as jest.Mock).mockResolvedValue(null as never);
+    (positionModel.findByName as jest.Mock).mockResolvedValue(
+      fakePosition as never,
+    );
+
+    const res = await request(app)
+      .post("/api/v1/positions")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ code: "SWE2", name: "software engineer", level: 3 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("name is already in use");
+    expect(positionModel.createPosition).not.toHaveBeenCalled();
+  });
+
+  it("mengubah nama tidak menganggap dirinya sendiri sebagai kembaran", async () => {
+    (positionModel.findById as jest.Mock).mockResolvedValue(
+      fakePosition as never,
+    );
+    (positionModel.findByName as jest.Mock).mockResolvedValue(null as never);
+
+    await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Senior Engineer" });
+
+    const [, exceptId] = (positionModel.findByName as jest.Mock).mock
+      .calls[0] as [string, string];
+
+    expect(exceptId).toBe(POSITION_ID);
+  });
+
+  it("menolak perubahan nama menjadi nama jabatan lain", async () => {
+    (positionModel.findById as jest.Mock).mockResolvedValue(
+      fakePosition as never,
+    );
+    (positionModel.findByName as jest.Mock).mockResolvedValue({
+      ...fakePosition,
+      id: "99999999-9999-4999-8999-999999999999",
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Senior Engineer" });
+
+    expect(res.status).toBe(409);
+    expect(positionModel.updatePosition).not.toHaveBeenCalled();
   });
 });

@@ -900,3 +900,58 @@ describe("createEmployees menolak karyawan tanpa akun", () => {
     ).rejects.toThrow("Failed to save some employee data");
   });
 });
+
+describe("pemeriksaan nomor telepon", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("findByPhone mengabaikan karyawan yang sudah dihapus", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await employeeModel.findByPhone("+628123456789");
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("btrim(phone) = btrim($1)");
+    expect(sql).toContain("deleted_at IS NULL");
+    expect(values).toEqual(["+628123456789", null]);
+  });
+
+  it("findByPhone mengecualikan karyawan yang sedang diubah", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await employeeModel.findByPhone(
+      "+628123456789",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(values[1]).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  it("findExistingPhones memeriksa seluruh nomor dalam satu query", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [{ phone: "+628111 " }],
+    } as never);
+
+    const result = await employeeModel.findExistingPhones([
+      "+628111",
+      " +628222",
+    ]);
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[][]];
+
+    expect(sql).toContain("= ANY($1::text[])");
+    expect(values[0]).toEqual(["+628111", "+628222"]);
+    expect(result).toEqual(["+628111"]);
+  });
+
+  it("findExistingPhones tidak menjalankan query untuk daftar kosong", async () => {
+    expect(await employeeModel.findExistingPhones([])).toEqual([]);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});

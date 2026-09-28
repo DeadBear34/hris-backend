@@ -150,6 +150,14 @@ async function createAccountWithEmployee(data: RegisterInput, hashed: string) {
   try {
     await client.query("BEGIN");
 
+    // Diperiksa di dalam transaksi supaya dua pendaftaran dengan nomor sama
+    // yang datang bersamaan tidak sama-sama membaca keadaan sebelum keduanya
+    const usedPhone = await employeeModel.findByPhone(data.phone, null, client);
+
+    if (usedPhone) {
+      throw Conflict("Phone number is already registered");
+    }
+
     const user = await userModel.insertUser(
       client,
       data.email,

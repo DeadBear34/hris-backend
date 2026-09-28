@@ -48,6 +48,9 @@ export async function CreateDepartmentController(
     const existing = await departmentModel.findByCode(data.code);
     if (existing) throw Conflict("Department code is already in use");
 
+    const sameName = await departmentModel.findByName(data.name);
+    if (sameName) throw Conflict("Department name is already in use");
+
     const department = await departmentModel.createDepartment(data);
 
     activity.success({
@@ -82,6 +85,11 @@ export async function UpdateDepartmentController(
     if (data.code && data.code !== existing.code) {
       const duplicate = await departmentModel.findByCode(data.code);
       if (duplicate) throw Conflict("Department code is already in use");
+    }
+
+    if (data.name) {
+      const sameName = await departmentModel.findByName(data.name, id);
+      if (sameName) throw Conflict("Department name is already in use");
     }
 
     if (data.is_active === false && existing.is_active) {

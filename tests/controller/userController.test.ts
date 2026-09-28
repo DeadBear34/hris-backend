@@ -51,6 +51,8 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
   updateEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
   findByUserId: jest.fn(),
+  findByPhone: jest.fn(),
+  findExistingPhones: jest.fn(() => Promise.resolve([])),
   findById: jest.fn(),
   findDetailById: jest.fn(),
   countSubordinates: jest.fn(),
@@ -1038,5 +1040,41 @@ describe("PATCH /api/v1/users/:id/status", () => {
       .send({ is_active: false });
 
     expect(res.body.data).not.toHaveProperty("password");
+  });
+});
+
+describe("nomor telepon pada pendaftaran", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockClient.query.mockResolvedValue({ rows: [] } as never);
+    // Email belum terdaftar, supaya yang diuji benar-benar nomor teleponnya
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    (userModel.insertUser as jest.Mock).mockResolvedValue(fakeUser as never);
+  });
+
+  it("menolak nomor yang sudah dipakai karyawan lain", async () => {
+    (employeeModel.findByPhone as jest.Mock).mockResolvedValue({
+      id: "99999999-9999-4999-8999-999999999999",
+    } as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/register")
+      .send(validBody);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("Phone number is already registered");
+    expect(userModel.insertUser).not.toHaveBeenCalled();
+    expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
+  });
+
+  it("memeriksa nomor di dalam transaksi pendaftaran", async () => {
+    (employeeModel.findByPhone as jest.Mock).mockResolvedValue(null as never);
+
+    await request(app).post("/api/v1/auth/register").send(validBody);
+
+    const args = (employeeModel.findByPhone as jest.Mock).mock
+      .calls[0] as unknown[];
+
+    expect(args[2]).toBe(mockClient);
   });
 });

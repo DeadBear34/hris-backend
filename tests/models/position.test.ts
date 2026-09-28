@@ -298,3 +298,42 @@ describe("countEmployees", () => {
     expect(values).toEqual([POSITION_ID]);
   });
 });
+
+describe("findByName", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("membandingkan nama tanpa membedakan huruf besar-kecil dan spasi tepi", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await positionModel.findByName(" Engineering ");
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("lower(btrim(name)) = lower(btrim($1))");
+    expect(sql).toContain("FROM positions");
+    expect(sql).toContain("deleted_at IS NULL");
+    expect(values).toEqual([" Engineering ", null]);
+  });
+
+  it("mengecualikan dirinya sendiri saat dipakai untuk perubahan", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await positionModel.findByName(
+      "Engineering",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("id <> $2::uuid");
+    expect(values[1]).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  it("mengembalikan null bila tidak ada yang sama", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    expect(await positionModel.findByName("Baru")).toBeNull();
+  });
+});

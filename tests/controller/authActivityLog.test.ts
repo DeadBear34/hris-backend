@@ -38,6 +38,8 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
   updateEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
   findByUserId: jest.fn(),
+  findByPhone: jest.fn(),
+  findExistingPhones: jest.fn(() => Promise.resolve([])),
   findById: jest.fn(),
   findDetailById: jest.fn(),
   countSubordinates: jest.fn(),

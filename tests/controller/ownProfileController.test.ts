@@ -25,6 +25,8 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
   findByUserId: jest.fn(),
+  findByPhone: jest.fn(),
+  findExistingPhones: jest.fn(() => Promise.resolve([])),
   findById: jest.fn(),
   findDetailById: jest.fn(),
   updateOwnProfile: jest.fn(),
@@ -354,5 +356,36 @@ describe("PATCH /api/v1/auth/me menerapkan aturan validasi yang sama", () => {
 
     expect(res.status).toBe(200);
     expect(storedData()).toEqual({});
+  });
+});
+
+describe("nomor telepon pada profil sendiri", () => {
+  it("menolak nomor yang sudah dipakai karyawan lain", async () => {
+    (employeeModel.findByPhone as jest.Mock).mockResolvedValue({
+      id: "99999999-9999-4999-8999-999999999999",
+    } as never);
+
+    const res = await updateProfile({ phone: "+628990000001" });
+
+    expect(res.status).toBe(409);
+    expect(employeeModel.updateOwnProfile).not.toHaveBeenCalled();
+  });
+
+  it("nomor miliknya sendiri tidak dianggap bentrok", async () => {
+    (employeeModel.findByPhone as jest.Mock).mockResolvedValue(null as never);
+
+    await updateProfile({ phone: "+628990000001" });
+
+    const [, exceptId] = (employeeModel.findByPhone as jest.Mock).mock
+      .calls[0] as [string, string];
+
+    expect(typeof exceptId).toBe("string");
+    expect(employeeModel.updateOwnProfile).toHaveBeenCalled();
+  });
+
+  it("tidak memeriksa nomor bila yang diubah hanya nama", async () => {
+    await updateProfile({ full_name: "Nama Baru" });
+
+    expect(employeeModel.findByPhone).not.toHaveBeenCalled();
   });
 });

@@ -37,6 +37,8 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
   updateEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
   findByUserId: jest.fn(),
+  findByPhone: jest.fn(),
+  findExistingPhones: jest.fn(() => Promise.resolve([])),
   findById: jest.fn(),
   findDetailById: jest.fn(),
   listEmployees: jest.fn(),
@@ -95,6 +97,10 @@ const employeeToken = createToken({
   email: "karyawan@awan.io",
   role: "employee",
 });
+
+// Nama hanya boleh berisi huruf, jadi baris uji dibedakan dengan abjad,
+// bukan angka
+const abjad = (n: number) => String.fromCharCode(65 + (n % 26));
 
 const validCreate = {
   email: "baru@awan.io",
@@ -958,10 +964,13 @@ describe("DELETE /api/v1/employees/:id", () => {
 });
 
 describe("POST /api/v1/employees dengan array", () => {
+  // Nomor telepon ikut dibedakan per baris, karena satu nomor hanya boleh
+  // dipakai satu karyawan
   const row = (rowNumber: number) => ({
     ...validCreate,
     email: `karyawan${rowNumber}@awan.io`,
-    full_name: `Karyawan Nomor ${rowNumber}`,
+    full_name: `Karyawan Nomor ${abjad(rowNumber)}`,
+    phone: `+62811100${String(rowNumber).padStart(4, "0")}`,
   });
 
   function bulkCreate(employees: unknown[], token = adminToken) {
@@ -1135,7 +1144,12 @@ describe("akun buatan admin langsung dapat dipakai", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send([
         row,
-        { ...row, email: "langsung2@awan.io", full_name: "Karyawan Dua" },
+        {
+          ...row,
+          email: "langsung2@awan.io",
+          full_name: "Karyawan Dua",
+          phone: "+628110000202",
+        },
       ]);
 
     expect(res.status).toBe(201);
@@ -1197,7 +1211,7 @@ describe("satu endpoint, dua bentuk kiriman", () => {
   it("array menghasilkan data berbentuk array beserta meta", async () => {
     const res = await submit([
       single,
-      { ...single, email: "tunggal2@awan.io" },
+      { ...single, email: "tunggal2@awan.io", phone: "+628110000302" },
     ]);
 
     expect(res.status).toBe(201);
@@ -1286,8 +1300,8 @@ describe("laporan per baris pada impor massal", () => {
   const intact = (n: number) => ({
     email: `orang${n}@awan.io`,
     password: "12345678",
-    full_name: `Orang Nomor ${n}`,
-    phone: "+628110000401",
+    full_name: `Orang Nomor ${abjad(n)}`,
+    phone: `+62811004${String(n).padStart(4, "0")}`,
     gender: "male",
   });
 
@@ -1487,7 +1501,10 @@ describe("catatan aktivitas penambahan karyawan", () => {
       fakeEmployee,
     ] as never);
 
-    await submit([single, { ...single, email: "arif2@awan.io" }]);
+    await submit([
+      single,
+      { ...single, email: "arif2@awan.io", phone: "+628110000602" },
+    ]);
 
     const noteField = lastLogEntry(logger.info as jest.Mock);
 
@@ -1679,8 +1696,8 @@ describe("ukuran catatan dibatasi", () => {
   const row = (n: number) => ({
     email: `massal${n}@awan.io`,
     password: "12345678",
-    full_name: `Karyawan Massal ${n}`,
-    phone: "+628110000902",
+    full_name: `Karyawan Massal ${abjad(n)}`,
+    phone: `+62811009${String(n).padStart(4, "0")}`,
     gender: "male",
   });
 
@@ -1735,8 +1752,8 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
   const row = (n: number) => ({
     email: `idx${n}@awan.io`,
     password: "12345678",
-    full_name: `Karyawan Indeks ${n}`,
-    phone: "+628110000904",
+    full_name: `Karyawan Indeks ${abjad(n)}`,
+    phone: `+62811044${String(n).padStart(4, "0")}`,
     gender: "male",
   });
 
@@ -1784,9 +1801,9 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
     const res = await submit({ "2": row(2), "0": row(0), "1": row(1) });
 
     expect(res.status).toBe(201);
-    expect(res.body.data[0].employee.full_name).toBe("Karyawan Indeks 0");
-    expect(res.body.data[1].employee.full_name).toBe("Karyawan Indeks 1");
-    expect(res.body.data[2].employee.full_name).toBe("Karyawan Indeks 2");
+    expect(res.body.data[0].employee.full_name).toBe("Karyawan Indeks A");
+    expect(res.body.data[1].employee.full_name).toBe("Karyawan Indeks B");
+    expect(res.body.data[2].employee.full_name).toBe("Karyawan Indeks C");
   });
 
   it("mengurutkan nomor secara angka, bukan secara teks", async () => {
@@ -1797,8 +1814,8 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
 
     expect(res.status).toBe(201);
     // kalau diurutkan sebagai teks, "10" akan mendahului "2"
-    expect(res.body.data[2].employee.full_name).toBe("Karyawan Indeks 2");
-    expect(res.body.data[10].employee.full_name).toBe("Karyawan Indeks 10");
+    expect(res.body.data[2].employee.full_name).toBe("Karyawan Indeks C");
+    expect(res.body.data[10].employee.full_name).toBe("Karyawan Indeks K");
   });
 
   it("menolak kunci yang tidak mulai dari nol", async () => {
@@ -1872,8 +1889,8 @@ describe("respons menyebut index untuk yang berhasil maupun yang gagal", () => {
   const row = (n: number) => ({
     email: `hasil${n}@awan.io`,
     password: "12345678",
-    full_name: `Karyawan Hasil ${n}`,
-    phone: "+628110000905",
+    full_name: `Karyawan Hasil ${abjad(n)}`,
+    phone: `+62811055${String(n).padStart(4, "0")}`,
     gender: "male",
   });
 
@@ -1919,7 +1936,7 @@ describe("respons menyebut index untuk yang berhasil maupun yang gagal", () => {
     res.body.data.forEach((entry: Record<string, unknown>, i: number) => {
       expect(entry.index).toBe(i);
       expect((entry.employee as { full_name: string }).full_name).toBe(
-        `Karyawan Hasil ${i}`,
+        `Karyawan Hasil ${abjad(i)}`,
       );
       expect((entry.account as { email: string }).email).toBe(
         `hasil${i}@awan.io`,
@@ -1932,7 +1949,7 @@ describe("respons menyebut index untuk yang berhasil maupun yang gagal", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.data[0].index).toBe(0);
-    expect(res.body.data[0].employee.full_name).toBe("Karyawan Hasil 0");
+    expect(res.body.data[0].employee.full_name).toBe("Karyawan Hasil A");
     expect(res.body.data[1].index).toBe(1);
   });
 
@@ -1985,8 +2002,8 @@ describe("setiap karyawan wajib punya akun", () => {
   const row = (n: number) => ({
     email: `akun${n}@awan.io`,
     password: "12345678",
-    full_name: `Karyawan Akun ${n}`,
-    phone: "+628110000906",
+    full_name: `Karyawan Akun ${abjad(n)}`,
+    phone: `+62811066${String(n).padStart(4, "0")}`,
     gender: "male",
   });
 
@@ -2083,5 +2100,68 @@ describe("setiap karyawan wajib punya akun", () => {
     expect(employeeModel.createEmployees).not.toHaveBeenCalled();
     expect(mockClient.query).toHaveBeenCalledWith("ROLLBACK");
     expect(mockClient.query).not.toHaveBeenCalledWith("COMMIT");
+  });
+});
+
+describe("nomor telepon karyawan harus unik", () => {
+  const baris = (n: number, phone: string) => ({
+    email: `telp${n}@awan.io`,
+    password: "12345678",
+    full_name: `Karyawan Telepon ${abjad(n)}`,
+    phone,
+    gender: "male",
+  });
+
+  function submit(body: unknown) {
+    return request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+  }
+
+  it("menolak dua baris bernomor sama dalam satu kiriman", async () => {
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
+
+    const res = await submit([
+      baris(0, "+628770000001"),
+      baris(1, "+628770000001"),
+    ]);
+
+    expect(res.status).toBe(400);
+
+    const failedRow = res.body.details.failed_rows[0];
+    expect(failedRow.index).toBe(1);
+    expect(failedRow.errors[0].field).toBe("phone");
+    expect(failedRow.errors[0].message).toContain("duplicates row 1");
+  });
+
+  it("menolak nomor yang sudah tersimpan", async () => {
+    (userModel.findExistingEmails as jest.Mock).mockResolvedValue([] as never);
+    (employeeModel.findExistingPhones as jest.Mock).mockResolvedValue([
+      "+628770000009",
+    ] as never);
+
+    const res = await submit(baris(0, "+628770000009"));
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("Phone number is already registered");
+  });
+
+  it("menolak perubahan nomor menjadi milik karyawan lain", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+    (employeeModel.findByPhone as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: "99999999-9999-4999-8999-999999999999",
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ phone: "+628770000009" });
+
+    expect(res.status).toBe(409);
+    expect(employeeModel.updateEmployee).not.toHaveBeenCalled();
   });
 });

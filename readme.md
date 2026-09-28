@@ -734,6 +734,16 @@ Sel kosong pada CSV terbaca sebagai string kosong. Kolom opsional memperlakukan 
 
 Aturan yang sama berlaku saat mengubah data karyawan.
 
+### Nama dan nomor telepon
+
+**Nama** hanya boleh berisi huruf (termasuk huruf beraksen), spasi, titik untuk gelar, apostrof, dan tanda hubung, serta harus diawali huruf. Angka dan simbol ditolak. Aturan yang sama berlaku di pendaftaran mandiri, penambahan karyawan, dan perubahan data. Contoh yang diterima: `Dr. Siti Aisyah`, `Muhammad Al-Fatih`. Contoh yang ditolak: `@&^#&^3`, `<script>...</script>`.
+
+**Nomor telepon** hanya boleh dipakai satu karyawan aktif. Pemeriksaan berjalan di pendaftaran mandiri (di dalam transaksi pendaftaran), penambahan satu maupun banyak karyawan, perubahan oleh admin, dan perubahan profil sendiri. Pada kiriman banyak baris, nomor yang kembar di antara baris dalam kiriman yang sama juga ditolak dan dilaporkan per baris dengan `field: "phone"`. Mengubah data tanpa mengganti nomornya tidak dianggap bentrok dengan dirinya sendiri.
+
+Nama departemen dan nama jabatan juga harus unik, dibandingkan tanpa membedakan huruf besar-kecil dan spasi di tepi. Penolakan untuk semua kasus di atas dijawab **409 `CONFLICT`**.
+
+Pemeriksaan ini dilakukan aplikasi, bukan batasan database. Data kembar yang sudah terlanjur tersimpan sebelum aturan ini berlaku tetap ada sampai dibereskan.
+
 ### Tidak ada keberhasilan sebagian
 
 Seluruh baris diperiksa lebih dulu, dan penyimpanan baru berjalan bila tidak ada satu pun yang bermasalah. Kalau lima dari lima puluh baris gagal lalu sisanya tersimpan, admin harus mencari tahu mana yang sudah masuk sebelum mencoba lagi, dan percobaan ulang berisiko menduplikasi. Dengan menolak seluruhnya, memperbaiki berkas lalu mengirim ulang selalu aman.

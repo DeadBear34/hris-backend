@@ -48,6 +48,9 @@ export async function CreatePositionController(
     const existing = await positionModel.findByCode(data.code);
     if (existing) throw Conflict("Position code is already in use");
 
+    const sameName = await positionModel.findByName(data.name);
+    if (sameName) throw Conflict("Position name is already in use");
+
     const position = await positionModel.createPosition(data);
 
     activity.success({
@@ -82,6 +85,11 @@ export async function UpdatePositionController(
     if (data.code && data.code !== existing.code) {
       const duplicate = await positionModel.findByCode(data.code);
       if (duplicate) throw Conflict("Position code is already in use");
+    }
+
+    if (data.name) {
+      const sameName = await positionModel.findByName(data.name, id);
+      if (sameName) throw Conflict("Position name is already in use");
     }
 
     if (data.is_active === false && existing.is_active) {

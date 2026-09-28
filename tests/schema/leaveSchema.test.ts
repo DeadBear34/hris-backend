@@ -107,6 +107,69 @@ describe("createHolidaySchema", () => {
   });
 });
 
+// Temuan QA: menambah hari libur pada hari-H selalu gagal. Penyebabnya bukan
+// tanggalnya, melainkan frontend mengirim `date`, bukan `holiday_date`
+describe("alias `date` dari frontend", () => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  it("menerima payload persis seperti yang dikirim frontend, bertanggal hari ini", () => {
+    const result = createHolidaySchema.safeParse({
+      name: "Hari Libur Mendadak",
+      date: today,
+      is_collective_leave: false,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.holiday_date).toBe(today);
+  });
+
+  it("tidak meneruskan field `date` ke lapisan berikutnya", () => {
+    const result = createHolidaySchema.safeParse({
+      name: "Hari Libur Mendadak",
+      date: today,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).not.toHaveProperty("date");
+  });
+
+  it("mengutamakan holiday_date bila keduanya dikirim", () => {
+    const result = createHolidaySchema.safeParse({
+      name: "Hari Kemerdekaan",
+      holiday_date: "2026-08-17",
+      date: "2026-01-01",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.holiday_date).toBe("2026-08-17");
+  });
+
+  it("alias tetap divalidasi sebagai tanggal", () => {
+    const result = createHolidaySchema.safeParse({
+      name: "Hari Kemerdekaan",
+      date: "17-08-2026",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("tetap menolak bila tidak ada tanggal sama sekali", () => {
+    const result = createHolidaySchema.safeParse({ name: "Hari Kemerdekaan" });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("perubahan tanggal lewat `date` tidak lagi diabaikan diam-diam", () => {
+    const result = updateHolidaySchema.safeParse({
+      date: "2026-12-25",
+      updated_at: "2026-09-28T03:00:00.000Z",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.holiday_date).toBe("2026-12-25");
+  });
+});
+
 describe("createLeaveTypeSchema", () => {
   const valid = { code: "ANNUAL", name: "Cuti Tahunan" };
 

@@ -221,6 +221,60 @@ describe("hari libur", () => {
   });
 });
 
+// Temuan QA: menambah hari libur pada hari-H gagal. Frontend mengirim `date`,
+// bukan `holiday_date`, sehingga setiap tanggal ditolak. Form tambah hari libur
+// kebetulan terisi tanggal hari ini, jadi yang teramati QA adalah hari-H
+describe("hari libur dari payload frontend", () => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  it("menambah hari libur bertanggal hari ini memakai field `date`", async () => {
+    const res = await request(app)
+      .post("/api/v1/holidays")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        name: "Hari Libur Mendadak",
+        date: today,
+        is_collective_leave: false,
+      });
+
+    expect(res.status).toBe(201);
+
+    const [saved] = (holidayModel.createHoliday as jest.Mock).mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+
+    expect(saved.holiday_date).toBe(today);
+    expect(saved).not.toHaveProperty("date");
+  });
+
+  it("memeriksa bentrok tanggal memakai tanggal dari alias", async () => {
+    await request(app)
+      .post("/api/v1/holidays")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Hari Libur Mendadak", date: today });
+
+    expect(holidayModel.findByDate).toHaveBeenCalledWith(today);
+  });
+
+  it("mengubah tanggal lewat `date` benar-benar diteruskan ke penyimpanan", async () => {
+    (holidayModel.findById as jest.Mock).mockResolvedValue(
+      fakeHoliday as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/holidays/${HOLIDAY_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ date: "2026-12-25" });
+
+    expect(res.status).toBe(200);
+
+    const [, changes] = (holidayModel.updateHoliday as jest.Mock).mock
+      .calls[0] as [string, Record<string, unknown>];
+
+    expect(changes.holiday_date).toBe("2026-12-25");
+  });
+});
+
 describe("jenis cuti", () => {
   const body = { code: "ANNUAL", name: "Cuti Tahunan", default_quota: 12 };
 

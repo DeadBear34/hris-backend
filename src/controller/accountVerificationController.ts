@@ -134,6 +134,45 @@ async function verifyTokenValue(
   return token;
 }
 
+// Tautan reset dibedakan dari kode verifikasi email. Kode verifikasi hanya
+// enam digit, jadi hanya kode terbaru yang berlaku dan percobaannya dibatasi.
+// Tautan reset berisi 64 karakter hex acak yang mustahil ditebak, sehingga
+// setiap tautan yang belum kedaluwarsa tetap berlaku. Tanpa ini, pengguna yang
+// menekan "Lupa Password" beberapa kali lalu membuka email yang lebih lama
+// selalu ditolak, dan setiap percobaannya ikut menghabiskan jatah percobaan
+// tautan yang benar
+const MAX_ACTIVE_RESET_LINKS = 5;
+
+async function findMatchingResetLink(
+  email: string,
+  value: string,
+): Promise<VerificationToken> {
+  const candidates = await tokenModel.findActive(
+    email,
+    "password_reset",
+    MAX_ACTIVE_RESET_LINKS,
+  );
+
+  for (const candidate of candidates) {
+    if (await verifyPassword(candidate.token_hash, value)) return candidate;
+  }
+
+  logger.warn(
+    {
+      email,
+      purpose: "password_reset",
+      reason:
+        candidates.length === 0
+          ? "no active reset link"
+          : "token value does not match any active link",
+      active_links: candidates.length,
+    },
+    "Token verification rejected",
+  );
+
+  throw BadRequest(MESSAGE_INVALID_LINK);
+}
+
 interface RegisterInput {
   email: string;
   password: string;
@@ -421,8 +460,10 @@ export async function ForgotPasswordController(
     const user = await userModel.findByEmail(email);
 
     if (user?.is_active) {
-      await tokenModel.invalidateActive(email, "password_reset");
-
+      // Tautan sebelumnya sengaja tidak dibatalkan. Pengguna sering menekan
+      // tombol ini beberapa kali karena email belum juga masuk, lalu membuka
+      // email yang pertama tiba. Semua tautan tetap berlaku sampai kedaluwarsa,
+      // dan seluruhnya dibatalkan begitu salah satunya berhasil dipakai
       const value = generateResetToken();
 
       await tokenModel.createToken({
@@ -490,12 +531,7 @@ export async function ResetPasswordController(
       password: string;
     };
 
-    const token = await verifyTokenValue(
-      email,
-      "password_reset",
-      value,
-      MESSAGE_INVALID_LINK,
-    );
+    const token = await findMatchingResetLink(email, value);
 
     const user = await userModel.findByEmail(email);
     if (!user) throw BadRequest(MESSAGE_INVALID_LINK);
@@ -508,6 +544,11 @@ export async function ResetPasswordController(
     const hashed = await hashPassword(password);
 
     await userModel.updatePassword(user.id, hashed);
+
+    // Tautan lain dari permintaan sebelumnya ikut dibatalkan, supaya satu
+    // email lama yang masih tersimpan tidak bisa dipakai mengganti password
+    // lagi setelah password berhasil diganti
+    await tokenModel.invalidateActive(email, "password_reset");
 
     const employee = await employeeModel.findByUserId(user.id);
     const body = passwordResetSuccessEmail(employee?.full_name ?? null);

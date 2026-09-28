@@ -32,6 +32,7 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
   findLatestActive: jest.fn(),
+  findActive: jest.fn(),
   claimAttempt: jest.fn(),
   markConsumed: jest.fn(),
   invalidateActive: jest.fn(),

@@ -50,6 +50,7 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
   findLatestActive: jest.fn(),
+  findActive: jest.fn(),
   claimAttempt: jest.fn(),
   markConsumed: jest.fn(),
   invalidateActive: jest.fn(),
@@ -414,8 +415,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
       RESET_TOKEN,
     );
 
-    (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
-    (tokenModel.claimAttempt as jest.Mock).mockResolvedValue(token as never);
+    (tokenModel.findActive as jest.Mock).mockResolvedValue([token] as never);
     (tokenModel.markConsumed as jest.Mock).mockResolvedValue(token as never);
     (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
 

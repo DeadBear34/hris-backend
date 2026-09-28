@@ -97,15 +97,17 @@ export async function createSignedUrl(storagePath: string): Promise<{
   return { url: data.signedUrl, expires_in: SIGNED_URL_TTL_SECONDS };
 }
 
-// Foto profil tetap dikelompokkan per karyawan, bukan per bulan. Foto lama
-// selalu dihapus saat diganti, sehingga setiap karyawan hanya menyisakan satu
-// berkas, dan mencarinya lewat id karyawan jauh lebih langsung daripada harus
-// menebak bulan unggahnya
+// Foto profil ikut diarsipkan per bulan, sehingga membuka satu folder bulan
+// langsung memperlihatkan foto-foto yang diunggah pada bulan itu. Id karyawan
+// pindah ke depan nama berkas, bukan lagi jadi folder, supaya foto milik
+// karyawan tertentu tetap bisa ditemukan lewat pencarian
 export function buildPhotoPath(
   employeeId: string,
   mime: AllowedMimeType,
 ): string {
-  return `${employeeId}/${fileNameFor(mime, new Date())}`;
+  const at = new Date();
+
+  return `${monthFolderOf(at)}/${employeeId}-${fileNameFor(mime, at)}`;
 }
 
 export async function uploadPhoto(

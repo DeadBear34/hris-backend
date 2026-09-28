@@ -27,10 +27,20 @@ describe("jalurLampiran", () => {
 });
 
 describe("jalurFotoProfil", () => {
-  it("tetap dikelompokkan per karyawan", () => {
+  it("diarsipkan per bulan dengan id karyawan di nama berkas", () => {
     expect(buildPhotoPath(EMPLOYEE_ID, "image/jpeg")).toMatch(
-      new RegExp(`^${EMPLOYEE_ID}/\\d{8}-\\d{6}-[0-9a-f]{6}\\.jpg$`),
+      new RegExp(
+        String.raw`^\d{4}/\d{2}/${EMPLOYEE_ID}-\d{8}-\d{6}-[0-9a-f]{6}\.jpg$`,
+      ),
     );
+  });
+
+  it("id karyawan tidak lagi menjadi folder tersendiri", () => {
+    const path = buildPhotoPath(EMPLOYEE_ID, "image/jpeg");
+
+    // Folder bulan berisi berkasnya langsung, jadi hanya ada dua tingkat
+    expect(path.split("/")).toHaveLength(3);
+    expect(path.startsWith(`${EMPLOYEE_ID}/`)).toBe(false);
   });
 
   it("dua unggahan berturut-turut tidak menghasilkan nama yang sama", () => {

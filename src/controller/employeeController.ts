@@ -211,6 +211,8 @@ async function checkRowAgainstDatabase(
   index: number,
   seenEmails: Map<string, number>,
   takenEmails: Set<string>,
+  seenPhones: Map<string, number>,
+  takenPhones: Set<string>,
   relationCache: Map<string, Promise<FieldError[]>>,
 ): Promise<FieldError[]> {
   const twinIndex = seenEmails.get(row.email);
@@ -226,6 +228,26 @@ async function checkRowAgainstDatabase(
 
   if (takenEmails.has(row.email)) {
     return [{ field: "email", message: "Email is already registered" }];
+  }
+
+  // Nomor telepon diperiksa dengan cara yang sama seperti email: bentrok
+  // dengan baris lain di kiriman yang sama, lalu bentrok dengan data yang
+  // sudah tersimpan
+  const phone = row.phone.trim();
+  const phoneTwin = seenPhones.get(phone);
+
+  if (phoneTwin !== undefined) {
+    return [
+      {
+        field: "phone",
+        message: `Phone number duplicates row ${phoneTwin + 1} in this request`,
+      },
+    ];
+  }
+  seenPhones.set(phone, index);
+
+  if (takenPhones.has(phone)) {
+    return [{ field: "phone", message: "Phone number is already registered" }];
   }
 
   // Satu CSV biasanya menunjuk departemen dan jabatan yang itu-itu saja,
@@ -348,8 +370,12 @@ async function validateAgainstDatabase(
   const takenEmails = new Set(
     await userModel.findExistingEmails(rows.map((row) => row.email)),
   );
+  const takenPhones = new Set(
+    await employeeModel.findExistingPhones(rows.map((row) => row.phone)),
+  );
   const relationCache = new Map<string, Promise<FieldError[]>>();
   const seenEmails = new Map<string, number>();
+  const seenPhones = new Map<string, number>();
 
   // rows hanya berisi baris yang lolos tahap 1, jadi penomorannya berjalan
   // sendiri dan tidak sama dengan penomoran rawRows
@@ -366,11 +392,15 @@ async function validateAgainstDatabase(
       index,
       seenEmails,
       takenEmails,
+      seenPhones,
+      takenPhones,
       relationCache,
     );
 
     if (errors.length > 0) {
-      const isDuplicate = errors.some((g) => g.field === "email");
+      const isDuplicate = errors.some(
+        (g) => g.field === "email" || g.field === "phone",
+      );
       failed.push(toFailedRow(index, data.email, errors, isDuplicate));
     }
   }
@@ -635,6 +665,11 @@ export async function UpdateEmployeeController(
     if (!existing) throw NotFound("Employee not found");
 
     await assertRelationsExist(data, id);
+
+    if (data.phone) {
+      const usedPhone = await employeeModel.findByPhone(data.phone, id);
+      if (usedPhone) throw Conflict("Phone number is already registered");
+    }
 
     const employee = await employeeModel.updateEmployee(
       id,

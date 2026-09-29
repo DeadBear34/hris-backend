@@ -168,6 +168,46 @@ describe("findLatestActive", () => {
   });
 });
 
+describe("findActive", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+  });
+
+  it("hanya mengambil token yang belum terpakai dan belum kedaluwarsa", async () => {
+    await tokenModel.findActive(EMAIL, "password_reset", 5);
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("consumed_at IS NULL");
+    expect(sql).toContain("expires_at > now()");
+  });
+
+  it("mengurutkan dari yang terbaru dan membatasi jumlahnya", async () => {
+    await tokenModel.findActive(EMAIL, "password_reset", 5);
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("ORDER BY created_at DESC");
+    expect(sql).toContain("LIMIT $3::int");
+    expect(values).toEqual([EMAIL, "password_reset", 5]);
+  });
+
+  it("mengembalikan seluruh baris, bukan hanya satu", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [fakeToken, { ...fakeToken, id: "lain" }],
+    } as never);
+
+    const tokens = await tokenModel.findActive(EMAIL, "password_reset", 5);
+
+    expect(tokens).toHaveLength(2);
+  });
+
+  it("mengembalikan daftar kosong bila tidak ada token aktif", async () => {
+    expect(await tokenModel.findActive(EMAIL, "password_reset", 5)).toEqual([]);
+  });
+});
+
 describe("claimAttempt", () => {
   beforeEach(() => {
     jest.clearAllMocks();

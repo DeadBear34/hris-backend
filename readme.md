@@ -133,7 +133,7 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 | Variabel                    | Wajib | Default                        | Keterangan                                                           |
 | --------------------------- | ----- | ------------------------------ | -------------------------------------------------------------------- |
 | `NODE_ENV`                  | tidak | `development`                  | `development`, `test`, atau `production`                             |
-| `PORT`                      | tidak | `8080`                         | Port HTTP sekaligus WebSocket                                        |
+| `PORT`                      | tidak | `8080`                         | Port HTTP sekaligus WebSocket, harus di antara 1 dan 65535           |
 | `CORS_ORIGIN`               | tidak | `http://localhost:5173`        | Origin frontend yang diizinkan, boleh lebih dari satu dipisah koma   |
 | `LOG_LEVEL`                 | tidak | `info`                         | `debug`, `info`, `warn`, atau `error`                                |
 | `DATABASE_URL`              | ya    | —                              | Connection string PostgreSQL, lihat catatan di bawah                 |
@@ -734,6 +734,16 @@ Sel kosong pada CSV terbaca sebagai string kosong. Kolom opsional memperlakukan 
 
 Aturan yang sama berlaku saat mengubah data karyawan.
 
+### Nama dan nomor telepon
+
+**Nama** hanya boleh berisi huruf (termasuk huruf beraksen), spasi, titik untuk gelar, apostrof, dan tanda hubung, serta harus diawali huruf. Angka dan simbol ditolak. Aturan yang sama berlaku di pendaftaran mandiri, penambahan karyawan, dan perubahan data. Contoh yang diterima: `Dr. Siti Aisyah`, `Muhammad Al-Fatih`. Contoh yang ditolak: `@&^#&^3`, `<script>...</script>`.
+
+**Nomor telepon** hanya boleh dipakai satu karyawan aktif. Pemeriksaan berjalan di pendaftaran mandiri (di dalam transaksi pendaftaran), penambahan satu maupun banyak karyawan, perubahan oleh admin, dan perubahan profil sendiri. Pada kiriman banyak baris, nomor yang kembar di antara baris dalam kiriman yang sama juga ditolak dan dilaporkan per baris dengan `field: "phone"`. Mengubah data tanpa mengganti nomornya tidak dianggap bentrok dengan dirinya sendiri.
+
+Nama departemen dan nama jabatan juga harus unik, dibandingkan tanpa membedakan huruf besar-kecil dan spasi di tepi. Penolakan untuk semua kasus di atas dijawab **409 `CONFLICT`**.
+
+Pemeriksaan ini dilakukan aplikasi, bukan batasan database. Data kembar yang sudah terlanjur tersimpan sebelum aturan ini berlaku tetap ada sampai dibereskan.
+
 ### Tidak ada keberhasilan sebagian
 
 Seluruh baris diperiksa lebih dulu, dan penyimpanan baru berjalan bila tidak ada satu pun yang bermasalah. Kalau lima dari lima puluh baris gagal lalu sisanya tersimpan, admin harus mencari tahu mana yang sudah masuk sebelum mencoba lagi, dan percobaan ulang berisiko menduplikasi. Dengan menolak seluruhnya, memperbaiki berkas lalu mengirim ulang selalu aman.
@@ -1148,13 +1158,72 @@ hold       -3  → saldo  9   pengajuan dibuat, saldo tertahan
 
 Penahanan sejak pengajuan dibuat mencegah karyawan mengajukan beberapa cuti yang totalnya melebihi saldo. Pemeriksaan saldo dan penahanannya berjalan di dalam satu transaksi setelah baris karyawan dikunci, sehingga pengajuan yang dikirim bersamaan pun diproses bergiliran. Lihat [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan).
 
+### Saldo tidak boleh dibuat minus
+
+Penyesuaian manual yang **mengurangi** ditolak dengan **400** bila hasilnya menjadi negatif. Pemeriksaannya berjalan di dalam transaksi yang sama, setelah baris karyawan dikunci dan setelah transaksinya dicatat, lalu seluruh transaksi dibatalkan bila hasilnya minus. Dengan begitu penyesuaian yang datang bersamaan tidak dapat saling menyelinap melewati pemeriksaan.
+
+Responsnya menyertakan angka yang dibutuhkan frontend untuk menjelaskan penolakan:
+
+```json
+{
+  "success": false,
+  "message": "Adjustment rejected because it would make the balance negative. The remaining balance is 9 days",
+  "code": "BAD_REQUEST",
+  "details": { "current_balance": 9, "requested_amount": -10, "max_deduction": 9 }
+}
+```
+
+Penyesuaian yang **menambah** tetap diterima walaupun saldonya sedang minus, supaya saldo yang terlanjur salah masih dapat diperbaiki.
+
+Satu kali penyesuaian juga dibatasi maksimal 365 hari, ke arah mana pun. Batas itu jaring pengaman terhadap salah ketik: tanpanya, satu angka keliru dapat membuat saldo minus ratusan ribu hari, dan itu pernah benar-benar terjadi pada data uji.
+
 ## Penanganan Lampiran
 
 Bucket lampiran bersifat privat. Yang disimpan di database hanya `storage_path`, karena signed URL punya masa berlaku. Tautan diterbitkan ulang setiap kali diminta, berlaku lima belas menit.
 
-Tipe berkas ditentukan dari magic bytes, bukan dari ekstensi maupun `Content-Type`. Hanya JPEG, PNG, dan WebP yang diterima, maksimal 5 MB. Berkas disimpan dengan nama UUID di bawah folder id pengajuan, dan nama aslinya dicatat pada kolom `file_name`.
+Tipe berkas ditentukan dari magic bytes, bukan dari ekstensi maupun `Content-Type`. Hanya JPEG, PNG, dan WebP yang diterima, maksimal 5 MB. Nama asli berkas tidak pernah dipakai sebagai nama penyimpanan, hanya dicatat pada kolom `file_name`.
 
-Berkas tidak dihapus saat pengajuan ditolak atau dibatalkan, karena tetap dibutuhkan sebagai bukti riwayat.
+### Penamaan dan penyusunan berkas
+
+Nama dan folder sepenuhnya ditentukan backend, bukan dikirim klien. Kedua bucket memakai pola yang sama:
+
+```
+2026/09/<id pengajuan atau id karyawan>-20260928-101927-1bc7a4.jpg
+└──┬──┘ └──────────── nama berkas ────────────────────────────┘
+ bulan                        tanggal ┘ └ jam ┘ └ acak ┘
+```
+
+Tiga alasan bentuk ini dipilih:
+
+- **Diarsipkan per bulan.** Membuka satu folder bulan langsung memperlihatkan seluruh berkas yang diunggah pada bulan itu, dan pembersihan per periode cukup menghapus satu folder. Id pengajuan maupun id karyawan berada di depan nama berkas, bukan menjadi folder tersendiri, sehingga tidak ada folder beranak yang isinya cuma satu berkas.
+- **Urut waktu sama dengan urut abjad.** Penanda waktu ditulis `YYYYMMDD-HHMMSS` menurut zona waktu kantor, jadi isi folder tersusun kronologis tanpa perlu membuka satu per satu.
+- **Tidak dapat ditebak dan tidak bertabrakan.** Enam karakter acak di belakang menjaga dua unggahan pada detik yang sama tidak memakai nama yang sama — penting karena unggahan memakai `upsert: false` dan akan gagal bila namanya sudah ada.
+
+Berkas yang diunggah sebelum aturan ini berlaku tetap berada di folder lamanya dan tetap dapat dibuka, karena jalurnya selalu dibaca dari database, bukan disusun ulang.
+
+### Penghapusan saat pengajuan dibatalkan
+
+Membatalkan pengajuan ikut menghapus lampirannya, baris database maupun berkasnya di storage. Lampiran cuti sering berupa surat keterangan dokter, dan pengajuan yang batal tidak akan pernah memerlukannya lagi.
+
+Penghapusan dikerjakan di dalam `PATCH /leave-requests/:id/cancel`, bukan lewat endpoint terpisah yang dipanggil frontend. Kalau frontend yang memanggilnya, setiap gangguan setelah pembatalan berhasil — koneksi putus, tab ditutup, browser tertutup — akan meninggalkan berkas yang tidak pernah terhapus, dan tidak ada lagi yang tahu berkas itu pernah ada.
+
+Urutannya menentukan:
+
+```
+BEGIN
+  ... pembatalan, pengembalian saldo, pembersihan hari cuti ...
+  DELETE FROM leave_attachments WHERE leave_request_id = $1 RETURNING storage_path
+COMMIT
+  hapus berkas dari storage
+```
+
+Storage bukan bagian dari transaksi database, jadi berkas hanya boleh dihapus **setelah** COMMIT. Kalau dihapus lebih dulu lalu transaksinya dibatalkan, barisnya kembali ada sedangkan berkasnya sudah hilang permanen. Sebaliknya, gagal menghapus setelah COMMIT hanya menyisakan berkas yatim yang tercatat di log.
+
+`DELETE ... RETURNING storage_path` membuat satu query menghapus barisnya sekaligus menyebutkan berkas mana yang harus dibuang, sehingga tidak ada celah antara membaca daftar dan menghapusnya.
+
+Kegagalan menghapus berkas tidak menggagalkan pembatalan. Pengajuannya sudah batal dan tercatat; membatalkan seluruh operasi hanya karena satu berkas justru merugikan pengguna. Jumlah lampiran yang dihapus dicatat pada metadata log aktivitas `leave.cancel` sebagai `attachments_deleted`.
+
+Berkas milik pengajuan yang **ditolak** tetap disimpan, karena masih dibutuhkan sebagai bukti riwayat keputusan.
 
 ## Alur Verifikasi Email
 
@@ -1212,7 +1281,6 @@ Hal-hal berikut disadari dan belum dikerjakan:
 | Endpoint publik lain belum punya batas khusus | `register`, `forgot-password`, dan `reset-password` hanya tertahan batas umum 300 per menit per IP | Pasang pembatas ketat seperti login bila mulai disalahgunakan |
 | Konfigurasi ESLint belum ada | `npm run lint` gagal dijalankan | Tambahkan `eslint.config.js` beserta `typescript-eslint` |
 | `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
-| Penyesuaian saldo manual boleh membuat saldo negatif | Admin dapat mengurangi saldo melebihi sisanya | Tentukan kebijakan, lalu tolak di dalam transaksi yang sudah terkunci |
 | `updated_at` masih opsional | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain | Wajibkan setelah seluruh form frontend mengirimnya |
 | `system.manage_feature` tidak diberlakukan | Mencentangnya di matriks tidak memberi akses apa pun | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |
 | Cache fitur per proses | Instance lain tertinggal paling lama satu menit setelah fitur jabatan diubah | Siarkan pembatalan cache lewat `LISTEN`/`NOTIFY` yang sama dengan notifikasi |

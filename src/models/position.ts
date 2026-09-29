@@ -45,6 +45,24 @@ export async function findByCode(code: string): Promise<Position | null> {
   return result.rows[0] ?? null;
 }
 
+// Dibandingkan tanpa membedakan huruf besar-kecil dan spasi di tepi, supaya
+// "Staff", "staff", dan " Staff " dianggap nama yang sama. exceptId dipakai
+// saat mengubah, agar namanya sendiri tidak dianggap bentrok
+export async function findByName(
+  name: string,
+  exceptId?: string,
+): Promise<Position | null> {
+  const result = await pool.query<Position>(
+    `SELECT * FROM positions
+     WHERE lower(btrim(name)) = lower(btrim($1))
+       AND deleted_at IS NULL
+       AND ($2::uuid IS NULL OR id <> $2::uuid)`,
+    [name, exceptId ?? null],
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function createPosition(data: PositionInput): Promise<Position> {
   const result = await pool.query<Position>(
     `INSERT INTO positions (code, name, level)

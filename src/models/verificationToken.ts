@@ -81,6 +81,27 @@ export async function findLatestActive(
   return result.rows[0] ?? null;
 }
 
+// Seluruh token yang masih dapat dipakai, terbaru lebih dulu. Dipakai tautan
+// reset password, yang seluruhnya tetap berlaku sampai kedaluwarsa atau salah
+// satunya berhasil dipakai. Dibatasi agar pencocokan argon2 tidak berjalan
+// terlalu banyak dalam satu permintaan
+export async function findActive(
+  email: string,
+  purpose: TokenPurpose,
+  limit: number,
+): Promise<VerificationToken[]> {
+  const result = await pool.query<VerificationToken>(
+    `SELECT * FROM verification_tokens
+     WHERE email = $1 AND purpose = $2::token_purpose
+       AND consumed_at IS NULL AND expires_at > now()
+     ORDER BY created_at DESC
+     LIMIT $3::int`,
+    [email, purpose, limit],
+  );
+
+  return result.rows;
+}
+
 // Jatah percobaan diambil dalam satu query. Tebakan yang dikirim bersamaan
 // tidak bisa sama-sama membaca sisa jatah lama lalu lolos semua
 export async function claimAttempt(

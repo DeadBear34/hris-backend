@@ -14,6 +14,7 @@ jest.unstable_mockModule("../../src/models/department.js", () => ({
   findAll: jest.fn(),
   findById: jest.fn(),
   findByCode: jest.fn(),
+  findByName: jest.fn(),
   createDepartment: jest.fn(),
   updateDepartment: jest.fn(),
   softDeleteDepartment: jest.fn(),
@@ -508,5 +509,58 @@ describe("DELETE /api/v1/departments/:id", () => {
     expect(departmentModel.softDeleteDepartment).toHaveBeenCalledWith(
       DEPARTMENT_ID,
     );
+  });
+});
+
+describe("nama departemen tidak boleh kembar", () => {
+  it("menolak pembuatan dengan nama yang sudah dipakai", async () => {
+    (departmentModel.findByCode as jest.Mock).mockResolvedValue(null as never);
+    (departmentModel.findByName as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+
+    const res = await request(app)
+      .post("/api/v1/departments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ code: "ENG2", name: "engineering" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("name is already in use");
+    expect(departmentModel.createDepartment).not.toHaveBeenCalled();
+  });
+
+  it("mengubah nama tidak menganggap dirinya sendiri sebagai kembaran", async () => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.findByName as jest.Mock).mockResolvedValue(null as never);
+
+    await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan" });
+
+    const [, exceptId] = (departmentModel.findByName as jest.Mock).mock
+      .calls[0] as [string, string];
+
+    expect(exceptId).toBe(DEPARTMENT_ID);
+  });
+
+  it("menolak perubahan nama menjadi nama departemen lain", async () => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.findByName as jest.Mock).mockResolvedValue({
+      ...fakeDepartment,
+      id: "99999999-9999-4999-8999-999999999999",
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Keuangan" });
+
+    expect(res.status).toBe(409);
+    expect(departmentModel.updateDepartment).not.toHaveBeenCalled();
   });
 });

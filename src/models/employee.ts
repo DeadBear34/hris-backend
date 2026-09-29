@@ -271,6 +271,40 @@ export async function findById(id: string): Promise<Employee | null> {
   return result.rows[0] ?? null;
 }
 
+// Satu nomor telepon hanya boleh dipakai satu karyawan, karena nomor itu
+// dipakai menghubungi orangnya. exceptId dipakai saat mengubah data, supaya
+// nomor miliknya sendiri tidak dianggap bentrok. Dapat menerima klien
+// transaksi agar pemeriksaan dan penyimpanan berada di transaksi yang sama
+export async function findByPhone(
+  phone: string,
+  exceptId?: string | null,
+  db: Executor = pool,
+): Promise<Employee | null> {
+  const result = await db.query<Employee>(
+    `SELECT * FROM employees
+     WHERE btrim(phone) = btrim($1)
+       AND deleted_at IS NULL
+       AND ($2::uuid IS NULL OR id <> $2::uuid)`,
+    [phone, exceptId ?? null],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+// Dipakai saat menambah banyak karyawan sekaligus: seluruh nomor diperiksa
+// dalam satu query, bukan satu query per baris
+export async function findExistingPhones(phones: string[]): Promise<string[]> {
+  if (phones.length === 0) return [];
+
+  const result = await pool.query<{ phone: string }>(
+    `SELECT phone FROM employees
+     WHERE btrim(phone) = ANY($1::text[]) AND deleted_at IS NULL`,
+    [phones.map((phone) => phone.trim())],
+  );
+
+  return result.rows.map((row) => row.phone.trim());
+}
+
 export async function findByUserId(user_id: string): Promise<Employee | null> {
   const result = await pool.query<Employee>(
     "SELECT * FROM employees WHERE user_id = $1::uuid AND deleted_at IS NULL",

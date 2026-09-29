@@ -149,6 +149,23 @@ export async function AdjustLeaveBalanceController(
         client,
       );
 
+      // Saldo hanya boleh berkurang lewat pengajuan cuti, yang sudah memeriksa
+      // kecukupannya lebih dulu. Penyesuaian manual yang menambah tetap
+      // diizinkan walau saldonya sedang minus, supaya saldo yang terlanjur
+      // salah masih dapat diperbaiki
+      if (amount < 0 && balance < 0) {
+        const available = balance - amount;
+
+        throw BadRequest(
+          `Adjustment rejected because it would make the balance negative. The remaining balance is ${plural(available, "day")}`,
+          {
+            current_balance: available,
+            requested_amount: amount,
+            max_deduction: Math.max(0, available),
+          },
+        );
+      }
+
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");

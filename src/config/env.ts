@@ -8,7 +8,14 @@ export const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
-  PORT: z.coerce.number().default(8080),
+  // Dibatasi supaya salah ketik seperti 80808 ditolak saat startup dengan
+  // pesan yang jelas, bukan berujung RangeError dari Node saat listen
+  PORT: z.coerce
+    .number()
+    .int("PORT must be a whole number")
+    .min(1, "PORT must be between 1 and 65535")
+    .max(65535, "PORT must be between 1 and 65535")
+    .default(8080),
   // Boleh berisi beberapa asal dipisah koma, misalnya saat frontend
   // dijalankan di beberapa laptop
   CORS_ORIGIN: z.string().default("http://localhost:5173"),

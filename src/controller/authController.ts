@@ -4,7 +4,12 @@ import * as employeeModel from "../models/employee.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
 import { getUserFeatureCodes } from "../middlewares/feature.js";
-import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
+import {
+  Unauthorized,
+  NotFound,
+  BadRequest,
+  Conflict,
+} from "../helpers/appError.js";
 import { photoUrlFor } from "../helpers/storage.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
@@ -213,6 +218,15 @@ export async function UpdateMeController(
       req.body as employeeModel.UpdateOwnProfileInput & {
         updated_at?: string;
       };
+
+    if (changes.phone) {
+      const usedPhone = await employeeModel.findByPhone(
+        changes.phone,
+        employee.id,
+      );
+
+      if (usedPhone) throw Conflict("Phone number is already registered");
+    }
 
     const updated = await employeeModel.updateOwnProfile(
       employee.id,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { personName } from "./commonSchema.js";
 
 export const registerSchema = z.object({
   email: z
@@ -13,11 +14,7 @@ export const registerSchema = z.object({
     .min(8, "Password must be at least 8 characters")
     .max(72, "Password must be at most 72 characters"),
 
-  full_name: z
-    .string({ message: "Full name is required" })
-    .trim()
-    .min(3, "Full name must be at least 3 characters")
-    .max(150, "Full name must be at most 150 characters"),
+  full_name: personName("Full name"),
 
   phone: z
     .string({ message: "Phone number is required" })

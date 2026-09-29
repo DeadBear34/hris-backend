@@ -47,6 +47,7 @@ jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
   findLatestActive: jest.fn(),
+  findActive: jest.fn(),
   claimAttempt: jest.fn(),
   markConsumed: jest.fn(),
   invalidateActive: jest.fn(),
@@ -110,9 +111,14 @@ const fakeEmployee = {
 
 // hash argon2 sungguhan supaya jalur verifikasi token benar-benar diuji
 let hashToken: string;
+// Tautan lain milik email yang sama, dari permintaan "Lupa Password" berikutnya
+const OTHER_TOKEN_ID = "88888888-8888-4888-8888-888888888888";
+const OTHER_TOKEN_VALUE = "c".repeat(64);
+let otherHashToken: string;
 
 beforeAll(async () => {
   hashToken = await hashPassword(TOKEN_VALUE);
+  otherHashToken = await hashPassword(OTHER_TOKEN_VALUE);
 });
 
 function fakeToken(override: Record<string, unknown> = {}) {
@@ -229,17 +235,16 @@ describe("POST /api/v1/auth/forgot-password", () => {
     expect(diffMinutes).toBeLessThanOrEqual(15 * 60_000);
   });
 
-  it("membatalkan token reset aktif sebelumnya", async () => {
+  // Pengguna sering menekan tombol ini beberapa kali karena email belum
+  // masuk, lalu membuka email yang pertama tiba. Tautan lama harus tetap jalan
+  it("tidak membatalkan tautan reset yang sudah terkirim sebelumnya", async () => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
 
     await request(app)
       .post("/api/v1/auth/forgot-password")
       .send({ email: EMAIL });
 
-    expect(tokenModel.invalidateActive).toHaveBeenCalledWith(
-      EMAIL,
-      "password_reset",
-    );
+    expect(tokenModel.invalidateActive).not.toHaveBeenCalled();
   });
 
   it("mencatat alamat ip dan user agent peminta", async () => {
@@ -406,9 +411,9 @@ describe("POST /api/v1/auth/forgot-password", () => {
 describe("POST /api/v1/auth/reset-password", () => {
   beforeEach(() => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
-    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
-      fakeToken() as never,
-    );
+    (tokenModel.findActive as jest.Mock).mockResolvedValue([
+      fakeToken(),
+    ] as never);
   });
 
   it("menolak body kosong", async () => {
@@ -503,18 +508,21 @@ describe("POST /api/v1/auth/reset-password", () => {
     expect(userModel.updatePassword).not.toHaveBeenCalled();
   });
 
-  it("menaikkan penghitung percobaan saat token salah", async () => {
+  // Tautan reset 256 bit mustahil ditebak, jadi tidak memakai jatah
+  // percobaan seperti kode verifikasi enam digit. Kalau memakai, tautan dari
+  // email lama menghabiskan jatah tautan yang benar
+  it("tidak memakai jatah percobaan untuk tautan reset", async () => {
     await request(app)
       .post("/api/v1/auth/reset-password")
       .send({ ...resetBody, token: "b".repeat(64) });
 
-    expect(tokenModel.claimAttempt).toHaveBeenCalledWith(TOKEN_ID, 5);
+    expect(tokenModel.claimAttempt).not.toHaveBeenCalled();
   });
 
-  it("menolak token yang sudah kedaluwarsa", async () => {
-    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
-      fakeToken({ expires_at: new Date(Date.now() - 1000) }) as never,
-    );
+  // Kedaluwarsa dan sudah terpakai disaring di query findActive, jadi dari
+  // sisi controller keduanya tampak sebagai "tidak ada tautan aktif"
+  it("menolak bila tidak ada tautan aktif, misalnya kedaluwarsa atau sudah terpakai", async () => {
+    (tokenModel.findActive as jest.Mock).mockResolvedValue([] as never);
 
     const res = await request(app)
       .post("/api/v1/auth/reset-password")
@@ -524,54 +532,32 @@ describe("POST /api/v1/auth/reset-password", () => {
     expect(userModel.updatePassword).not.toHaveBeenCalled();
   });
 
-  it("menolak token yang sudah pernah dipakai", async () => {
-    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
-      fakeToken({ consumed_at: new Date() }) as never,
-    );
+  it("mencatat alasan penolakan ke log untuk ditelusuri", async () => {
+    (tokenModel.findActive as jest.Mock).mockResolvedValue([] as never);
 
-    const res = await request(app)
-      .post("/api/v1/auth/reset-password")
-      .send(resetBody);
+    await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
-    expect(res.status).toBe(400);
-    expect(userModel.updatePassword).not.toHaveBeenCalled();
-  });
+    // Setelah alasan penolakan, controller juga menulis catatan log aktivitas
+    // lewat logger.warn, jadi yang dicari adalah catatan dengan pesan ini,
+    // bukan catatan terakhir
+    const [context] = mockLoggerWarn.mock.calls.find(
+      ([, message]) => message === "Token verification rejected",
+    ) as [{ reason: string; active_links: number }];
 
-  it("menolak token setelah lima kali percobaan gagal", async () => {
-    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
-      fakeToken({ attempts: 5 }) as never,
-    );
-
-    const res = await request(app)
-      .post("/api/v1/auth/reset-password")
-      .send(resetBody);
-
-    expect(res.status).toBe(400);
-    expect(userModel.updatePassword).not.toHaveBeenCalled();
-  });
-
-  it("menolak email yang tidak punya token reset", async () => {
-    (tokenModel.findLatest as jest.Mock).mockResolvedValue(null as never);
-
-    const res = await request(app)
-      .post("/api/v1/auth/reset-password")
-      .send(resetBody);
-
-    expect(res.status).toBe(400);
+    expect(context.reason).toBe("no active reset link");
+    expect(context.active_links).toBe(0);
   });
 
   it("memberi pesan yang sama untuk semua jenis kegagalan token", async () => {
     const state = [
-      null,
-      fakeToken({ consumed_at: new Date() }),
-      fakeToken({ expires_at: new Date(Date.now() - 1000) }),
-      fakeToken({ attempts: 5 }),
+      [],
+      [fakeToken({ id: OTHER_TOKEN_ID, token_hash: otherHashToken })],
     ];
 
     const message = new Set<string>();
 
-    for (const token of state) {
-      (tokenModel.findLatest as jest.Mock).mockResolvedValue(token as never);
+    for (const tokens of state) {
+      (tokenModel.findActive as jest.Mock).mockResolvedValue(tokens as never);
 
       const res = await request(app)
         .post("/api/v1/auth/reset-password")
@@ -581,6 +567,47 @@ describe("POST /api/v1/auth/reset-password", () => {
     }
 
     expect(message.size).toBe(1);
+  });
+
+  // Kasus nyata dari QA: "Lupa Password" ditekan tiga kali, lalu yang dibuka
+  // adalah email yang lebih lama. Dulu hanya token terbaru yang dicocokkan
+  it("menerima tautan dari email yang lebih lama walau sudah ada tautan lebih baru", async () => {
+    (tokenModel.findActive as jest.Mock).mockResolvedValue([
+      fakeToken({ id: OTHER_TOKEN_ID, token_hash: otherHashToken }),
+      fakeToken(),
+    ] as never);
+
+    const res = await request(app)
+      .post("/api/v1/auth/reset-password")
+      .send(resetBody);
+
+    expect(res.status).toBe(200);
+    expect(tokenModel.markConsumed).toHaveBeenCalledWith(TOKEN_ID);
+    expect(userModel.updatePassword).toHaveBeenCalled();
+  });
+
+  it("membatalkan seluruh tautan lain setelah password berhasil diganti", async () => {
+    await request(app).post("/api/v1/auth/reset-password").send(resetBody);
+
+    expect(tokenModel.invalidateActive).toHaveBeenCalledWith(
+      EMAIL,
+      "password_reset",
+    );
+
+    const [updatedAt] = (userModel.updatePassword as jest.Mock).mock
+      .invocationCallOrder;
+    const [invalidatedAt] = (tokenModel.invalidateActive as jest.Mock).mock
+      .invocationCallOrder;
+
+    expect(updatedAt).toBeLessThan(invalidatedAt!);
+  });
+
+  it("tidak membatalkan tautan apa pun bila tautannya salah", async () => {
+    await request(app)
+      .post("/api/v1/auth/reset-password")
+      .send({ ...resetBody, token: "b".repeat(64) });
+
+    expect(tokenModel.invalidateActive).not.toHaveBeenCalled();
   });
 
   it("menandai token terpakai sebelum mengganti password", async () => {
@@ -605,10 +632,14 @@ describe("POST /api/v1/auth/reset-password", () => {
     expect(userModel.updatePassword).not.toHaveBeenCalled();
   });
 
-  it("hanya memakai token dengan purpose password_reset", async () => {
+  it("hanya memakai token dengan purpose password_reset, dengan jumlah terbatas", async () => {
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
-    expect(tokenModel.findLatest).toHaveBeenCalledWith(EMAIL, "password_reset");
+    expect(tokenModel.findActive).toHaveBeenCalledWith(
+      EMAIL,
+      "password_reset",
+      5,
+    );
   });
 });
 

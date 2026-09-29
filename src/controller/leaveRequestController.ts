@@ -35,8 +35,27 @@ import {
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
+import { deleteAttachments, isStorageConfigured } from "../helpers/storage.js";
+import { logger } from "../config/logger.js";
 
 const SICK_LEAVE_CODE = "SICK";
+
+// Pembatalan tetap dianggap berhasil walaupun berkasnya gagal dihapus.
+// Pengajuannya sudah batal dan tercatat; menggagalkan seluruh operasi hanya
+// karena satu berkas justru merugikan pengguna. Yang tersisa cuma berkas
+// yatim, dan itu tercatat di log untuk ditelusuri
+async function discardAttachments(storagePaths: string[]): Promise<void> {
+  if (storagePaths.length === 0 || !isStorageConfigured()) return;
+
+  try {
+    await deleteAttachments(storagePaths);
+  } catch (err) {
+    logger.warn(
+      { err, storagePaths },
+      "Failed to delete leave attachments from storage",
+    );
+  }
+}
 
 interface Requester {
   employee: Employee;
@@ -696,7 +715,17 @@ export async function CancelLeaveRequestController(
       await attendanceModel.deleteLeaveDays(client, id);
     }
 
+    // Lampiran tidak diperlukan lagi setelah pengajuan batal, dan isinya
+    // sering berupa surat dokter. Barisnya dihapus di dalam transaksi,
+    // berkasnya menyusul setelah COMMIT
+    const discardedPaths = await attachmentModel.deleteByRequest(id, client);
+
     await client.query("COMMIT");
+
+    // Storage bukan bagian dari transaksi. Menghapus berkas sebelum COMMIT
+    // berarti kehilangan berkas selamanya bila transaksinya dibatalkan,
+    // sedangkan gagal menghapus setelah COMMIT hanya menyisakan berkas yatim
+    await discardAttachments(discardedPaths);
 
     // setelah COMMIT, supaya lencana atasan tidak kehilangan tugas yang
     // ternyata gagal dibatalkan
@@ -712,6 +741,9 @@ export async function CancelLeaveRequestController(
         employee_id: existing.employee_id,
         previous_status: existing.status,
         total_days: existing.total_days,
+        // Berkasnya sudah tidak ada, jadi jumlahnya dicatat di sini supaya
+        // tetap ada jejaknya
+        attachments_deleted: discardedPaths.length,
       },
     });
 

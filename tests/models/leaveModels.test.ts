@@ -509,4 +509,39 @@ describe("model leaveAttachment", () => {
 
     expect(values).toEqual([ATTACHMENT_ID]);
   });
+
+  it("menghapus lampiran satu pengajuan sambil mengembalikan jalur berkasnya", async () => {
+    (fakeDb.query as jest.Mock).mockResolvedValue({
+      rows: [
+        { storage_path: `${REQUEST_ID}/satu.jpg` },
+        { storage_path: `${REQUEST_ID}/dua.pdf` },
+      ],
+    } as never);
+
+    const paths = await attachmentModel.deleteByRequest(
+      REQUEST_ID,
+      fakeDb as never,
+    );
+
+    const [sql, values] = (fakeDb.query as jest.Mock).mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+
+    expect(sql).toContain("DELETE FROM leave_attachments");
+    expect(sql).toContain("RETURNING storage_path");
+    expect(values).toEqual([REQUEST_ID]);
+    expect(paths).toEqual([`${REQUEST_ID}/satu.jpg`, `${REQUEST_ID}/dua.pdf`]);
+  });
+
+  it("mengembalikan daftar kosong bila pengajuan tidak punya lampiran", async () => {
+    (fakeDb.query as jest.Mock).mockResolvedValue({ rows: [] } as never);
+
+    const paths = await attachmentModel.deleteByRequest(
+      REQUEST_ID,
+      fakeDb as never,
+    );
+
+    expect(paths).toEqual([]);
+  });
 });

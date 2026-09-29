@@ -74,6 +74,23 @@ export async function findByRequest(
   return result.rows;
 }
 
+// Menghapus barisnya sekaligus mengembalikan berkas mana yang harus dibuang
+// dari storage. Digabung dalam satu query supaya tidak ada celah antara
+// membaca daftar dan menghapusnya
+export async function deleteByRequest(
+  leave_request_id: string,
+  db: Executor = pool,
+): Promise<string[]> {
+  const result = await db.query<{ storage_path: string }>(
+    `DELETE FROM leave_attachments
+     WHERE leave_request_id = $1::uuid
+     RETURNING storage_path`,
+    [leave_request_id],
+  );
+
+  return result.rows.map((row) => row.storage_path);
+}
+
 export async function countByRequest(
   leave_request_id: string,
 ): Promise<number> {

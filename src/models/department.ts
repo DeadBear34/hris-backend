@@ -42,6 +42,24 @@ export async function findByCode(code: string): Promise<Department | null> {
   return result.rows[0] ?? null;
 }
 
+// Dibandingkan tanpa membedakan huruf besar-kecil dan spasi di tepi, supaya
+// "Engineering", "engineering", dan " Engineering " dianggap nama yang sama.
+// exceptId dipakai saat mengubah, agar namanya sendiri tidak dianggap bentrok
+export async function findByName(
+  name: string,
+  exceptId?: string,
+): Promise<Department | null> {
+  const result = await pool.query<Department>(
+    `SELECT * FROM departments
+     WHERE lower(btrim(name)) = lower(btrim($1))
+       AND deleted_at IS NULL
+       AND ($2::uuid IS NULL OR id <> $2::uuid)`,
+    [name, exceptId ?? null],
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function createDepartment(
   data: DepartmentInput,
 ): Promise<Department> {

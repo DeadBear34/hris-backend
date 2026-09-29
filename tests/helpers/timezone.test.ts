@@ -8,6 +8,8 @@ import {
   lateMinutesFrom,
   minutesBetween,
   dateRange,
+  monthFolderOf,
+  fileStampOf,
 } from "../../src/helpers/timezone.js";
 
 // Seluruh pengujian memakai waktu yang disuntikkan, tidak pernah waktu sistem,
@@ -195,5 +197,46 @@ describe("rentangTanggal", () => {
 
   it("menghasilkan daftar kosong bila akhir mendahului awal", () => {
     expect(dateRange("2026-03-11", "2026-03-09")).toEqual([]);
+  });
+});
+
+describe("folderBulan", () => {
+  it("membentuk folder tahun dan bulan berpasangan", () => {
+    expect(monthFolderOf(new Date("2026-03-10T01:00:00Z"))).toBe("2026/03");
+  });
+
+  it("unggahan dini hari awal bulan tetap masuk folder bulan WIB", () => {
+    // 2026-02-28 23:00 UTC sudah menjadi 2026-03-01 06:00 WIB. Kalau folder
+    // diambil dari jam server, berkasnya salah masuk ke arsip Februari
+    expect(monthFolderOf(new Date("2026-02-28T23:00:00Z"))).toBe("2026/03");
+  });
+});
+
+describe("penandaWaktuBerkas", () => {
+  it("memakai tanggal dan jam WIB", () => {
+    // 2026-03-10 01:23:45 UTC = 2026-03-10 08:23:45 WIB
+    expect(fileStampOf(new Date("2026-03-10T01:23:45Z"))).toBe(
+      "20260310-082345",
+    );
+  });
+
+  it("menuliskan tengah malam sebagai 00, bukan 24", () => {
+    // 2026-03-09 17:00 UTC = 2026-03-10 00:00 WIB
+    expect(fileStampOf(new Date("2026-03-09T17:00:00Z"))).toBe(
+      "20260310-000000",
+    );
+  });
+
+  it("urutan alfabet mengikuti urutan waktu", () => {
+    const earlier = fileStampOf(new Date("2026-03-09T23:59:59Z"));
+    const later = fileStampOf(new Date("2026-03-10T00:00:00Z"));
+
+    expect(earlier < later).toBe(true);
+  });
+
+  it("tidak memakai karakter yang menyulitkan pada nama berkas", () => {
+    expect(fileStampOf(new Date("2026-03-10T01:23:45Z"))).toMatch(
+      /^\d{8}-\d{6}$/,
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { expectedUpdatedAt } from "./commonSchema.js";
+import { expectedUpdatedAt, personName } from "./commonSchema.js";
 import { todayInOfficeZone } from "../helpers/timezone.js";
 
 // Sel kosong pada CSV terbaca sebagai string kosong, bukan tidak ada. Tanpa ini
@@ -69,11 +69,7 @@ export const listEmployeeQuerySchema = z.object({
 });
 
 const employeeDataSchema = z.object({
-  full_name: z
-    .string({ message: "Full name is required" })
-    .trim()
-    .min(3, "Full name must be at least 3 characters")
-    .max(150, "Full name must be at most 150 characters"),
+  full_name: personName("Full name"),
 
   phone: z
     .string({ message: "Phone number is required" })

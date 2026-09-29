@@ -139,3 +139,27 @@ export function dateRange(start: IsoDate, end: IsoDate): IsoDate[] {
 
   return result;
 }
+
+// Folder arsip per bulan untuk berkas yang menumpuk. Memakai zona kantor,
+// bukan jam server, supaya berkas yang diunggah pada awal bulan waktu WIB
+// tidak jatuh ke folder bulan sebelumnya
+export function monthFolderOf(at: Date = new Date()): string {
+  const [year, month] = toLocalTime(at).date.split("-");
+
+  return `${year}/${month}`;
+}
+
+// Penanda waktu untuk nama berkas. Urut secara alfabet sama dengan urut secara
+// waktu, sehingga isi folder penyimpanan mudah ditelusuri tanpa membuka
+// satu per satu berkasnya
+export function fileStampOf(at: Date = new Date()): string {
+  const parts = getFormatter(env.TIMEZONE).formatToParts(at);
+
+  const read = (partType: string) =>
+    parts.find((b) => b.type === partType)?.value ?? "";
+
+  // Tengah malam dapat terbaca sebagai pukul 24 pada sebagian runtime
+  const hour = String(Number(read("hour")) % 24).padStart(2, "0");
+
+  return `${read("year")}${read("month")}${read("day")}-${hour}${read("minute")}${read("second")}`;
+}

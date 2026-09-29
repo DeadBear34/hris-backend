@@ -537,9 +537,12 @@ describe("POST /api/v1/auth/reset-password", () => {
 
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
-    const [context] = mockLoggerWarn.mock.calls.at(-1) as [
-      { reason: string; active_links: number },
-    ];
+    // Setelah alasan penolakan, controller juga menulis catatan log aktivitas
+    // lewat logger.warn, jadi yang dicari adalah catatan dengan pesan ini,
+    // bukan catatan terakhir
+    const [context] = mockLoggerWarn.mock.calls.find(
+      ([, message]) => message === "Token verification rejected",
+    ) as [{ reason: string; active_links: number }];
 
     expect(context.reason).toBe("no active reset link");
     expect(context.active_links).toBe(0);

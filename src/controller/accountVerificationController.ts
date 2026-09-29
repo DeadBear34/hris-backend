@@ -280,14 +280,9 @@ export async function RegisterController(
     const hashed = await hashPassword(data.password);
     const { user, employee } = await createAccountWithEmployee(data, hashed);
 
-    // Notifikasi dulu, email belakangan. Pengiriman email lewat jaringan
-    // memakan waktu, dan tidak ada alasan penyetuju menunggunya
-    await notifyAccountNeedsApproval({
-      user_id: user.id,
-      full_name: employee.full_name,
-      email: user.email,
-    });
-
+    // Penyetuju sengaja belum diberi tahu di sini. Akun yang belum memasukkan
+    // kode verifikasi belum muncul di daftar persetujuan dan bisa saja tidak
+    // pernah diselesaikan, jadi notifikasinya dikirim saat email terverifikasi
     await sendVerificationCode(email, full_name, requestMeta(req));
 
     activity.success({
@@ -353,7 +348,20 @@ export async function VerifyEmailController(
     if (!consumed) throw BadRequest(MESSAGE_INVALID_CODE);
 
     if (!user.email_verified_at) {
-      await userModel.setEmailVerified(user.id);
+      const verified = await userModel.setEmailVerified(user.id);
+
+      // Baru sekarang akun benar-benar siap ditinjau, jadi penyetuju diberi
+      // tahu di titik ini. setEmailVerified hanya berhasil satu kali, sehingga
+      // kode yang dikirim dua kali bersamaan tidak menghasilkan dua notifikasi
+      if (verified && !verified.approved_at) {
+        const employee = await employeeModel.findByUserId(user.id);
+
+        await notifyAccountNeedsApproval({
+          user_id: user.id,
+          full_name: employee?.full_name ?? user.email,
+          email: user.email,
+        });
+      }
     }
 
     activity.success({

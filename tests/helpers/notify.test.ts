@@ -260,7 +260,7 @@ describe("notifikasi pendaftaran akun", () => {
     await settle();
 
     expect(firstBatch()![0]!.message).toBe(
-      "Uji Notifikasi (uji@awan.io) registered and is waiting for approval",
+      "Uji Notifikasi (uji@awan.io) has verified their email and is waiting for approval",
     );
   });
 

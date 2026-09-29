@@ -4,7 +4,6 @@ import type { Employee } from "../models/employee.js";
 import { detectImageMimeType, MAX_FILE_SIZE } from "../helpers/fileType.js";
 import { logger } from "../config/logger.js";
 import {
-  buildPhotoPath,
   deletePhoto,
   isStorageConfigured,
   photoUrlFor,
@@ -63,9 +62,13 @@ async function replacePhoto(
     throw BadRequest("Profile photo must be a valid JPEG, PNG, or WebP image");
   }
 
-  const storagePath = buildPhotoPath(employee.id, mime);
-
-  await uploadPhoto(storagePath, uploadedFile.buffer, mime);
+  // Jalur ditentukan saat mengunggah, karena bisa mendapat akhiran _2 bila
+  // sudah ada berkas bernama sama pada detik yang sama
+  const storagePath = await uploadPhoto(
+    uploadedFile.originalname,
+    uploadedFile.buffer,
+    mime,
+  );
 
   const updated = await employeeModel.updatePhotoPath(employee.id, storagePath);
 

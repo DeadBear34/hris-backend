@@ -1185,19 +1185,34 @@ Tipe berkas ditentukan dari magic bytes, bukan dari ekstensi maupun `Content-Typ
 
 ### Penamaan dan penyusunan berkas
 
-Nama dan folder sepenuhnya ditentukan backend, bukan dikirim klien. Kedua bucket memakai pola yang sama:
+Frontend cukup mengirim berkasnya; folder dan nama penyimpanan disusun backend. Kedua bucket memakai pola yang sama, dengan nama asli berkas dipertahankan:
 
 ```
-2026/09/<id pengajuan atau id karyawan>-20260928-101927-1bc7a4.jpg
-└──┬──┘ └──────────── nama berkas ────────────────────────────┘
- bulan                        tanggal ┘ └ jam ┘ └ acak ┘
+2026/09/surat-dokter_28-09-2026_10-33-29.jpg
+└──┬──┘ └────┬─────┘ └───┬────┘ └──┬───┘
+ bulan   nama asli    tanggal     jam
 ```
 
-Tiga alasan bentuk ini dipilih:
+Folder bulan berisi seluruh berkas yang diunggah pada bulan itu, dari karyawan siapa pun, tanpa folder per orang. Pemilik berkas tetap tercatat di database (`leave_attachments` dan `employees.photo_path`), bukan di nama berkas.
 
-- **Diarsipkan per bulan.** Membuka satu folder bulan langsung memperlihatkan seluruh berkas yang diunggah pada bulan itu, dan pembersihan per periode cukup menghapus satu folder. Id pengajuan maupun id karyawan berada di depan nama berkas, bukan menjadi folder tersendiri, sehingga tidak ada folder beranak yang isinya cuma satu berkas.
-- **Urut waktu sama dengan urut abjad.** Penanda waktu ditulis `YYYYMMDD-HHMMSS` menurut zona waktu kantor, jadi isi folder tersusun kronologis tanpa perlu membuka satu per satu.
-- **Tidak dapat ditebak dan tidak bertabrakan.** Enam karakter acak di belakang menjaga dua unggahan pada detik yang sama tidak memakai nama yang sama — penting karena unggahan memakai `upsert: false` dan akan gagal bila namanya sudah ada.
+**Nama asli dibersihkan**, karena berasal dari pengguna:
+
+| Nama kiriman | Nama tersimpan |
+| ------------ | -------------- |
+| `surat-dokter.jpg` | `surat-dokter_28-09-2026_10-33-29.jpg` |
+| `Surat Dokter Budi.png` | `Surat-Dokter-Budi_28-09-2026_10-33-29.png` |
+| `fotó José.jpg` | `foto-Jose_28-09-2026_10-33-29.jpg` |
+| `../../rahasia.jpg` | `rahasia_28-09-2026_10-33-29.jpg` |
+| `@#$%.jpg` | `lampiran_...` atau `foto_...` |
+
+- Folder dan ekstensi asli dibuang. Ekstensi diganti sesuai isi berkas yang dibaca dari magic bytes, jadi berkas yang namanya diubah menjadi `.jpg` tidak menipu.
+- Huruf beraksen diubah ke huruf dasarnya dan spasi menjadi tanda hubung. Karakter selain huruf, angka, titik, tanda hubung, dan garis bawah dibuang, supaya `../` tidak dapat keluar dari folder dan URL publik foto tetap bersih.
+- Panjangnya dibatasi 80 karakter. Bila tidak tersisa apa pun, dipakai nama cadangan `lampiran` atau `foto`.
+- Multer membaca nama berkas sebagai latin1, sehingga nama berhuruf non-ASCII dibaca ulang sebagai UTF-8 lebih dulu.
+
+**Tanggal ditulis `DD-MM-YYYY_HH-MM-SS`** menurut zona waktu kantor. Titik dua tidak dipakai karena dilarang pada nama berkas Windows.
+
+**Nama kembar diberi akhiran angka.** Unggahan memakai `upsert: false` supaya berkas orang lain tidak pernah tertimpa. Bila dua orang mengunggah `IMG_0001.jpg` pada detik yang sama, unggahan kedua disimpan sebagai `IMG_0001_28-09-2026_10-33-29_2.jpg`. Hingga lima nama dicoba; kegagalan selain nama kembar langsung dilaporkan tanpa dicoba ulang.
 
 Berkas yang diunggah sebelum aturan ini berlaku tetap berada di folder lamanya dan tetap dapat dibuka, karena jalurnya selalu dibaca dari database, bukan disusun ulang.
 

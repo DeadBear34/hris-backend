@@ -155,6 +155,7 @@ export async function approveUser(
      SET is_active = true, approved_at = now(),
          approved_by = $2::uuid, updated_at = now()
      WHERE id = $1 AND deleted_at IS NULL AND approved_at IS NULL
+       AND email_verified_at IS NOT NULL
      RETURNING ${SAFE_COLUMNS}`,
     [id, approved_by],
   );

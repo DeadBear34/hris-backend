@@ -129,7 +129,9 @@ describe("batas umum /api/v1", () => {
 
     expect(res.status).toBe(429);
     expect(res.body.code).toBe("RATE_LIMIT_EXCEEDED");
-  });
+    // 300 permintaan berurutan butuh lebih dari 5 detik bawaan Jest saat
+    // mesin sedang sibuk menjalankan suite lain
+  }, 30_000);
 
   it("/health tidak dibatasi supaya pemeriksa kesehatan server tidak tertolak", async () => {
     const res = await request(app).get("/health");

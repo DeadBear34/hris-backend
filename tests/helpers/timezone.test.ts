@@ -9,7 +9,7 @@ import {
   minutesBetween,
   dateRange,
   monthFolderOf,
-  fileStampOf,
+  fileDateTimeOf,
 } from "../../src/helpers/timezone.js";
 
 // Seluruh pengujian memakai waktu yang disuntikkan, tidak pernah waktu sistem,
@@ -213,30 +213,30 @@ describe("folderBulan", () => {
 });
 
 describe("penandaWaktuBerkas", () => {
-  it("memakai tanggal dan jam WIB", () => {
+  it("memakai urutan tanggal-bulan-tahun lalu jam-menit-detik WIB", () => {
     // 2026-03-10 01:23:45 UTC = 2026-03-10 08:23:45 WIB
-    expect(fileStampOf(new Date("2026-03-10T01:23:45Z"))).toBe(
-      "20260310-082345",
+    expect(fileDateTimeOf(new Date("2026-03-10T01:23:45Z"))).toBe(
+      "10-03-2026_08-23-45",
     );
   });
 
   it("menuliskan tengah malam sebagai 00, bukan 24", () => {
     // 2026-03-09 17:00 UTC = 2026-03-10 00:00 WIB
-    expect(fileStampOf(new Date("2026-03-09T17:00:00Z"))).toBe(
-      "20260310-000000",
+    expect(fileDateTimeOf(new Date("2026-03-09T17:00:00Z"))).toBe(
+      "10-03-2026_00-00-00",
     );
   });
 
-  it("urutan alfabet mengikuti urutan waktu", () => {
-    const earlier = fileStampOf(new Date("2026-03-09T23:59:59Z"));
-    const later = fileStampOf(new Date("2026-03-10T00:00:00Z"));
-
-    expect(earlier < later).toBe(true);
+  it("memakai tanggal WIB walau di UTC masih hari sebelumnya", () => {
+    // 2026-03-09 23:59:59 UTC sudah 2026-03-10 06:59:59 WIB
+    expect(fileDateTimeOf(new Date("2026-03-09T23:59:59Z"))).toBe(
+      "10-03-2026_06-59-59",
+    );
   });
 
-  it("tidak memakai karakter yang menyulitkan pada nama berkas", () => {
-    expect(fileStampOf(new Date("2026-03-10T01:23:45Z"))).toMatch(
-      /^\d{8}-\d{6}$/,
+  it("tidak memakai titik dua yang dilarang pada nama berkas Windows", () => {
+    expect(fileDateTimeOf(new Date("2026-03-10T01:23:45Z"))).toMatch(
+      /^\d{2}-\d{2}-\d{4}_\d{2}-\d{2}-\d{2}$/,
     );
   });
 });

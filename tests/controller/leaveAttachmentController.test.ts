@@ -38,6 +38,7 @@ jest.unstable_mockModule("../../src/models/leaveAttachment.js", () => ({
 }));
 
 const mockUpload = jest.fn(() => Promise.resolve());
+const STORED_PATH = "2026/09/surat-dokter_28-09-2026_10-33-29.jpeg";
 const mockSignedUrl = jest.fn();
 const mockStorageConfigured = jest.fn(() => true);
 
@@ -125,7 +126,8 @@ const fakeAttachment = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockUpload.mockResolvedValue(undefined as never);
+  // uploadAttachment mengembalikan jalur yang benar-benar dipakai di storage
+  mockUpload.mockResolvedValue(STORED_PATH as never);
   mockStorageConfigured.mockReturnValue(true);
   mockSignedUrl.mockResolvedValue({
     url: "https://storage.test/signed",
@@ -202,13 +204,29 @@ describe("POST /api/v1/leave-requests/:id/attachments", () => {
     expect(data.mime_type).toBe("image/png");
   });
 
-  it("menyimpan nama berkas yang dibuat ulang, bukan nama asli", async () => {
-    await upload(JPEG, "../../etc/passwd.jpg");
+  // Pembersihan nama asli (spasi, simbol, "../") diuji di storage.test.ts.
+  // Di sini yang dijaga: nama asli diteruskan, dan jalur yang dikembalikan
+  // storage itulah yang dicatat, karena bisa mendapat akhiran _2
+  it("meneruskan nama asli ke storage lalu mencatat jalur yang dikembalikannya", async () => {
+    await upload(JPEG, "surat-dokter.jpg");
+
+    const [name] = mockUpload.mock.calls[0] as unknown as [string];
+    expect(name).toBe("surat-dokter.jpg");
 
     const [data] = (attachmentModel.createAttachment as jest.Mock).mock
       .calls[0] as [{ storage_path: string; file_name: string }];
-    expect(data.storage_path).toBe(`${REQUEST_ID}/berkas.jpeg`);
-    expect(data.storage_path).not.toContain("..");
+    expect(data.storage_path).toBe(STORED_PATH);
+    expect(data.file_name).toBe("surat-dokter.jpg");
+  });
+
+  it("jalur folder pada nama kiriman tidak pernah sampai ke storage", async () => {
+    await upload(JPEG, "../../etc/passwd.jpg");
+
+    const [name] = mockUpload.mock.calls[0] as unknown as [string];
+    const [data] = (attachmentModel.createAttachment as jest.Mock).mock
+      .calls[0] as [{ file_name: string }];
+
+    expect(name).not.toContain("..");
     expect(data.file_name).not.toContain("..");
   });
 

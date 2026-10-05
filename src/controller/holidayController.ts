@@ -68,7 +68,11 @@ export async function CreateHolidayController(
       summary: `Holiday ${holiday.name} created`,
     });
 
-    res.status(201).json({ success: true, data: holiday });
+    res.status(201).json({
+      success: true,
+      message: "Holiday created successfully",
+      data: holiday,
+    });
   } catch (err) {
     next(err);
   }
@@ -119,7 +123,11 @@ export async function UpdateHolidayController(
       metadata: { fields: Object.keys(data) },
     });
 
-    res.json({ success: true, data: holiday });
+    res.json({
+      success: true,
+      message: "Holiday updated successfully",
+      data: holiday,
+    });
   } catch (err) {
     next(err);
   }

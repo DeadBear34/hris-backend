@@ -1,10 +1,11 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
+const mockDebug = jest.fn();
 const mockInfo = jest.fn();
 const mockWarn = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: mockInfo, warn: mockWarn, error: jest.fn() },
+  logger: { debug: mockDebug, info: mockInfo, warn: mockWarn, error: jest.fn() },
 }));
 
 jest.unstable_mockModule("../../src/models/activityLog.js", () => ({
@@ -126,7 +127,9 @@ describe("buildActivityLog", () => {
 });
 
 describe("recordActivity", () => {
-  it("menulis keberhasilan pada tingkat info", () => {
+  // Catatan lengkapnya sudah di tabel, jadi aksi rutin tidak memenuhi
+  // terminal kecuali LOG_LEVEL=debug
+  it("menulis keberhasilan pada tingkat debug", () => {
     recordActivity({
       action: "employee.create",
       status: "success",
@@ -136,11 +139,13 @@ describe("recordActivity", () => {
       occurred_at: new Date(),
     });
 
-    expect(mockInfo).toHaveBeenCalledTimes(1);
+    expect(mockDebug).toHaveBeenCalledTimes(1);
+    expect(mockInfo).not.toHaveBeenCalled();
     expect(mockWarn).not.toHaveBeenCalled();
   });
 
-  it("menulis kegagalan pada tingkat warn agar mudah disaring", () => {
+  // Ditolak karena ulah pengguna bukan kerusakan server, jadi bukan warn
+  it("menulis kegagalan pada tingkat info", () => {
     recordActivity({
       action: "employee.create",
       status: "failed",
@@ -150,8 +155,9 @@ describe("recordActivity", () => {
       occurred_at: new Date(),
     });
 
-    expect(mockWarn).toHaveBeenCalledTimes(1);
-    expect(mockInfo).not.toHaveBeenCalled();
+    expect(mockInfo).toHaveBeenCalledTimes(1);
+    expect(mockDebug).not.toHaveBeenCalled();
+    expect(mockWarn).not.toHaveBeenCalled();
   });
 
   it("menaruh catatan di bawah kunci activity beserta ringkasannya", () => {
@@ -164,7 +170,7 @@ describe("recordActivity", () => {
       occurred_at: new Date(),
     });
 
-    const [payload, message] = mockInfo.mock.calls[0] as [
+    const [payload, message] = mockDebug.mock.calls[0] as [
       { activity: { action: string } },
       string,
     ];
@@ -184,7 +190,7 @@ describe("recordActivity", () => {
       occurred_at: new Date(),
     });
 
-    const [payload] = mockInfo.mock.calls[0] as [{ activity: unknown }];
+    const [payload] = mockDebug.mock.calls[0] as [{ activity: unknown }];
 
     expect(payload.activity).toBe(entry);
   });

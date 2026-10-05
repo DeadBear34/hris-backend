@@ -60,7 +60,11 @@ export async function CreatePositionController(
       summary: `Position ${position.name} created`,
     });
 
-    res.status(201).json({ success: true, data: position });
+    res.status(201).json({
+      success: true,
+      message: "Position created successfully",
+      data: position,
+    });
   } catch (err) {
     next(err);
   }
@@ -125,7 +129,11 @@ export async function UpdatePositionController(
       metadata: { fields: Object.keys(data) },
     });
 
-    res.json({ success: true, data: position });
+    res.json({
+      success: true,
+      message: "Position updated successfully",
+      data: position,
+    });
   } catch (err) {
     next(err);
   }

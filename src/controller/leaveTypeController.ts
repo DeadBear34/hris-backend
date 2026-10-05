@@ -58,7 +58,11 @@ export async function CreateLeaveTypeController(
       summary: `Leave type ${leaveType.name} created`,
     });
 
-    res.status(201).json({ success: true, data: leaveType });
+    res.status(201).json({
+      success: true,
+      message: "Leave type created successfully",
+      data: leaveType,
+    });
   } catch (err) {
     next(err);
   }
@@ -107,7 +111,11 @@ export async function UpdateLeaveTypeController(
       metadata: { fields: Object.keys(data) },
     });
 
-    res.json({ success: true, data: leaveType });
+    res.json({
+      success: true,
+      message: "Leave type updated successfully",
+      data: leaveType,
+    });
   } catch (err) {
     next(err);
   }

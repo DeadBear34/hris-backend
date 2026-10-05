@@ -2,6 +2,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { testConnection } from "./config/databaseConnection.js";
+import { startRedis, closeRedis } from "./config/redis.js";
 import { attachSocketServer } from "./realtime/socketServer.js";
 import { startCleanup } from "./helpers/notificationCleanup.js";
 import { pushToMany } from "./realtime/hub.js";
@@ -21,7 +22,12 @@ async function start() {
   } catch (err) {
     logger.error(err, "Failed to connect to the database");
     process.exit(1);
+    return;
   }
+
+  // Berbeda dengan database, Redis tidak ditunggu dan kegagalannya tidak
+  // menghentikan server. Koneksinya disiapkan di latar belakang
+  startRedis(env.REDIS_URL);
 
   const server = app.listen(env.PORT, () => {
     logger.info(`Server running at http://localhost:${env.PORT}`);
@@ -55,6 +61,7 @@ async function start() {
     logger.info({ signal }, "Server shut down");
 
     void stopCrossInstance();
+    void closeRedis();
 
     // soket ditutup lebih dulu, kalau tidak server.close menunggu selamanya
     // karena koneksi WebSocket tidak pernah selesai dengan sendirinya

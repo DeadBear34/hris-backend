@@ -47,7 +47,7 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.unstable_mockModule("../../src/models/department.js", () => ({
@@ -1483,7 +1483,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
 
     expect(res.status).toBe(201);
 
-    const noteField = lastLogEntry(logger.info as jest.Mock);
+    const noteField = lastLogEntry(logger.debug as jest.Mock);
 
     expect(noteField.action).toBe("employee.create");
     expect(noteField.status).toBe("success");
@@ -1506,7 +1506,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
       { ...single, email: "arif2@awan.io", phone: "+628110000602" },
     ]);
 
-    const noteField = lastLogEntry(logger.info as jest.Mock);
+    const noteField = lastLogEntry(logger.debug as jest.Mock);
 
     expect(noteField.action).toBe("employee.create_bulk");
     expect(noteField.entity_id).toBeNull();
@@ -1516,7 +1516,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
   it("mencatat siapa pelakunya beserta alamat dan perangkatnya", async () => {
     await submit(single);
 
-    const noteField = lastLogEntry(logger.info as jest.Mock);
+    const noteField = lastLogEntry(logger.debug as jest.Mock);
 
     expect(noteField.actor_user_id).toBe(ADMIN_ID);
     expect(noteField.user_agent).toBe("PengujiHRIS/1.0");
@@ -1526,7 +1526,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
   it("mencatat waktu peristiwa, waktu catatan, dan lama prosesnya", async () => {
     await submit(single);
 
-    const noteField = lastLogEntry(logger.info as jest.Mock);
+    const noteField = lastLogEntry(logger.debug as jest.Mock);
 
     const thrown = new Date(noteField.occurred_at as string).getTime();
     const recorded = new Date(noteField.created_at as string).getTime();
@@ -1540,7 +1540,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
     const before = Date.now();
     await submit(single);
 
-    const noteField = lastLogEntry(logger.info as jest.Mock);
+    const noteField = lastLogEntry(logger.debug as jest.Mock);
     const thrown = new Date(noteField.occurred_at as string).getTime();
 
     // peristiwanya mulai sebelum respons selesai, bukan pada detik penulisan log
@@ -1553,7 +1553,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
   it("tidak pernah mencatat password maupun hash-nya", async () => {
     await submit(single);
 
-    const noteField = JSON.stringify(lastLogEntry(logger.info as jest.Mock));
+    const noteField = JSON.stringify(lastLogEntry(logger.debug as jest.Mock));
 
     expect(noteField).not.toContain("rahasia12345");
     expect(noteField).not.toContain("password");
@@ -1563,7 +1563,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
   it("mencatat penolakan sebagai gagal beserta kolom yang bermasalah", async () => {
     await submit([single, { email: "rusak" }]);
 
-    const noteField = lastLogEntry(logger.warn as jest.Mock);
+    const noteField = lastLogEntry(logger.info as jest.Mock);
 
     expect(noteField.status).toBe("failed");
     expect(noteField.action).toBe("employee.create_bulk");
@@ -1597,7 +1597,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
 
     expect(res.status).toBe(409);
 
-    const noteField = lastLogEntry(logger.warn as jest.Mock);
+    const noteField = lastLogEntry(logger.info as jest.Mock);
 
     expect(noteField.action).toBe("employee.create");
     expect(noteField.status).toBe("failed");
@@ -1613,7 +1613,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
 
     await submit(single);
 
-    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.debug).not.toHaveBeenCalled();
   });
 });
 
@@ -1651,7 +1651,7 @@ describe("log tetap ada saat terjadi kegagalan tak terduga", () => {
 
     expect(res.status).toBe(500);
 
-    const noteField = lastLogEntry(logger.warn as jest.Mock);
+    const noteField = lastLogEntry(logger.info as jest.Mock);
 
     expect(noteField.status).toBe("failed");
     expect(noteField.summary).toContain("unexpected error");
@@ -1671,7 +1671,7 @@ describe("log tetap ada saat terjadi kegagalan tak terduga", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(row);
 
-    const noteField = lastLogEntry(logger.warn as jest.Mock);
+    const noteField = lastLogEntry(logger.info as jest.Mock);
     const thrown = new Date(noteField.occurred_at as string).getTime();
 
     expect(thrown).toBeGreaterThanOrEqual(before);
@@ -1688,7 +1688,7 @@ describe("log tetap ada saat terjadi kegagalan tak terduga", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(row);
 
-    expect((logger.warn as jest.Mock).mock.calls).toHaveLength(1);
+    expect((logger.info as jest.Mock).mock.calls).toHaveLength(1);
   });
 });
 
@@ -1733,7 +1733,7 @@ describe("ukuran catatan dibatasi", () => {
 
     expect(res.status).toBe(201);
 
-    const calls = (logger.info as jest.Mock).mock.calls.at(-1) as [
+    const calls = (logger.debug as jest.Mock).mock.calls.at(-1) as [
       { activity: { metadata: Record<string, unknown> } },
     ];
     const meta = calls[0].activity.metadata as {
@@ -1876,7 +1876,7 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
   it("dicatat sebagai penambahan massal pada log", async () => {
     await submit({ "0": row(0), "1": row(1) });
 
-    const calls = (logger.info as jest.Mock).mock.calls.at(-1) as [
+    const calls = (logger.debug as jest.Mock).mock.calls.at(-1) as [
       { activity: { action: string; metadata: { created: number } } },
     ];
 

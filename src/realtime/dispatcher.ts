@@ -12,7 +12,8 @@ const transports: Transport[] = [];
 
 export function registerTransport(transport: Transport): void {
   transports.push(transport);
-  logger.info(
+  // Detail susunan internal, hanya berguna saat menelusuri masalah
+  logger.debug(
     { transport: transport.name },
     "Notification transport registered",
   );

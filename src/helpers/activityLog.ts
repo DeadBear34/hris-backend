@@ -166,7 +166,11 @@ function persistActivity(entry: ActivityLogEntry): void {
 export function recordActivity(input: RecordActivityInput): ActivityLogEntry {
   const entry = buildActivityLog(input);
 
-  const write = entry.status === "failed" ? logger.warn : logger.info;
+  // Catatan lengkapnya sudah masuk tabel activity_logs, jadi terminal tidak
+  // perlu mengulang setiap aksi. Aksi rutin yang berhasil cukup debug, dan
+  // yang ditolak cukup info karena itu perilaku pengguna, bukan kerusakan
+  // server. warn dan error disisakan untuk hal yang perlu ditindaklanjuti
+  const write = entry.status === "failed" ? logger.info : logger.debug;
 
   write.call(logger, { activity: entry }, entry.summary);
 

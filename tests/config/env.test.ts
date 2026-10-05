@@ -24,6 +24,36 @@ describe("envSchema", () => {
     }
   });
 
+  it("REDIS_URL boleh dikosongkan, dan Redis dianggap tidak dipakai", () => {
+    const blank = envSchema.safeParse({ ...validEnv, REDIS_URL: "" });
+
+    expect(blank.success).toBe(true);
+    if (blank.success) expect(blank.data.REDIS_URL).toBeUndefined();
+  });
+
+  it("REDIS_URL menerima redis:// dan rediss://", () => {
+    for (const url of [
+      "redis://127.0.0.1:6379",
+      "rediss://default:rahasia@contoh.upstash.io:6379",
+    ]) {
+      expect(envSchema.safeParse({ ...validEnv, REDIS_URL: url }).success).toBe(
+        true,
+      );
+    }
+  });
+
+  it("REDIS_URL menolak alamat yang bukan Redis", () => {
+    const result = envSchema.safeParse({
+      ...validEnv,
+      REDIS_URL: "http://127.0.0.1:6379",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("redis://");
+    }
+  });
+
   it("menolak PORT di luar rentang yang dikenal jaringan", () => {
     // Persis kejadian di production: 8080 tertulis 80808
     const result = envSchema.safeParse({ ...validEnv, PORT: "80808" });
@@ -82,6 +112,19 @@ describe("envSchema", () => {
   it("menolak LOG_LEVEL di luar pilihan", () => {
     const result = envSchema.safeParse({ ...validEnv, LOG_LEVEL: "verbose" });
     expect(result.success).toBe(false);
+  });
+
+  it("LOG_LEVEL kosong memakai info, seperti isi .env.example", () => {
+    const result = envSchema.safeParse({ ...validEnv, LOG_LEVEL: "" });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.LOG_LEVEL).toBe("info");
+  });
+
+  it("LOG_LEVEL boleh silent untuk mematikan log sepenuhnya", () => {
+    const result = envSchema.safeParse({ ...validEnv, LOG_LEVEL: "silent" });
+
+    expect(result.success).toBe(true);
   });
 
   it("tidak mewajibkan RESEND_API_KEY", () => {

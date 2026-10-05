@@ -3,6 +3,8 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 const mockQuery = jest.fn();
 const recordConfig = jest.fn();
 
+const poolListeners = new Map<string, (err: Error) => void>();
+
 class FakePool {
   query = mockQuery;
   end = jest.fn();
@@ -10,7 +12,18 @@ class FakePool {
   constructor(config: unknown) {
     recordConfig(config);
   }
+
+  on(event: string, listener: (err: Error) => void) {
+    poolListeners.set(event, listener);
+    return this;
+  }
 }
+
+const mockWarn = jest.fn();
+
+jest.unstable_mockModule("../../src/config/logger.js", () => ({
+  logger: { debug: jest.fn(), warn: mockWarn, info: jest.fn(), error: jest.fn() },
+}));
 
 const recordTypeParser = jest.fn();
 
@@ -46,6 +59,24 @@ describe("pool", () => {
   it("hanya membuat satu pool untuk seluruh aplikasi", () => {
     expect(recordConfig).toHaveBeenCalledTimes(1);
     expect(pool).toBeDefined();
+  });
+
+  it("membatasi lama menunggu koneksi dan menjaga koneksi tetap hidup", () => {
+    const [config] = recordConfig.mock.calls[0] as [
+      { connectionTimeoutMillis: number; keepAlive: boolean },
+    ];
+
+    expect(config.connectionTimeoutMillis).toBeGreaterThan(0);
+    expect(config.keepAlive).toBe(true);
+  });
+
+  // Tanpa pendengar, error dari koneksi yang diam membuat proses mati
+  it("memasang pendengar error supaya koneksi yang putus tidak mematikan proses", () => {
+    const listener = poolListeners.get("error");
+
+    expect(listener).toBeDefined();
+    expect(() => listener!(new Error("ECONNRESET"))).not.toThrow();
+    expect(mockWarn).toHaveBeenCalled();
   });
 });
 

@@ -1,3 +1,5 @@
+import { todayInOfficeZone } from "./timezone.js";
+
 export type IsoDate = string;
 
 const SUNDAY = 0;
@@ -51,8 +53,11 @@ export function countWorkdays(
   ).length;
 }
 
-export function daysFromToday(date: IsoDate): number {
-  const today = parseIsoDate(toIsoDate(new Date()));
+// "Hari ini" diambil menurut zona waktu kantor. Tanggal UTC tertinggal sehari
+// antara pukul 00.00 dan 07.00 WIB, sehingga cuti yang mulai kemarin masih
+// dianggap belum lewat dan jarak pemberitahuan cuti terhitung lebih panjang
+export function daysFromToday(date: IsoDate, at: Date = new Date()): number {
+  const today = parseIsoDate(todayInOfficeZone(at));
   const target = parseIsoDate(date);
 
   return Math.round(
@@ -60,6 +65,6 @@ export function daysFromToday(date: IsoDate): number {
   );
 }
 
-export function isPastDate(date: IsoDate): boolean {
-  return daysFromToday(date) < 0;
+export function isPastDate(date: IsoDate, at: Date = new Date()): boolean {
+  return daysFromToday(date, at) < 0;
 }

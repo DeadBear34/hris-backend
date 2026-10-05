@@ -84,7 +84,7 @@ jest.unstable_mockModule("../../src/models/attendanceEvent.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const employeeModel = await import("../../src/models/employee.js");
@@ -1792,7 +1792,7 @@ describe("catatan aktivitas absensi", () => {
 
     expect(res.status).toBe(201);
 
-    const note = lastActivity(logger.info as jest.Mock);
+    const note = lastActivity(logger.debug as jest.Mock);
 
     expect(note.action).toBe("attendance.check_in");
     expect(note.status).toBe("success");
@@ -1809,7 +1809,7 @@ describe("catatan aktivitas absensi", () => {
 
     expect(res.status).toBe(400);
 
-    const note = lastActivity(logger.warn as jest.Mock);
+    const note = lastActivity(logger.info as jest.Mock);
 
     expect(note.action).toBe("attendance.check_in");
     expect(note.status).toBe("failed");
@@ -1833,7 +1833,7 @@ describe("catatan aktivitas absensi", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastActivity(logger.info as jest.Mock);
+    const note = lastActivity(logger.debug as jest.Mock);
 
     expect(note.action).toBe("attendance.check_out");
     expect((note.metadata as { work_minutes: number }).work_minutes).toBe(540);

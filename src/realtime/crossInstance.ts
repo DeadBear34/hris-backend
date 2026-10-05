@@ -54,7 +54,7 @@ async function connectListener(): Promise<void> {
   await client.query(`LISTEN ${CHANNEL}`);
 
   listener = client;
-  logger.info("Cross-instance notification listener ready");
+  logger.debug("Cross-instance notification listener ready");
 }
 
 function scheduleReconnect(): void {

@@ -39,6 +39,14 @@ describe("GET /health", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });
+
+  // Redis tidak dinyalakan saat pengujian, dan server tanpa Redis tetap sehat
+  it("menyertakan status Redis tanpa menganggap server tidak sehat", async () => {
+    const res = await request(app).get("/health");
+
+    expect(res.status).toBe(200);
+    expect(res.body.redis).toBe("disabled");
+  });
 });
 
 describe("penanganan route yang tidak dikenal", () => {

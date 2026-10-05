@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { pool } from "../config/databaseConnection.js";
+import { withTransaction } from "../helpers/transaction.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import * as userModel from "../models/user.js";
@@ -127,7 +127,8 @@ async function verifyTokenValue(
   }
 
   if (!token || reason) {
-    logger.warn({ email, purpose, reason }, "Token verification rejected");
+    // info, bukan warn: kode salah atau kedaluwarsa adalah perilaku pengguna
+    logger.info({ email, purpose, reason }, "Token verification rejected");
     throw BadRequest(failureMessage);
   }
 
@@ -157,7 +158,7 @@ async function findMatchingResetLink(
     if (await verifyPassword(candidate.token_hash, value)) return candidate;
   }
 
-  logger.warn(
+  logger.info(
     {
       email,
       purpose: "password_reset",
@@ -183,12 +184,8 @@ interface RegisterInput {
 
 // Akun dan karyawan harus lahir bersama, jadi keduanya satu transaksi.
 // Kalau salah satu gagal, tidak ada akun tanpa karyawan atau sebaliknya
-async function createAccountWithEmployee(data: RegisterInput, hashed: string) {
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
+function createAccountWithEmployee(data: RegisterInput, hashed: string) {
+  return withTransaction(async (client) => {
     // Diperiksa di dalam transaksi supaya dua pendaftaran dengan nomor sama
     // yang datang bersamaan tidak sama-sama membaca keadaan sebelum keduanya
     const usedPhone = await employeeModel.findByPhone(data.phone, null, client);
@@ -213,15 +210,8 @@ async function createAccountWithEmployee(data: RegisterInput, hashed: string) {
       data.gender,
     );
 
-    await client.query("COMMIT");
-
     return { user, employee };
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 export async function RegisterController(

@@ -8,6 +8,7 @@ import {
   parseIsoDate,
   toIsoDate,
 } from "../../src/helpers/workdays.js";
+import { todayInOfficeZone } from "../../src/helpers/timezone.js";
 
 const MONDAY = "2026-01-05";
 const FRIDAY = "2026-01-09";
@@ -126,11 +127,22 @@ describe("countWorkdays", () => {
 
 describe("daysFromToday dan isPastDate", () => {
   function shiftDays(day: number): string {
-    const date = new Date();
+    const date = parseIsoDate(todayInOfficeZone());
     date.setUTCDate(date.getUTCDate() + day);
 
     return toIsoDate(date);
   }
+
+  // Pukul 05.00 WIB tanggal 10 masih tanggal 9 menurut UTC
+  const DINI_HARI_WIB = new Date("2026-03-09T22:00:00Z");
+
+  it("memakai tanggal kantor, bukan tanggal UTC, pada dini hari", () => {
+    expect(daysFromToday("2026-03-10", DINI_HARI_WIB)).toBe(0);
+  });
+
+  it("cuti yang mulai kemarin menurut WIB sudah lewat pada dini hari", () => {
+    expect(isPastDate("2026-03-09", DINI_HARI_WIB)).toBe(true);
+  });
 
   it("hari ini berjarak nol hari", () => {
     expect(daysFromToday(shiftDays(0))).toBe(0);

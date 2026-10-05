@@ -19,7 +19,13 @@ export const envSchema = z.object({
   // Boleh berisi beberapa asal dipisah koma, misalnya saat frontend
   // dijalankan di beberapa laptop
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  // info cukup untuk sehari-hari: server menyala, request yang gagal, dan
+  // aktivitas yang ditolak. debug menampilkan juga setiap request yang
+  // berhasil dan setiap aktivitas rutin, dipakai hanya saat menelusuri masalah
+  LOG_LEVEL: z.preprocess(
+    blankToUndefined,
+    z.enum(["debug", "info", "warn", "error", "silent"]).default("info"),
+  ),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("24h"),
@@ -70,6 +76,20 @@ export const envSchema = z.object({
   // Wajib diisi bila server berada di balik reverse proxy atau load balancer.
   // Tanpa ini semua klien terlihat ber-IP sama, yaitu IP proxy-nya
   TRUST_PROXY: z.preprocess(blankToUndefined, z.string().optional()),
+
+  // Opsional. Kosong berarti fitur yang memakai Redis dimatikan dan backend
+  // tetap berjalan seperti biasa. rediss:// untuk koneksi terenkripsi, dipakai
+  // layanan terkelola seperti Upstash
+  REDIS_URL: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .regex(
+        /^rediss?:\/\/.+/,
+        "REDIS_URL must start with redis:// or rediss://",
+      )
+      .optional(),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

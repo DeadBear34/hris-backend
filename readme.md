@@ -10,12 +10,15 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Struktur Proyek](#struktur-proyek)
 - [Konvensi Kode](#konvensi-kode)
 - [Instalasi dan Menjalankan](#instalasi-dan-menjalankan)
+- [Deploy ke VM dengan Docker](#deploy-ke-vm-dengan-docker)
 - [Konfigurasi Environment](#konfigurasi-environment)
 - [Pengujian](#pengujian)
 - [Format Respons dan Error](#format-respons-dan-error)
 - [Daftar Endpoint](#daftar-endpoint)
 - [Notifikasi Real-time](#notifikasi-real-time)
 - [Keamanan](#keamanan)
+- [Redis](#redis)
+- [Log Terminal](#log-terminal)
 - [Rate Limit](#rate-limit)
 - [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan)
 - [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan)
@@ -85,7 +88,10 @@ Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model ti
 | Import lokal selalu diakhiri `.js` | Diwajibkan resolusi modul `NodeNext` |
 | Query selalu memakai parameter (`$1`) beserta cast eksplisit (`$1::uuid`) | Mencegah SQL injection dan salah tebak tipe oleh PostgreSQL |
 | Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`) | Field yang tidak diizinkan tidak mungkin ikut tersimpan |
-| Penulisan ke lebih dari satu tabel dibungkus transaksi | Tidak ada data setengah jadi bila salah satu langkah gagal |
+| Penulisan ke lebih dari satu tabel dibungkus `withTransaction` dari `src/helpers/transaction.ts`, bukan `BEGIN`/`COMMIT` manual | Tidak ada data setengah jadi bila salah satu langkah gagal. Koneksi baru diambil setelah validasi selesai, dan koneksi yang gagal di-`ROLLBACK` dibuang dari pool |
+| Pekerjaan lambat (hash password, unggah berkas, kirim email) dikerjakan di luar transaksi | Koneksi database tidak tertahan dan kunci baris tidak dipegang lama |
+| Tanggal "hari ini" selalu menurut `TIMEZONE` kantor (`todayInOfficeZone`), bukan `new Date().toISOString()` | Antara pukul 00.00 dan 07.00 WIB tanggal UTC masih tertinggal sehari |
+| Respons create dan update berbentuk `{ success, message, data }` | Seragam dengan endpoint lain, sehingga frontend bisa langsung menampilkan `message` |
 | Error dilempar lewat `src/helpers/appError.ts` | Satu bentuk respons error untuk seluruh aplikasi |
 | Pengambilan karyawan pemilik request lewat `src/helpers/requestEmployee.ts` | Diambil sekali per request dan dipakai bersama middleware dan controller |
 
@@ -128,6 +134,133 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 
 `npm run lint` belum dapat dipakai karena konfigurasi ESLint belum dibuat. Lihat [Batasan yang Diketahui](#batasan-yang-diketahui).
 
+## Deploy ke VM dengan Docker
+
+Production berjalan di VM sebagai dua container lewat `docker-compose.yml`: `backend` dan `redis`. Database tetap di luar container, yaitu PostgreSQL yang alamatnya diisi di `DATABASE_URL`.
+
+```
+Internet ──HTTPS──▶ Nginx/Caddy di VM ──▶ 127.0.0.1:8080 ──▶ container backend ──▶ container redis
+                                                                  │
+                                                                  └──▶ PostgreSQL (DATABASE_URL)
+```
+
+| Berkas | Isi |
+| ------ | --- |
+| `Dockerfile` | Build tiga tahap: kompilasi TypeScript, dependensi production, lalu image akhir `node:22-bookworm-slim` yang berjalan sebagai user `node` |
+| `.dockerignore` | Menjaga `.env`, `seed.ts`, `tests`, dan `.git` tidak ikut masuk image |
+| `docker-compose.yml` | Backend dan Redis, rotasi log, healthcheck, restart otomatis |
+
+### Pertama kali
+
+Prasyarat di VM: Docker Engine dengan plugin Compose, serta git.
+
+```bash
+git clone https://github.com/DeadBear34/hris-backend.git
+cd hris-backend
+cp .env.example .env.production    # isi nilainya, lihat di bawah
+docker compose up -d --build
+docker compose ps                  # backend dan redis harus "healthy"
+curl http://127.0.0.1:8080/health
+```
+
+Isi `.env.production` sama dengan `.env`, dengan catatan berikut:
+
+| Variabel | Nilai di VM |
+| -------- | ----------- |
+| `NODE_ENV`, `PORT`, `REDIS_URL` | Tidak perlu diisi, sudah ditetapkan `docker-compose.yml` |
+| `TRUST_PROXY` | `1`, karena ada satu reverse proxy di depan backend |
+| `APP_URL` | Alamat frontend tanpa garis miring di akhir, dipakai di tautan email |
+| `CORS_ORIGIN` | Alamat frontend, boleh lebih dari satu dipisah koma |
+| `CRON_SECRET` | String acak minimal 16 karakter, dipakai job penutup hari |
+| `LOG_LEVEL` | `info` |
+
+`.env.production` tidak ikut git (`.env.*` ada di `.gitignore`) dan tidak ikut image (`.dockerignore`). Rahasia hanya ada di VM.
+
+### Reverse proxy
+
+Backend hanya membuka port ke `127.0.0.1`, jadi tidak bisa diakses langsung dari internet. HTTPS dipegang reverse proxy. Contoh Nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.contoh.com;
+    # ssl_certificate dan ssl_certificate_key dari Certbot
+
+    client_max_body_size 10m;   # unggah foto dan lampiran cuti
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Notifikasi real-time memakai WebSocket di /ws
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+Tanpa tiga baris WebSocket itu, API tetap jalan tetapi notifikasi real-time selalu gagal tersambung.
+
+### Job penutup hari
+
+Railway tidak lagi memanggil endpoint ini, jadi jadwalnya dipasang di crontab VM (`crontab -e`). Contoh setiap hari pukul 23.30 WIB:
+
+```cron
+CRON_TZ=Asia/Jakarta
+30 23 * * * curl -fsS -X POST -H "x-cron-secret: ISI_CRON_SECRET" http://127.0.0.1:8080/api/v1/attendances/close-day > /dev/null
+```
+
+### Memperbarui ke versi baru
+
+```bash
+git pull
+docker compose up -d --build    # hanya backend yang dibangun ulang, Redis tetap jalan
+docker image prune -f           # membuang image lama
+```
+
+Saat diganti, container lama menerima SIGTERM dan menutup koneksi dengan rapi. `init: true` dan `CMD ["node", ...]` memastikan sinyal itu benar-benar sampai ke Node.
+
+### CI/CD dengan GitHub Actions
+
+| Workflow | Kapan | Isi |
+| -------- | ----- | --- |
+| `.github/workflows/ci.yml` | Push ke `develop`, setiap pull request | `tsc --noEmit`, `npm test`, build image Docker tanpa dikirim |
+| `.github/workflows/deploy.yml` | Push ke `main`, atau manual dari tab Actions | CI, lalu image dikirim ke `ghcr.io/deadbear34/hris-backend:<sha>`, lalu SSH ke VM menjalankan `scripts/deploy.sh <sha>` |
+
+`scripts/deploy.sh` di VM memperbarui `docker-compose.yml` dari `main`, menarik image dengan tag commit tersebut, menyalakannya, lalu menunggu `/health` hingga 60 detik. Bila tidak sehat, workflow gagal dan 50 baris log terakhir ikut tampil.
+
+Secret di environment `production` (Settings → Environments):
+
+| Secret | Isi |
+| ------ | --- |
+| `VM_HOST` | Alamat IP VM |
+| `VM_USER` | User SSH di VM |
+| `VM_SSH_KEY` | Kunci privat khusus deploy, bukan kunci pribadi |
+| `VM_KNOWN_HOSTS` | Baris kunci publik VM dari `ssh-keygen -F <alamat-vm>` |
+
+Kunci deploy didaftarkan di `~/.ssh/authorized_keys` VM dengan batasan, sehingga hanya bisa menjalankan skrip deploy:
+
+```
+command="bash /home/awanio/hris-backend/scripts/deploy.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA... github-actions-deploy
+```
+
+**Rollback** ke versi sebelumnya, di VM: `bash scripts/deploy.sh <sha-commit-lama>`. Daftar sha ada di tab Actions atau halaman package di GitHub.
+
+### Log dan pemantauan
+
+| Perintah | Kegunaan |
+| -------- | -------- |
+| `docker compose logs -f backend` | Mengikuti log backend |
+| `docker compose logs --since 1h backend` | Log satu jam terakhir |
+| `docker compose ps` | Status dan health tiap container |
+| `docker compose restart backend` | Menyalakan ulang backend saja |
+
+Log berformat JSON, satu baris per kejadian. Docker menyimpannya di disk VM dengan batas 5 berkas × 20 MB per container, dan berkas tertua dibuang otomatis. Riwayat aktivitas pengguna tetap permanen di tabel `activity_logs`.
+
 ## Konfigurasi Environment
 
 | Variabel                    | Wajib | Default                        | Keterangan                                                           |
@@ -135,7 +268,7 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 | `NODE_ENV`                  | tidak | `development`                  | `development`, `test`, atau `production`                             |
 | `PORT`                      | tidak | `8080`                         | Port HTTP sekaligus WebSocket, harus di antara 1 dan 65535           |
 | `CORS_ORIGIN`               | tidak | `http://localhost:5173`        | Origin frontend yang diizinkan, boleh lebih dari satu dipisah koma   |
-| `LOG_LEVEL`                 | tidak | `info`                         | `debug`, `info`, `warn`, atau `error`                                |
+| `LOG_LEVEL`                 | tidak | `info`                         | `debug`, `info`, `warn`, `error`, atau `silent`. Lihat Log Terminal  |
 | `DATABASE_URL`              | ya    | —                              | Connection string PostgreSQL, lihat catatan di bawah                 |
 | `JWT_SECRET`                | ya    | —                              | Kunci penandatangan token, minimal 32 karakter                       |
 | `JWT_EXPIRES_IN`            | tidak | `24h`                          | Masa berlaku access token                                            |
@@ -151,10 +284,13 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 | `CRON_SECRET`               | tidak | —                              | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi   |
 | `RATE_LIMIT_ENABLED`        | tidak | menyala, kecuali saat test     | `true` atau `false`, lihat [Rate Limit](#rate-limit)                 |
 | `TRUST_PROXY`               | tidak | mati                           | Jumlah proxy di depan server, wajib bila memakai reverse proxy       |
+| `REDIS_URL`                 | tidak | —                              | `redis://` atau `rediss://`, kosong berarti Redis tidak dipakai; lihat [Redis](#redis) |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai. Nilai yang tidak valid menghentikan server saat mulai, beserta daftar variabel yang bermasalah.
 
 **Tentang `DATABASE_URL`.** Pakai *Direct connection* atau *Session pooler* (port `5432`) dari dashboard Supabase, **bukan** *Transaction pooler* (port `6543`). Notifikasi antar-instance memakai `LISTEN`, dan perintah itu hanya bekerja pada koneksi yang tetap dipegang satu klien.
+
+Pool menunggu koneksi baru paling lama 10 detik, memakai TCP keep-alive, dan memasang pendengar `error`. Koneksi diam yang diputus database (misalnya `ECONNRESET` dari Supabase) hanya dicatat sebagai peringatan lalu dibuang pool, tidak lagi mematikan proses server.
 
 ## Pengujian
 
@@ -478,6 +614,59 @@ Tidak ada Redis atau layanan tambahan yang diperlukan.
 | Header HTTP | Helmet |
 
 Origin yang tidak dikirim sama sekali tetap diterima, karena hanya peramban yang dapat disuruh menyambung oleh situs lain. `curl`, aplikasi mobile, dan pengujian tidak mengirim `Origin`.
+
+## Redis
+
+Redis bersifat **opsional**. Kalau `REDIS_URL` kosong, backend berjalan seperti biasa dan fitur yang memakai Redis dimatikan. Kalau Redis sempat mati, server tetap melayani permintaan dan menyambung ulang sendiri di latar belakang.
+
+### Menjalankan Redis lokal dengan Docker
+
+```powershell
+docker run -d --name hris-redis `
+  -p 127.0.0.1:6379:6379 `
+  -v hris-redis-data:/data `
+  --restart unless-stopped `
+  redis:7-alpine redis-server --appendonly yes
+```
+
+Lalu isi `.env`:
+
+```
+REDIS_URL=redis://127.0.0.1:6379
+```
+
+- Port sengaja diikat ke `127.0.0.1`. Redis ini tanpa password, jadi jangan dibuka ke jaringan.
+- `--appendonly yes` mencatat setiap perubahan ke disk, dan volume `hris-redis-data` menjaga datanya walau container dibuat ulang.
+- `--restart unless-stopped` menyalakan Redis otomatis setiap kali Docker Desktop dibuka.
+
+Di production, Redis berjalan sebagai container `redis` di `docker-compose.yml`, dalam jaringan internal compose tanpa port yang terbuka. Backend menyambung lewat `redis://redis:6379`. Lihat [Deploy ke VM dengan Docker](#deploy-ke-vm-dengan-docker).
+
+### Memeriksa koneksinya
+
+`GET /health` menyertakan status Redis tanpa memengaruhi status HTTP-nya, supaya pemeriksa kesehatan Railway tidak menganggap server rusak hanya karena Redis mati:
+
+```json
+{ "success": true, "message": "Server running", "redis": "ready" }
+```
+
+| `redis` | Arti |
+| ------- | ---- |
+| `disabled` | `REDIS_URL` kosong |
+| `connecting` | Sedang menyambung saat server baru menyala |
+| `ready` | Tersambung dan siap dipakai |
+| `unavailable` | Terputus, sedang dicoba ulang di latar belakang |
+
+### Cara kerja koneksinya
+
+Koneksi disiapkan di [src/config/redis.ts](src/config/redis.ts) saat server menyala, tetapi **tidak ditunggu**, berbeda dengan database yang wajib tersambung sebelum server menerima permintaan.
+
+| Pengaturan | Alasan |
+| ---------- | ------ |
+| `maxRetriesPerRequest: 1`, `enableOfflineQueue: false` | Perintah gagal cepat alih-alih menunggu Redis kembali atau menumpuk di memori. Pemanggil memakai jalur cadangannya |
+| `retryStrategy` | Menyambung ulang terus dengan jeda 0,5 detik yang makin panjang hingga paling lama 10 detik |
+| Pendengar `error` | Tanpanya, putusnya Redis dianggap galat tak tertangani. Peringatan hanya dicatat sekali per putusnya koneksi |
+
+Kode lain mengambil klien lewat `getRedis()`, yang hanya mengembalikan klien bila statusnya benar-benar siap. `null` berarti pemanggil harus memakai jalur cadangannya.
 
 ## Rate Limit
 
@@ -867,6 +1056,39 @@ Absensi punya dua jejak yang saling melengkapi: `activity_logs` mencatat tindaka
 Penulisan log tidak pernah ditunggu. Kegagalan mencatat hanya menghasilkan peringatan di log aplikasi dan tidak membatalkan tindakan yang sudah berhasil.
 
 **Catatan volume.** `notification.read` ikut tercatat karena aturannya mencakup semua endpoint non-`GET`, padahal aksi inilah yang paling sering terjadi. Kalau tabelnya tumbuh terlalu cepat, pilihannya mengecualikan aksi ini atau menambah pembersihan berkala seperti yang sudah ada untuk notifikasi.
+
+## Log Terminal
+
+Log dibagi tiga, masing-masing punya tempatnya sendiri:
+
+| Jenis | Isi | Tempat |
+| ----- | --- | ------ |
+| Log aktivitas | Siapa melakukan apa | Tabel `activity_logs`, dibaca lewat `GET /activity-logs` |
+| Log aplikasi | Server menyala, peringatan, error beserta stack | stdout |
+| Log request | `GET /api/v1/employees 200 12ms`, satu baris per request | stdout |
+
+Aplikasi hanya menulis ke stdout. Di VM, Docker menangkap stdout container dan menyimpannya dengan rotasi otomatis, dibaca lewat `docker compose logs`. Lihat [Deploy ke VM dengan Docker](#deploy-ke-vm-dengan-docker). Di production log berbentuk JSON utuh, di development tampil satu baris berwarna:
+
+```
+[2026-10-04 23:39:45] [INFO]    Server running at http://localhost:8080
+[2026-10-04 23:39:45] [WARNING] Redis unavailable, retrying in the background {"reason":"connect ECONNREFUSED 127.0.0.1:6379"}
+[2026-10-04 23:39:55] [INFO]    POST /api/v1/auth/login 401 349ms
+```
+
+Hanya labelnya yang berwarna: `[DEBUG]` biru, `[INFO]` hijau, `[WARNING]` kuning, `[ERROR]` merah. Waktu memakai zona `TIMEZONE`. Warna mati sendiri bila keluaran dialihkan ke berkas atau `NO_COLOR` diisi.
+
+### Tingkat yang dipakai
+
+| Tingkat | Dipakai untuk |
+| ------- | ------------- |
+| `debug` | Aktivitas yang berhasil, request sukses di development, detail startup internal |
+| `info` | Server menyala, aktivitas yang ditolak (login gagal, kode salah), request 4xx, request lambat (≥ 1 detik), semua request di production |
+| `warn` | Hal yang perlu dilihat: Redis atau koneksi database putus, gagal menghapus berkas, request 5xx |
+| `error` | Kerusakan server beserta stack |
+
+`LOG_LEVEL=info` (bawaan) membuat terminal hanya berisi startup, request yang gagal, dan peringatan. Pakai `LOG_LEVEL=debug` saat menelusuri masalah. Selama `npm test` log selalu senyap apa pun isi `LOG_LEVEL`.
+
+Yang sengaja tidak dicatat: `/health` (dipanggil terus oleh healthcheck Docker) dan query string request, karena tautan verifikasi dan reset password membawa token di sana.
 
 ## Jejak Kejadian Absensi
 

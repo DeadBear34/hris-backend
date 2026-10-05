@@ -51,3 +51,12 @@ services:
 
 volumes:
   redis-data:
+
+# MTU jaringan container harus sama dengan MTU kartu jaringan VM (1400).
+# Bawaan Docker itu 1500 jadinya paket besar saat handshake TLS ke Supabase
+# dibuang di jalan dan koneksi database menggantung sampai timeout.
+# Periksa nilai VM dengan pake: ip link show enp1s0 | grep mtu
+networks:
+  default:
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"

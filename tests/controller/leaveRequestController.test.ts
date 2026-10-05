@@ -92,7 +92,7 @@ jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const userModel = await import("../../src/models/user.js");
@@ -741,6 +741,17 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
 
     expect(res.status).toBe(404);
   });
+
+  // Koneksi pool baru diambil saat transaksi dimulai, jadi permintaan yang
+  // gugur di validasi tidak menahan koneksi dan tidak mengirim ROLLBACK kosong
+  it("tidak membuka transaksi bila pengajuan tidak ditemukan", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(null as never);
+
+    await approve(adminToken);
+
+    expect(mockClient.query).not.toHaveBeenCalled();
+    expect(mockClient.release).not.toHaveBeenCalled();
+  });
 });
 
 describe("kewajiban lampiran saat persetujuan", () => {
@@ -1065,7 +1076,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     it("mencatat jumlah lampiran yang dihapus di log aktivitas", async () => {
       await cancelLeave();
 
-      const entries = (logger.info as jest.Mock).mock.calls
+      const entries = (logger.debug as jest.Mock).mock.calls
         .map(([payload]) => (payload as { activity?: ActivityEntry }).activity)
         .filter(
           (entry): entry is ActivityEntry => entry?.action === "leave.cancel",
@@ -1423,7 +1434,7 @@ describe("catatan aktivitas cuti", () => {
 
     expect(res.status).toBe(201);
 
-    const note = lastActivity(logger.info as jest.Mock);
+    const note = lastActivity(logger.debug as jest.Mock);
 
     expect(note.action).toBe("leave.create");
     expect(note.entity_id).toBe(REQUEST_ID);
@@ -1446,7 +1457,7 @@ describe("catatan aktivitas cuti", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastActivity(logger.info as jest.Mock);
+    const note = lastActivity(logger.debug as jest.Mock);
 
     expect(note.action).toBe("leave.cancel");
     expect((note.metadata as { previous_status: string }).previous_status).toBe(

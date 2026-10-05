@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { pool } from "../config/databaseConnection.js";
+import { withTransaction } from "../helpers/transaction.js";
 import * as featureModel from "../models/feature.js";
 import * as positionModel from "../models/position.js";
 import type { Feature, FeatureCategory } from "../models/feature.js";
@@ -90,8 +90,6 @@ export async function ReplacePositionFeatureController(
   res: Response,
   next: NextFunction,
 ) {
-  const client = await pool.connect();
-
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
@@ -117,32 +115,32 @@ export async function ReplacePositionFeatureController(
       });
     }
 
-    await client.query("BEGIN");
-
-    // Pengaturan fitur dianggap bagian dari data jabatan, jadi dua admin yang
-    // mengubah centang jabatan yang sama saling terdeteksi lewat updated_at-nya
-    const touched = await positionModel.touchPosition(
-      client,
-      id,
-      expectedUpdatedAt,
-    );
-
-    if (!touched) {
-      throw await rejectStaleUpdate(
-        "position",
-        () => positionModel.findById(id),
-        "Position not found",
+    const touched = await withTransaction(async (client) => {
+      // Pengaturan fitur dianggap bagian dari data jabatan, jadi dua admin yang
+      // mengubah centang jabatan yang sama saling terdeteksi lewat updated_at-nya
+      const row = await positionModel.touchPosition(
+        client,
+        id,
+        expectedUpdatedAt,
       );
-    }
 
-    await featureModel.replacePositionFeatures(
-      client,
-      id,
-      recognizedCodes.map((f) => f.id),
-      req.user?.id ?? null,
-    );
+      if (!row) {
+        throw await rejectStaleUpdate(
+          "position",
+          () => positionModel.findById(id),
+          "Position not found",
+        );
+      }
 
-    await client.query("COMMIT");
+      await featureModel.replacePositionFeatures(
+        client,
+        id,
+        recognizedCodes.map((f) => f.id),
+        req.user?.id ?? null,
+      );
+
+      return row;
+    });
 
     invalidateFeatureCache(id);
 
@@ -165,10 +163,7 @@ export async function ReplacePositionFeatureController(
       },
     });
   } catch (err) {
-    await client.query("ROLLBACK");
     next(err);
-  } finally {
-    client.release();
   }
 }
 

@@ -60,7 +60,11 @@ export async function CreateDepartmentController(
       summary: `Department ${department.name} created`,
     });
 
-    res.status(201).json({ success: true, data: department });
+    res.status(201).json({
+      success: true,
+      message: "Department created successfully",
+      data: department,
+    });
   } catch (err) {
     next(err);
   }
@@ -125,7 +129,11 @@ export async function UpdateDepartmentController(
       metadata: { fields: Object.keys(data) },
     });
 
-    res.json({ success: true, data: department });
+    res.json({
+      success: true,
+      message: "Department updated successfully",
+      data: department,
+    });
   } catch (err) {
     next(err);
   }

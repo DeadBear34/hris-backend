@@ -35,6 +35,17 @@ jest.unstable_mockModule("../src/config/databaseConnection.js", () => ({
 
 // Pendengar antar-instance membuka koneksi database sendiri, jadi dimatikan
 // di sini supaya pengujian tidak menyentuh database sungguhan
+// Redis ditiru supaya pengujian tidak mencoba menyambung ke Redis sungguhan
+const mockStartRedis = jest.fn();
+const mockCloseRedis = jest.fn(() => Promise.resolve());
+
+jest.unstable_mockModule("../src/config/redis.js", () => ({
+  startRedis: mockStartRedis,
+  closeRedis: mockCloseRedis,
+  redisState: () => "disabled",
+  getRedis: () => null,
+}));
+
 jest.unstable_mockModule("../src/realtime/crossInstance.js", () => ({
   startCrossInstance: jest.fn(() => Promise.resolve()),
   stopCrossInstance: jest.fn(() => Promise.resolve()),
@@ -43,7 +54,7 @@ jest.unstable_mockModule("../src/realtime/crossInstance.js", () => ({
 }));
 
 jest.unstable_mockModule("../src/config/logger.js", () => ({
-  logger: { info: mockLoggerInfo, error: mockLoggerError, warn: jest.fn() },
+  logger: { debug: jest.fn(), info: mockLoggerInfo, error: mockLoggerError, warn: jest.fn() },
 }));
 
 const { env } = await import("../src/config/env.js");
@@ -165,6 +176,24 @@ describe("server berhasil dijalankan", () => {
     expect(exitCodes).toEqual([0]);
   });
 
+  it("menyiapkan koneksi Redis dari REDIS_URL saat server menyala", async () => {
+    const { env } = await import("../src/config/env.js");
+
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
+
+    expect(mockStartRedis).toHaveBeenCalledWith(env.REDIS_URL);
+  });
+
+  it("menutup koneksi Redis saat server dimatikan", async () => {
+    await bootServer();
+    await waitFor(() => mockListen.mock.calls.length > 0);
+
+    (process.listeners("SIGTERM").at(-1) as () => void)();
+
+    expect(mockCloseRedis).toHaveBeenCalled();
+  });
+
   it("sinyal kedua tidak menutup ulang server yang sedang berhenti", async () => {
     await bootServer();
     await waitFor(() => mockListen.mock.calls.length > 0);
@@ -214,6 +243,13 @@ describe("server gagal terhubung ke database", () => {
     await waitFor(() => exitCodes.length > 0);
 
     expect(exitCodes).toContain(1);
+  });
+
+  it("tidak menyambung ke Redis bila database saja gagal", async () => {
+    await bootServer();
+    await waitFor(() => exitCodes.length > 0);
+
+    expect(mockStartRedis).not.toHaveBeenCalled();
   });
 
   it("mencatat penyebab kegagalan", async () => {

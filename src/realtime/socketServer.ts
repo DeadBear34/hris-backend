@@ -172,7 +172,7 @@ export function attachSocketServer(server: Server): WebSocketServer {
   heartbeat.unref();
   wss.on("close", () => clearInterval(heartbeat));
 
-  logger.info("WebSocket ready at /ws");
+  logger.debug("WebSocket ready at /ws");
 
   return wss;
 }

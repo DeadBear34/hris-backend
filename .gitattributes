@@ -1,0 +1,3 @@
+# Skrip shell dijalankan di VM Linux. Akhir baris CRLF dari Windows membuat
+# bash gagal dengan pesan "$'\r': command not found"
+*.sh text eol=lf

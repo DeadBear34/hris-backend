@@ -10,7 +10,7 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.unstable_mockModule("../../src/models/notification.js", () => ({
@@ -256,7 +256,7 @@ describe("catatan aktivitas notifikasi", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastActivity(logger.info as jest.Mock);
+    const note = lastActivity(logger.debug as jest.Mock);
 
     expect(note.action).toBe("notification.read");
     expect(note.entity_id).toBe(NOTIF_ID);
@@ -271,7 +271,7 @@ describe("catatan aktivitas notifikasi", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastActivity(logger.info as jest.Mock);
+    const note = lastActivity(logger.debug as jest.Mock);
 
     expect(note.action).toBe("notification.read_all");
     expect((note.metadata as { updated: number }).updated).toBe(3);

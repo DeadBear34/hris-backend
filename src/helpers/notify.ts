@@ -141,8 +141,9 @@ export interface AccountRegisteredInput {
   email: string;
 }
 
-// Dikirim ke semua yang boleh menyetujui pendaftaran. Indeks unik menjaga
-// satu penerima hanya mendapat satu notifikasi per akun
+// Dikirim ke semua yang boleh menyetujui pendaftaran, setelah pendaftar
+// memasukkan kode verifikasi emailnya. Indeks unik menjaga satu penerima
+// hanya mendapat satu notifikasi per akun
 export async function notifyAccountNeedsApproval(
   input: AccountRegisteredInput,
 ): Promise<void> {
@@ -156,7 +157,7 @@ export async function notifyAccountNeedsApproval(
         recipient_user_id,
         type: "account_approval_needed" as const,
         title: "New account waiting for approval",
-        message: `${input.full_name} (${input.email}) registered and is waiting for approval`,
+        message: `${input.full_name} (${input.email}) has verified their email and is waiting for approval`,
         link: "/approval",
         entity: "user",
         entity_id: input.user_id,

@@ -22,6 +22,7 @@ import {
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { withTransaction } from "../helpers/transaction.js";
 import {
   notifyLeaveSubmitted,
   notifyLeaveDecided,
@@ -350,12 +351,7 @@ export async function CreateLeaveRequestController(
       );
     }
 
-    const client = await pool.connect();
-    let request: LeaveRequest;
-
-    try {
-      await client.query("BEGIN");
-
+    const request = await withTransaction(async (client) => {
       // Kunci dulu, baru baca saldo. Tanpa ini dua pengajuan bersamaan
       // sama-sama membaca saldo lama dan keduanya lolos
       await balanceModel.lockEmployeeBalance(client, requester.employee.id);
@@ -367,7 +363,7 @@ export async function CreateLeaveRequestController(
         client,
       );
 
-      request = await leaveRequestModel.createRequest(client, {
+      const created = await leaveRequestModel.createRequest(client, {
         employee_id: requester.employee.id,
         leave_type_id,
         start_date,
@@ -384,19 +380,14 @@ export async function CreateLeaveRequestController(
           period_year: period,
           amount: -totalDays,
           type: "hold",
-          leave_request_id: request.id,
+          leave_request_id: created.id,
           note: "Balance hold for leave request",
           created_by: requester.employee.id,
         });
       }
 
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+      return created;
+    });
 
     // setelah COMMIT, supaya atasan tidak diberi tahu pengajuan yang batal
     await notifyLeaveSubmitted({
@@ -473,8 +464,6 @@ export async function ApproveLeaveRequestController(
   res: Response,
   next: NextFunction,
 ) {
-  const client = await pool.connect();
-
   try {
     const activity = startActivity(req);
     const requester = await getRequester(req, res);
@@ -507,26 +496,26 @@ export async function ApproveLeaveRequestController(
       }
     }
 
-    await client.query("BEGIN");
+    const request = await withTransaction(async (client) => {
+      const approved = await leaveRequestModel.approveRequest(
+        client,
+        id,
+        requester.employee.id,
+        decision_note ?? null,
+      );
 
-    const request = await leaveRequestModel.approveRequest(
-      client,
-      id,
-      requester.employee.id,
-      decision_note ?? null,
-    );
+      if (!approved) {
+        throw Conflict("The request status has changed, please reload");
+      }
 
-    if (!request) {
-      throw Conflict("The request status has changed, please reload");
-    }
+      if (leaveType.deducts_balance) {
+        await balanceModel.convertHoldToDeduction(client, id);
+      }
 
-    if (leaveType.deducts_balance) {
-      await balanceModel.convertHoldToDeduction(client, id);
-    }
+      await markLeaveDays(client, approved);
 
-    await markLeaveDays(client, request);
-
-    await client.query("COMMIT");
+      return approved;
+    });
 
     activity.success({
       action: "leave.approve",
@@ -555,10 +544,7 @@ export async function ApproveLeaveRequestController(
       data: request,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
     next(err);
-  } finally {
-    client.release();
   }
 }
 
@@ -567,8 +553,6 @@ export async function RejectLeaveRequestController(
   res: Response,
   next: NextFunction,
 ) {
-  const client = await pool.connect();
-
   try {
     const activity = startActivity(req);
     const requester = await getRequester(req, res);
@@ -590,33 +574,33 @@ export async function RejectLeaveRequestController(
 
     const leaveType = await leaveTypeModel.findById(existing.leave_type_id);
 
-    await client.query("BEGIN");
+    const request = await withTransaction(async (client) => {
+      const rejected = await leaveRequestModel.rejectRequest(
+        client,
+        id,
+        requester.employee.id,
+        decision_note ?? null,
+      );
 
-    const request = await leaveRequestModel.rejectRequest(
-      client,
-      id,
-      requester.employee.id,
-      decision_note ?? null,
-    );
+      if (!rejected) {
+        throw Conflict("The request status has changed, please reload");
+      }
 
-    if (!request) {
-      throw Conflict("The request status has changed, please reload");
-    }
+      if (leaveType?.deducts_balance) {
+        await balanceModel.createTransaction(client, {
+          employee_id: existing.employee_id,
+          leave_type_id: existing.leave_type_id,
+          period_year: periodYearOf(existing.start_date),
+          amount: existing.total_days,
+          type: "refund",
+          leave_request_id: id,
+          note: "Balance refund because the request was rejected",
+          created_by: requester.employee.id,
+        });
+      }
 
-    if (leaveType?.deducts_balance) {
-      await balanceModel.createTransaction(client, {
-        employee_id: existing.employee_id,
-        leave_type_id: existing.leave_type_id,
-        period_year: periodYearOf(existing.start_date),
-        amount: existing.total_days,
-        type: "refund",
-        leave_request_id: id,
-        note: "Balance refund because the request was rejected",
-        created_by: requester.employee.id,
-      });
-    }
-
-    await client.query("COMMIT");
+      return rejected;
+    });
 
     activity.success({
       action: "leave.reject",
@@ -643,10 +627,7 @@ export async function RejectLeaveRequestController(
       data: request,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
     next(err);
-  } finally {
-    client.release();
   }
 }
 
@@ -655,10 +636,8 @@ export async function CancelLeaveRequestController(
   res: Response,
   next: NextFunction,
 ) {
-  const activity = startActivity(req);
-  const client = await pool.connect();
-
   try {
+    const activity = startActivity(req);
     const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
 
@@ -683,44 +662,46 @@ export async function CancelLeaveRequestController(
 
     const leaveType = await leaveTypeModel.findById(existing.leave_type_id);
 
-    await client.query("BEGIN");
+    const { request, discardedPaths } = await withTransaction(
+      async (client) => {
+        // Status yang sudah diperiksa di atas ikut jadi syarat. Kalau pengajuan
+        // disetujui di tengah jalan, pembatalan gagal alih-alih memakai status lama
+        const cancelled = await leaveRequestModel.cancelRequest(
+          client,
+          id,
+          requester.employee.id,
+          existing.status,
+        );
 
-    // Status yang sudah diperiksa di atas ikut jadi syarat. Kalau pengajuan
-    // disetujui di tengah jalan, pembatalan gagal alih-alih memakai status lama
-    const request = await leaveRequestModel.cancelRequest(
-      client,
-      id,
-      requester.employee.id,
-      existing.status,
+        if (!cancelled) {
+          throw Conflict("The request status has changed, please reload");
+        }
+
+        if (leaveType?.deducts_balance) {
+          await balanceModel.createTransaction(client, {
+            employee_id: existing.employee_id,
+            leave_type_id: existing.leave_type_id,
+            period_year: periodYearOf(existing.start_date),
+            amount: existing.total_days,
+            type: "refund",
+            leave_request_id: id,
+            note: "Balance refund because the request was cancelled",
+            created_by: requester.employee.id,
+          });
+        }
+
+        if (existing.status === "approved") {
+          await attendanceModel.deleteLeaveDays(client, id);
+        }
+
+        // Lampiran tidak diperlukan lagi setelah pengajuan batal, dan isinya
+        // sering berupa surat dokter. Barisnya dihapus di dalam transaksi,
+        // berkasnya menyusul setelah COMMIT
+        const paths = await attachmentModel.deleteByRequest(id, client);
+
+        return { request: cancelled, discardedPaths: paths };
+      },
     );
-
-    if (!request) {
-      throw Conflict("The request status has changed, please reload");
-    }
-
-    if (leaveType?.deducts_balance) {
-      await balanceModel.createTransaction(client, {
-        employee_id: existing.employee_id,
-        leave_type_id: existing.leave_type_id,
-        period_year: periodYearOf(existing.start_date),
-        amount: existing.total_days,
-        type: "refund",
-        leave_request_id: id,
-        note: "Balance refund because the request was cancelled",
-        created_by: requester.employee.id,
-      });
-    }
-
-    if (existing.status === "approved") {
-      await attendanceModel.deleteLeaveDays(client, id);
-    }
-
-    // Lampiran tidak diperlukan lagi setelah pengajuan batal, dan isinya
-    // sering berupa surat dokter. Barisnya dihapus di dalam transaksi,
-    // berkasnya menyusul setelah COMMIT
-    const discardedPaths = await attachmentModel.deleteByRequest(id, client);
-
-    await client.query("COMMIT");
 
     // Storage bukan bagian dari transaksi. Menghapus berkas sebelum COMMIT
     // berarti kehilangan berkas selamanya bila transaksinya dibatalkan,
@@ -753,9 +734,6 @@ export async function CancelLeaveRequestController(
       data: request,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
     next(err);
-  } finally {
-    client.release();
   }
 }

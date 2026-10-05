@@ -3,6 +3,7 @@ import { pool } from "../config/databaseConnection.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { withTransaction } from "../helpers/transaction.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as eventModel from "../models/attendanceEvent.js";
@@ -874,18 +875,10 @@ async function storeMarkers(
 
   for (let i = 0; i < markers.length; i += BATCH_SIZE) {
     const chunk = markers.slice(i, i + BATCH_SIZE);
-    const client = await pool.connect();
 
-    try {
-      await client.query("BEGIN");
-      stored += await attendanceModel.insertMarkers(client, date, chunk);
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    stored += await withTransaction((client) =>
+      attendanceModel.insertMarkers(client, date, chunk),
+    );
   }
 
   return stored;

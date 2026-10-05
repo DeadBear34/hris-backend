@@ -14,7 +14,7 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
@@ -154,7 +154,7 @@ describe("catatan aktivitas login", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.login");
     expect(note.status).toBe("success");
@@ -173,7 +173,7 @@ describe("catatan aktivitas login", () => {
 
     expect(res.status).toBe(401);
 
-    const note = lastLogEntry(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.login");
     expect(note.status).toBe("failed");
@@ -192,7 +192,7 @@ describe("catatan aktivitas login", () => {
     expect(res.status).toBe(401);
     expect(res.body.message).toBe("Incorrect email or password");
 
-    const note = lastLogEntry(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect((note.metadata as { reason: string }).reason).toBe("wrong_password");
     expect(note.actor_user_id).toBe(USER_ID);
@@ -209,7 +209,7 @@ describe("catatan aktivitas login", () => {
 
     expect(res.status).toBe(401);
     expect(
-      (lastLogEntry(logger.warn as jest.Mock).metadata as { reason: string })
+      (lastLogEntry(logger.info as jest.Mock).metadata as { reason: string })
         .reason,
     ).toBe(reason);
   });
@@ -219,8 +219,8 @@ describe("catatan aktivitas login", () => {
     await login("passwordsalah");
 
     const everything = JSON.stringify([
+      ...(logger.debug as jest.Mock).mock.calls,
       ...(logger.info as jest.Mock).mock.calls,
-      ...(logger.warn as jest.Mock).mock.calls,
     ]);
 
     expect(everything).not.toContain("passwordsalah");
@@ -262,7 +262,7 @@ describe("catatan aktivitas register", () => {
 
     expect(res.status).toBe(201);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.register");
     expect(note.status).toBe("success");
@@ -281,7 +281,7 @@ describe("catatan aktivitas register", () => {
 
     expect(res.status).toBe(409);
 
-    const note = lastLogEntry(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.register");
     expect(note.status).toBe("failed");
@@ -301,7 +301,7 @@ describe("catatan aktivitas register", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.register");
     expect((note.metadata as { resent: boolean }).resent).toBe(true);
@@ -354,7 +354,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.verify_email");
     expect(note.status).toBe("success");
@@ -370,7 +370,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
 
     expect(res.status).toBe(400);
 
-    const note = lastLogEntry(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.verify_email");
     expect(note.status).toBe("failed");
@@ -388,7 +388,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
 
     expect(res.status).toBe(429);
 
-    const note = lastLogEntry(logger.warn as jest.Mock);
+    const note = lastLogEntry(logger.info as jest.Mock);
 
     expect(note.action).toBe("auth.resend_verification");
     expect((note.metadata as { reason: string }).reason).toBe("cooldown");
@@ -403,7 +403,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.forgot_password");
     expect((note.metadata as { sent: boolean }).sent).toBe(false);
@@ -428,7 +428,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.reset_password");
     expect(note.entity_id).toBe(USER_ID);
@@ -457,7 +457,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
       });
 
     expect(ditolak.status).toBe(401);
-    expect(lastLogEntry(logger.warn as jest.Mock).action).toBe(
+    expect(lastLogEntry(logger.info as jest.Mock).action).toBe(
       "auth.change_password",
     );
 
@@ -471,7 +471,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
 
     expect(res.status).toBe(200);
 
-    const note = lastLogEntry(logger.info as jest.Mock);
+    const note = lastLogEntry(logger.debug as jest.Mock);
 
     expect(note.action).toBe("auth.change_password");
     expect(note.actor_user_id).toBe(USER_ID);

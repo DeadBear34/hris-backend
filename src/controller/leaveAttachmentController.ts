@@ -5,7 +5,6 @@ import type { LeaveRequest } from "../models/leaveRequest.js";
 import { detectImageMimeType, MAX_FILE_SIZE } from "../helpers/fileType.js";
 import { hasFeature } from "../middlewares/feature.js";
 import {
-  buildStoragePath,
   checksumOf,
   createSignedUrl,
   isStorageConfigured,
@@ -73,9 +72,13 @@ export async function UploadLeaveAttachmentController(
       throw BadRequest("Attachment must be a valid JPEG, PNG, or WebP image");
     }
 
-    const storagePath = buildStoragePath(request.id, mime);
-
-    await uploadAttachment(storagePath, uploadedFile.buffer, mime);
+    // Jalur ditentukan saat mengunggah, karena bisa mendapat akhiran _2 bila
+    // sudah ada berkas bernama sama pada detik yang sama
+    const storagePath = await uploadAttachment(
+      uploadedFile.originalname,
+      uploadedFile.buffer,
+      mime,
+    );
 
     const attachment = await attachmentModel.createAttachment({
       leave_request_id: request.id,

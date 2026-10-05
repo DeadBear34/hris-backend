@@ -70,7 +70,18 @@ jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
 const mockLoggerWarn = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: mockLoggerWarn, error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: mockLoggerWarn, error: jest.fn() },
+}));
+
+// Ditiru supaya bisa dipastikan kapan penyetuju diberi tahu
+const mockNotifyAccount = jest.fn(() => Promise.resolve());
+
+jest.unstable_mockModule("../../src/helpers/notify.js", () => ({
+  notifyAccountNeedsApproval: mockNotifyAccount,
+  clearAccountApproval: jest.fn(),
+  clearLeaveApproval: jest.fn(),
+  notifyLeaveSubmitted: jest.fn(() => Promise.resolve()),
+  notifyLeaveDecided: jest.fn(() => Promise.resolve()),
 }));
 
 const userModel = await import("../../src/models/user.js");
@@ -851,6 +862,125 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
   });
 });
 
+// Saran QA: notifikasi persetujuan akun muncul sebelum pendaftar memasukkan
+// kode verifikasi, padahal akunnya belum ada di daftar persetujuan admin
+describe("notifikasi persetujuan akun menunggu verifikasi email", () => {
+  it("tidak memberi tahu penyetuju saat pendaftaran", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    (userModel.insertUser as jest.Mock).mockResolvedValue(fakeUser as never);
+    (employeeModel.insertEmployee as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/register")
+      .send(registerBody);
+
+    expect(res.status).toBe(201);
+    expect(mockNotifyAccount).not.toHaveBeenCalled();
+  });
+
+  it("memberi tahu penyetuju begitu email terverifikasi", async () => {
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
+      fakeToken() as never,
+    );
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
+    (userModel.setEmailVerified as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      email_verified_at: new Date(),
+      approved_at: null,
+    } as never);
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+
+    const res = await request(app)
+      .post("/api/v1/auth/verify-email")
+      .send({ email: EMAIL, code: CODE });
+
+    expect(res.status).toBe(200);
+    expect(mockNotifyAccount).toHaveBeenCalledWith({
+      user_id: USER_ID,
+      full_name: fakeEmployee.full_name,
+      email: EMAIL,
+    });
+  });
+
+  it("tidak memberi tahu dua kali bila verifikasi berjalan bersamaan", async () => {
+    // setEmailVerified hanya berhasil sekali; permintaan kedua mendapat null
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
+      fakeToken() as never,
+    );
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
+    (userModel.setEmailVerified as jest.Mock).mockResolvedValue(null as never);
+
+    await request(app)
+      .post("/api/v1/auth/verify-email")
+      .send({ email: EMAIL, code: CODE });
+
+    expect(mockNotifyAccount).not.toHaveBeenCalled();
+  });
+
+  it("tidak memberi tahu untuk email yang sudah terverifikasi sebelumnya", async () => {
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
+      fakeToken() as never,
+    );
+    (userModel.findByEmail as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      email_verified_at: new Date(),
+    } as never);
+
+    await request(app)
+      .post("/api/v1/auth/verify-email")
+      .send({ email: EMAIL, code: CODE });
+
+    expect(userModel.setEmailVerified).not.toHaveBeenCalled();
+    expect(mockNotifyAccount).not.toHaveBeenCalled();
+  });
+
+  it("tidak memberi tahu bila akunnya sudah disetujui", async () => {
+    (tokenModel.findLatest as jest.Mock).mockResolvedValue(
+      fakeToken() as never,
+    );
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(fakeUser as never);
+    (userModel.setEmailVerified as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      email_verified_at: new Date(),
+      approved_at: new Date(),
+    } as never);
+
+    await request(app)
+      .post("/api/v1/auth/verify-email")
+      .send({ email: EMAIL, code: CODE });
+
+    expect(mockNotifyAccount).not.toHaveBeenCalled();
+  });
+
+  it("menolak persetujuan untuk akun yang emailnya belum terverifikasi", async () => {
+    const { createToken: signJwt } = await import("../../src/helpers/jwt.js");
+    const adminToken = signJwt({
+      id: "77777777-7777-4777-8777-777777777777",
+      email: "admin@awan.io",
+      role: "admin",
+    });
+
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+    (userModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeUser,
+      email_verified_at: null,
+      approved_at: null,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${USER_ID}/approve`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("email has been verified");
+    expect(userModel.approveUser).not.toHaveBeenCalled();
+  });
+});
+
 describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
   const ADMIN_ID = "77777777-7777-4777-8777-777777777777";
 
@@ -865,6 +995,7 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
+      email_verified_at: new Date(),
       approved_at: null,
     } as never);
     (userModel.approveUser as jest.Mock).mockResolvedValue({
@@ -899,6 +1030,7 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
+      email_verified_at: new Date(),
       approved_at: null,
     } as never);
     (userModel.approveUser as jest.Mock).mockResolvedValue({

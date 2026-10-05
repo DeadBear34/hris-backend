@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { pool } from "../config/databaseConnection.js";
+import { withTransaction } from "../helpers/transaction.js";
 import * as employeeModel from "../models/employee.js";
 import * as userModel from "../models/user.js";
 import * as departmentModel from "../models/department.js";
@@ -545,8 +545,6 @@ export async function CreateEmployeeController(
   res: Response,
   next: NextFunction,
 ) {
-  const client = await pool.connect();
-
   // Disimpan di luar try supaya blok catch bisa memakainya juga
   let logOccurredAt: Date | null = null;
   let logContext: RequestContext | null = null;
@@ -582,11 +580,14 @@ export async function CreateEmployeeController(
       rejectFailedRows(failed, rawRows, isMany, context, occurredAt);
     }
 
+    // Hash dibuat sebelum transaksi dimulai. Argon2 sengaja lambat, jadi
+    // koneksi database tidak ikut ditahan selama puluhan password dihitung
     const hashed = await hashPasswords(rows);
+    const createdBy = req.user.id;
 
-    await client.query("BEGIN");
-    const created = await insertWithAccounts(client, rows, hashed, req.user.id);
-    await client.query("COMMIT");
+    const created = await withTransaction((client) =>
+      insertWithAccounts(client, rows, hashed, createdBy),
+    );
 
     const message = isMany
       ? `${created.length} employees added successfully. Share each employee's initial password and ask them to change it on first login.`
@@ -626,8 +627,6 @@ export async function CreateEmployeeController(
       ...(isMany ? { meta: { created: created.length } } : {}),
     });
   } catch (err) {
-    await client.query("ROLLBACK");
-
     // AppError sudah punya catatannya sendiri di atas. Yang ditangkap di sini
     // kegagalan tak terduga, dan justru itu yang paling perlu tercatat
     if (!(err instanceof AppError)) {
@@ -645,8 +644,6 @@ export async function CreateEmployeeController(
     }
 
     next(err);
-  } finally {
-    client.release();
   }
 }
 
@@ -693,7 +690,11 @@ export async function UpdateEmployeeController(
       metadata: { fields: Object.keys(data) },
     });
 
-    res.json({ success: true, data: employee });
+    res.json({
+      success: true,
+      message: "Employee updated successfully",
+      data: employee,
+    });
   } catch (err) {
     next(err);
   }
@@ -704,8 +705,6 @@ export async function DeleteEmployeeController(
   res: Response,
   next: NextFunction,
 ) {
-  const client = await pool.connect();
-
   try {
     const activity = startActivity(req);
     const { id } = res.locals.params as { id: string };
@@ -722,15 +721,13 @@ export async function DeleteEmployeeController(
       );
     }
 
-    await client.query("BEGIN");
+    await withTransaction(async (client) => {
+      await employeeModel.softDeleteEmployee(client, id);
 
-    await employeeModel.softDeleteEmployee(client, id);
-
-    if (existing.user_id) {
-      await userModel.softDeleteUser(client, existing.user_id);
-    }
-
-    await client.query("COMMIT");
+      if (existing.user_id) {
+        await userModel.softDeleteUser(client, existing.user_id);
+      }
+    });
 
     activity.success({
       action: "employee.delete",
@@ -742,9 +739,6 @@ export async function DeleteEmployeeController(
 
     res.json({ success: true, message: "Employee deleted successfully" });
   } catch (err) {
-    await client.query("ROLLBACK");
     next(err);
-  } finally {
-    client.release();
   }
 }

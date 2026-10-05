@@ -147,7 +147,11 @@ export async function CreateWorkScheduleController(
       summary: `Work schedule ${schedule.name} created`,
     });
 
-    res.status(201).json({ success: true, data: schedule });
+    res.status(201).json({
+      success: true,
+      message: "Work schedule created successfully",
+      data: schedule,
+    });
   } catch (err) {
     next(err);
   }
@@ -229,7 +233,11 @@ export async function UpdateWorkScheduleController(
       metadata: { fields: Object.keys(data) },
     });
 
-    res.json({ success: true, data: schedule });
+    res.json({
+      success: true,
+      message: "Work schedule updated successfully",
+      data: schedule,
+    });
   } catch (err) {
     next(err);
   }

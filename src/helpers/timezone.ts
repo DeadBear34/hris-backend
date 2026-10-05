@@ -149,10 +149,11 @@ export function monthFolderOf(at: Date = new Date()): string {
   return `${year}/${month}`;
 }
 
-// Penanda waktu untuk nama berkas. Urut secara alfabet sama dengan urut secara
-// waktu, sehingga isi folder penyimpanan mudah ditelusuri tanpa membuka
-// satu per satu berkasnya
-export function fileStampOf(at: Date = new Date()): string {
+// Penanda waktu untuk nama berkas, dalam urutan yang biasa dibaca orang
+// Indonesia: tanggal-bulan-tahun, lalu jam-menit-detik, menurut zona waktu
+// kantor. Titik dua sengaja tidak dipakai karena dilarang pada nama berkas
+// Windows, sehingga berkas yang diunduh tetap bisa disimpan apa adanya
+export function fileDateTimeOf(at: Date = new Date()): string {
   const parts = getFormatter(env.TIMEZONE).formatToParts(at);
 
   const read = (partType: string) =>
@@ -161,5 +162,5 @@ export function fileStampOf(at: Date = new Date()): string {
   // Tengah malam dapat terbaca sebagai pukul 24 pada sebagian runtime
   const hour = String(Number(read("hour")) % 24).padStart(2, "0");
 
-  return `${read("year")}${read("month")}${read("day")}-${hour}${read("minute")}${read("second")}`;
+  return `${read("day")}-${read("month")}-${read("year")}_${hour}-${read("minute")}-${read("second")}`;
 }

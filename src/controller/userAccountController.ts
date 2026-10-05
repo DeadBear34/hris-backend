@@ -42,6 +42,15 @@ export async function ApproveUserController(
       throw BadRequest("This account has already been approved");
     }
 
+    // Selaras dengan daftar persetujuan yang hanya menampilkan akun
+    // terverifikasi. Tanpa ini, akun yang belum memasukkan kode tetap bisa
+    // disetujui langsung lewat id-nya
+    if (!existing.email_verified_at) {
+      throw BadRequest(
+        "This account cannot be approved until its email has been verified",
+      );
+    }
+
     // Syarat "belum disetujui" dicek ulang di query, jadi dua klik bersamaan
     // tidak mengirim email persetujuan dua kali
     const user = await userModel.approveUser(id, req.user.id);

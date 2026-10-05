@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { pool } from "../config/databaseConnection.js";
+import { withTransaction } from "../helpers/transaction.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import * as userModel from "../models/user.js";
@@ -127,7 +127,8 @@ async function verifyTokenValue(
   }
 
   if (!token || reason) {
-    logger.warn({ email, purpose, reason }, "Token verification rejected");
+    // info, bukan warn: kode salah atau kedaluwarsa adalah perilaku pengguna
+    logger.info({ email, purpose, reason }, "Token verification rejected");
     throw BadRequest(failureMessage);
   }
 
@@ -157,7 +158,7 @@ async function findMatchingResetLink(
     if (await verifyPassword(candidate.token_hash, value)) return candidate;
   }
 
-  logger.warn(
+  logger.info(
     {
       email,
       purpose: "password_reset",
@@ -183,12 +184,8 @@ interface RegisterInput {
 
 // Akun dan karyawan harus lahir bersama, jadi keduanya satu transaksi.
 // Kalau salah satu gagal, tidak ada akun tanpa karyawan atau sebaliknya
-async function createAccountWithEmployee(data: RegisterInput, hashed: string) {
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
+function createAccountWithEmployee(data: RegisterInput, hashed: string) {
+  return withTransaction(async (client) => {
     // Diperiksa di dalam transaksi supaya dua pendaftaran dengan nomor sama
     // yang datang bersamaan tidak sama-sama membaca keadaan sebelum keduanya
     const usedPhone = await employeeModel.findByPhone(data.phone, null, client);
@@ -213,15 +210,8 @@ async function createAccountWithEmployee(data: RegisterInput, hashed: string) {
       data.gender,
     );
 
-    await client.query("COMMIT");
-
     return { user, employee };
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 export async function RegisterController(
@@ -280,14 +270,9 @@ export async function RegisterController(
     const hashed = await hashPassword(data.password);
     const { user, employee } = await createAccountWithEmployee(data, hashed);
 
-    // Notifikasi dulu, email belakangan. Pengiriman email lewat jaringan
-    // memakan waktu, dan tidak ada alasan penyetuju menunggunya
-    await notifyAccountNeedsApproval({
-      user_id: user.id,
-      full_name: employee.full_name,
-      email: user.email,
-    });
-
+    // Penyetuju sengaja belum diberi tahu di sini. Akun yang belum memasukkan
+    // kode verifikasi belum muncul di daftar persetujuan dan bisa saja tidak
+    // pernah diselesaikan, jadi notifikasinya dikirim saat email terverifikasi
     await sendVerificationCode(email, full_name, requestMeta(req));
 
     activity.success({
@@ -353,7 +338,20 @@ export async function VerifyEmailController(
     if (!consumed) throw BadRequest(MESSAGE_INVALID_CODE);
 
     if (!user.email_verified_at) {
-      await userModel.setEmailVerified(user.id);
+      const verified = await userModel.setEmailVerified(user.id);
+
+      // Baru sekarang akun benar-benar siap ditinjau, jadi penyetuju diberi
+      // tahu di titik ini. setEmailVerified hanya berhasil satu kali, sehingga
+      // kode yang dikirim dua kali bersamaan tidak menghasilkan dua notifikasi
+      if (verified && !verified.approved_at) {
+        const employee = await employeeModel.findByUserId(user.id);
+
+        await notifyAccountNeedsApproval({
+          user_id: user.id,
+          full_name: employee?.full_name ?? user.email,
+          email: user.email,
+        });
+      }
     }
 
     activity.success({

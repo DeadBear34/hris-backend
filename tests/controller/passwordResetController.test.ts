@@ -62,9 +62,15 @@ jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
 }));
 
 const mockLoggerWarn = jest.fn();
+const mockLoggerInfo = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: mockLoggerWarn, error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: mockLoggerInfo,
+    warn: mockLoggerWarn,
+    error: jest.fn(),
+  },
 }));
 
 const userModel = await import("../../src/models/user.js");
@@ -538,9 +544,9 @@ describe("POST /api/v1/auth/reset-password", () => {
     await request(app).post("/api/v1/auth/reset-password").send(resetBody);
 
     // Setelah alasan penolakan, controller juga menulis catatan log aktivitas
-    // lewat logger.warn, jadi yang dicari adalah catatan dengan pesan ini,
+    // lewat logger.info, jadi yang dicari adalah catatan dengan pesan ini,
     // bukan catatan terakhir
-    const [context] = mockLoggerWarn.mock.calls.find(
+    const [context] = mockLoggerInfo.mock.calls.find(
       ([, message]) => message === "Token verification rejected",
     ) as [{ reason: string; active_links: number }];
 

@@ -1,7 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 jest.unstable_mockModule("../../src/models/notification.js", () => ({
@@ -260,7 +260,7 @@ describe("notifikasi pendaftaran akun", () => {
     await settle();
 
     expect(firstBatch()![0]!.message).toBe(
-      "Uji Notifikasi (uji@awan.io) registered and is waiting for approval",
+      "Uji Notifikasi (uji@awan.io) has verified their email and is waiting for approval",
     );
   });
 

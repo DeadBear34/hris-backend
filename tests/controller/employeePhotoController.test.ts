@@ -54,7 +54,7 @@ jest.unstable_mockModule("../../src/helpers/storage.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const employeeModel = await import("../../src/models/employee.js");
@@ -92,7 +92,13 @@ const fakeEmployee = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockStorageConfigured.mockReturnValue(true as never);
-  mockUploadPhoto.mockResolvedValue(undefined as never);
+  // Meniru uploadPhoto: menerima nama asli berkas, lalu mengembalikan jalur
+  // yang benar-benar dipakai di storage
+  mockUploadPhoto.mockImplementation((name, _buffer, mime) =>
+    Promise.resolve(
+      `2026/09/${String(name).replace(/\.[^.]*$/, "")}.${String(mime).split("/")[1]}`,
+    ),
+  );
   mockDeletePhoto.mockResolvedValue(undefined as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
@@ -142,19 +148,27 @@ describe("unggah foto profil sendiri", () => {
 
     expect(res.status).toBe(200);
     expect(mockUploadPhoto).toHaveBeenCalledWith(
-      `${EMPLOYEE_ID}/foto.jpeg`,
+      "foto.jpg",
       expect.any(Buffer),
       "image/jpeg",
     );
-    expect(res.body.data.photo_url).toContain(`${EMPLOYEE_ID}/foto.jpeg`);
+    expect(res.body.data.photo_url).toContain("2026/09/foto.jpeg");
   });
 
-  it("mencatat jalur foto pada data karyawan", async () => {
+  it("meneruskan nama asli berkas supaya dipakai sebagai nama penyimpanan", async () => {
+    await uploadOwn(JPEG, "photo", "Foto Wisuda.jpg");
+
+    const [name] = mockUploadPhoto.mock.calls[0] as [string];
+
+    expect(name).toBe("Foto Wisuda.jpg");
+  });
+
+  it("mencatat jalur yang benar-benar dipakai saat unggah", async () => {
     await uploadOwn(PNG);
 
     expect(employeeModel.updatePhotoPath).toHaveBeenCalledWith(
       EMPLOYEE_ID,
-      `${EMPLOYEE_ID}/foto.png`,
+      "2026/09/foto.png",
     );
   });
 
@@ -163,7 +177,7 @@ describe("unggah foto profil sendiri", () => {
 
     expect(res.status).toBe(200);
     expect(mockUploadPhoto).toHaveBeenCalledWith(
-      expect.stringContaining(".png"),
+      "tipuan.jpg",
       expect.any(Buffer),
       "image/png",
     );
@@ -299,7 +313,7 @@ describe("foto profil karyawan lain", () => {
     expect(res.status).toBe(200);
     expect(res.body.message).toContain("Sari Utami");
     expect(mockUploadPhoto).toHaveBeenCalledWith(
-      `${OTHER_ID}/foto.jpeg`,
+      "foto.jpg",
       expect.any(Buffer),
       "image/jpeg",
     );

@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { pool } from "../config/databaseConnection.js";
+import { withTransaction } from "../helpers/transaction.js";
 import * as employeeModel from "../models/employee.js";
 import * as leaveTypeModel from "../models/leaveType.js";
 import * as balanceModel from "../models/leaveBalance.js";
@@ -124,15 +124,10 @@ export async function AdjustLeaveBalanceController(
 
     // Dikunci sama seperti pengajuan cuti, supaya penyesuaian dan pengajuan
     // yang datang bersamaan tidak menghitung saldo dari angka lama
-    const client = await pool.connect();
-    let transaction: Awaited<ReturnType<typeof balanceModel.createTransaction>>;
-    let balance: number;
-
-    try {
-      await client.query("BEGIN");
+    const { transaction, balance } = await withTransaction(async (client) => {
       await balanceModel.lockEmployeeBalance(client, employee_id);
 
-      transaction = await balanceModel.createTransaction(client, {
+      const created = await balanceModel.createTransaction(client, {
         employee_id,
         leave_type_id,
         period_year,
@@ -142,7 +137,7 @@ export async function AdjustLeaveBalanceController(
         created_by: actor?.id ?? null,
       });
 
-      balance = await balanceModel.balanceFor(
+      const remaining = await balanceModel.balanceFor(
         employee_id,
         leave_type_id,
         period_year,
@@ -153,8 +148,8 @@ export async function AdjustLeaveBalanceController(
       // kecukupannya lebih dulu. Penyesuaian manual yang menambah tetap
       // diizinkan walau saldonya sedang minus, supaya saldo yang terlanjur
       // salah masih dapat diperbaiki
-      if (amount < 0 && balance < 0) {
-        const available = balance - amount;
+      if (amount < 0 && remaining < 0) {
+        const available = remaining - amount;
 
         throw BadRequest(
           `Adjustment rejected because it would make the balance negative. The remaining balance is ${plural(available, "day")}`,
@@ -166,13 +161,8 @@ export async function AdjustLeaveBalanceController(
         );
       }
 
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+      return { transaction: created, balance: remaining };
+    });
 
     activity.success({
       action: "leave.balance_adjust",

@@ -176,7 +176,19 @@ Isi `.env.production` sama dengan `.env`, dengan catatan berikut:
 
 `.env.production` tidak ikut git (`.env.*` ada di `.gitignore`) dan tidak ikut image (`.dockerignore`). Rahasia hanya ada di VM.
 
-### Reverse proxy
+### Cloudflare Tunnel (dipakai di VM saat ini)
+
+Container `cloudflared` di `docker-compose.yml` membuka koneksi **keluar** ke Cloudflare, sehingga backend dapat diakses lewat HTTPS di domain publik tanpa membuka port apa pun di VM. Sertifikat HTTPS dan proteksi DDoS diurus Cloudflare, dan WebSocket `/ws` didukung tanpa pengaturan tambahan.
+
+| Pengaturan | Tempat |
+| ---------- | ------ |
+| `TUNNEL_TOKEN` | `.env.production` di VM, diambil dari dashboard Zero Trust saat membuat tunnel |
+| Rute domain | Dashboard Zero Trust → tunnel → *Public Hostname*: service `HTTP`, URL `backend:8080` |
+| `TRUST_PROXY` | `1`, karena `cloudflared` satu-satunya proxy yang langsung berhadapan dengan backend |
+
+Jangan pasang *Access application* (halaman login Zero Trust) pada hostname API. Panggilan dari frontend akan tertahan di halaman login itu.
+
+### Reverse proxy (alternatif tanpa Cloudflare)
 
 Backend hanya membuka port ke `127.0.0.1`, jadi tidak bisa diakses langsung dari internet. HTTPS dipegang reverse proxy. Contoh Nginx:
 

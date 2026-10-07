@@ -10,12 +10,12 @@ src/scripts/seed.ts
 tests
 coverage
 logs
-_.log
+*.log
 .git
 .gitignore
 .vscode
 .idea
 readme.md
 Dockerfile
-docker-compose_.yml
+docker-compose*.yml
 .dockerignore

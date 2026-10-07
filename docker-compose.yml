@@ -49,6 +49,21 @@ services:
       retries: 5
     logging: *logging
 
+  # Cloudflare Tunnel. Membuka koneksi keluar ke Cloudflare, sehingga backend
+  # dapat diakses lewat HTTPS di domain publik tanpa membuka port apa pun di
+  # VM. Rute domain ke http://backend:8080 diatur di dashboard Zero Trust.
+  # TUNNEL_TOKEN diambil dari .env.production
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: hris-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: .env.production
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logging
+
 volumes:
   redis-data:
 

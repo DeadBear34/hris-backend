@@ -84,6 +84,65 @@ export async function createTransaction(
   return transaction;
 }
 
+// Pasangan karyawan dan jenis cuti yang berhak atas jatah tahunan pada
+// periode $2 tetapi belum menerimanya. Jenis cuti harus aktif, memotong
+// saldo, dan punya default_quota. Karyawan yang baru bergabung setelah tahun
+// tersebut belum berhak. Transaksi adjustment tidak dihitung sebagai jatah,
+// karena itu koreksi admin yang berdiri sendiri
+const MISSING_ACCRUALS = `
+  FROM employees e
+  JOIN leave_types lt
+    ON lt.deleted_at IS NULL
+   AND lt.is_active = true
+   AND lt.deducts_balance = true
+   AND COALESCE(lt.default_quota, 0) > 0
+  WHERE e.id = ANY($1::uuid[])
+    AND e.deleted_at IS NULL
+    AND (e.join_date IS NULL OR EXTRACT(YEAR FROM e.join_date)::int <= $2::int)
+    AND NOT EXISTS (
+      SELECT 1 FROM leave_balance_transactions t
+      WHERE t.employee_id = e.id
+        AND t.leave_type_id = lt.id
+        AND t.period_year = $2::int
+        AND t.type = 'accrual'::leave_transaction_type
+    )`;
+
+export async function hasMissingAccruals(
+  employee_id: string,
+  period_year: number,
+  db: Executor = pool,
+): Promise<boolean> {
+  const result = await db.query<{ missing: boolean }>(
+    `SELECT EXISTS (SELECT 1 ${MISSING_ACCRUALS}) AS missing`,
+    [[employee_id], period_year],
+  );
+
+  return result.rows[0]?.missing === true;
+}
+
+// Pemanggil wajib mengunci baris karyawan lebih dulu (lockEmployeeBalance)
+// atau memanggilnya untuk karyawan yang baru dibuat di transaksi yang sama.
+// NOT EXISTS saja tidak mencegah dua transaksi bersamaan sama-sama menulis
+export async function grantAccruals(
+  db: Executor,
+  employee_ids: string[],
+  period_year: number,
+): Promise<number> {
+  if (employee_ids.length === 0) return 0;
+
+  const result = await db.query(
+    `INSERT INTO leave_balance_transactions
+       (employee_id, leave_type_id, period_year, amount, type, note)
+     SELECT e.id, lt.id, $2::int, lt.default_quota,
+            'accrual'::leave_transaction_type,
+            'Annual leave allocation for ' || $2::int
+     ${MISSING_ACCRUALS}`,
+    [employee_ids, period_year],
+  );
+
+  return result.rowCount ?? 0;
+}
+
 export async function summaryFor(
   employee_id: string,
   period_year: number,

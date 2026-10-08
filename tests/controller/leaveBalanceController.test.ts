@@ -37,6 +37,9 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   convertHoldToDeduction: jest.fn(),
   findByRequest: jest.fn(),
   lockEmployeeBalance: jest.fn(),
+  // Bawaan: jatah tahun ini sudah ada, jadi tidak ada yang perlu dibuat
+  hasMissingAccruals: jest.fn(() => Promise.resolve(false)),
+  grantAccruals: jest.fn(() => Promise.resolve(0)),
 }));
 
 const userModel = await import("../../src/models/user.js");
@@ -62,7 +65,9 @@ const adminToken = createToken({
   role: "admin",
 });
 
-const THIS_YEAR = new Date().getUTCFullYear();
+// Tahun cuti mengikuti zona waktu kantor, sama seperti controller
+const { currentLeaveYear } = await import("../../src/helpers/leaveAccrual.js");
+const THIS_YEAR = currentLeaveYear();
 
 const fakeEmployee = {
   id: EMPLOYEE_ID,
@@ -413,5 +418,118 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
       .send(body);
 
     expect(res.body.data.balance).toBe(9);
+  });
+});
+
+// Laporan QA: sebagian besar karyawan bersaldo nol karena jatah tahunan
+// hanya pernah dibuat oleh skrip seed
+describe("jatah cuti tahunan otomatis", () => {
+  it("melihat saldo sendiri memastikan jatah tahun berjalan sudah ada", async () => {
+    await request(app)
+      .get("/api/v1/leave-balances/me")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(balanceModel.hasMissingAccruals).toHaveBeenCalledWith(
+      EMPLOYEE_ID,
+      THIS_YEAR,
+    );
+  });
+
+  it("jatah yang belum ada dibuat sebelum saldo ditampilkan", async () => {
+    (balanceModel.hasMissingAccruals as jest.Mock).mockResolvedValueOnce(
+      true as never,
+    );
+
+    await request(app)
+      .get("/api/v1/leave-balances/me")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(balanceModel.grantAccruals).toHaveBeenCalledWith(
+      mockClient,
+      [EMPLOYEE_ID],
+      THIS_YEAR,
+    );
+
+    const grantedAt = (balanceModel.grantAccruals as jest.Mock).mock
+      .invocationCallOrder[0]!;
+    const summaryAt = (balanceModel.summaryFor as jest.Mock).mock
+      .invocationCallOrder[0]!;
+
+    expect(grantedAt).toBeLessThan(summaryAt);
+  });
+
+  it("melihat saldo periode lampau tidak menciptakan jatah", async () => {
+    await request(app)
+      .get("/api/v1/leave-balances/me")
+      .query({ period_year: String(THIS_YEAR - 1) })
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(balanceModel.hasMissingAccruals).not.toHaveBeenCalled();
+  });
+
+  it("admin melihat saldo karyawan lain juga memastikan jatahnya", async () => {
+    await request(app)
+      .get(`/api/v1/leave-balances/${OTHER_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(balanceModel.hasMissingAccruals).toHaveBeenCalledWith(
+      OTHER_ID,
+      THIS_YEAR,
+    );
+  });
+
+  it("riwayat ledger ikut menampilkan jatah tahun berjalan", async () => {
+    await request(app)
+      .get("/api/v1/leave-balances/me/ledger")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(balanceModel.hasMissingAccruals).toHaveBeenCalledWith(
+      EMPLOYEE_ID,
+      THIS_YEAR,
+    );
+  });
+
+  it("penyesuaian admin dihitung dari saldo yang sudah berisi jatah", async () => {
+    await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        employee_id: OTHER_ID,
+        leave_type_id: LEAVE_TYPE_ID,
+        period_year: THIS_YEAR,
+        amount: -2,
+        note: "Koreksi",
+      });
+
+    expect(balanceModel.grantAccruals).toHaveBeenCalledWith(
+      mockClient,
+      [OTHER_ID],
+      THIS_YEAR,
+    );
+
+    const lockedAt = (balanceModel.lockEmployeeBalance as jest.Mock).mock
+      .invocationCallOrder[0]!;
+    const grantedAt = (balanceModel.grantAccruals as jest.Mock).mock
+      .invocationCallOrder[0]!;
+    const adjustedAt = (balanceModel.createTransaction as jest.Mock).mock
+      .invocationCallOrder[0]!;
+
+    expect(lockedAt).toBeLessThan(grantedAt);
+    expect(grantedAt).toBeLessThan(adjustedAt);
+  });
+
+  it("penyesuaian periode lampau tidak menciptakan jatah", async () => {
+    await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        employee_id: OTHER_ID,
+        leave_type_id: LEAVE_TYPE_ID,
+        period_year: THIS_YEAR - 1,
+        amount: 1,
+        note: "Koreksi",
+      });
+
+    expect(balanceModel.grantAccruals).not.toHaveBeenCalled();
   });
 });

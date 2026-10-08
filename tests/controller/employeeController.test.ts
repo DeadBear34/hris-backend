@@ -104,7 +104,7 @@ const abjad = (n: number) => String.fromCharCode(65 + (n % 26));
 
 const validCreate = {
   email: "baru@awan.io",
-  password: "password123",
+  password: "Password123!",
   full_name: "Karyawan Baru",
   phone: "+628123456789",
   gender: "male",
@@ -520,7 +520,7 @@ describe("POST /api/v1/employees", () => {
       .calls[0] as [unknown, { password: string }[]];
     const storedPassword = inputRows[0]!.password;
 
-    expect(storedPassword).not.toBe("password123");
+    expect(storedPassword).not.toBe("Password123!");
     expect(storedPassword).toContain("$argon2id$");
   });
 
@@ -532,7 +532,7 @@ describe("POST /api/v1/employees", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send(validCreate);
 
-    expect(JSON.stringify(res.body)).not.toContain("password123");
+    expect(JSON.stringify(res.body)).not.toContain("Password123!");
   });
 
   it("memakai role employee jika tidak ditentukan", async () => {
@@ -1104,14 +1104,14 @@ describe("POST /api/v1/employees dengan array", () => {
   it("tidak pernah mengembalikan password pada responsnya", async () => {
     const res = await bulkCreate([row(1)]);
 
-    expect(JSON.stringify(res.body)).not.toContain("password123");
+    expect(JSON.stringify(res.body)).not.toContain("Password123!");
   });
 });
 
 describe("akun buatan admin langsung dapat dipakai", () => {
   const row = {
     email: "langsung@awan.io",
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: "Karyawan Langsung",
     phone: "+628110000201",
     gender: "male",
@@ -1175,7 +1175,7 @@ describe("akun buatan admin langsung dapat dipakai", () => {
 describe("satu endpoint, dua bentuk kiriman", () => {
   const single = {
     email: "tunggal@awan.io",
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: "Karyawan Tunggal",
     phone: "+628110000301",
     gender: "male",
@@ -1299,7 +1299,7 @@ describe("satu endpoint, dua bentuk kiriman", () => {
 describe("laporan per baris pada impor massal", () => {
   const intact = (n: number) => ({
     email: `orang${n}@awan.io`,
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: `Orang Nomor ${abjad(n)}`,
     phone: `+62811004${String(n).padStart(4, "0")}`,
     gender: "male",
@@ -1416,8 +1416,8 @@ describe("laporan per baris pada impor massal", () => {
 
   it("password berbeda tetap menghasilkan hash yang berbeda", async () => {
     const res = await submit([
-      { ...intact(1), password: "12345678" },
-      { ...intact(2), password: "87654321" },
+      { ...intact(1), password: "Abcd1234!" },
+      { ...intact(2), password: "Hgfe4321!" },
     ]);
 
     expect(res.status).toBe(201);
@@ -1445,7 +1445,7 @@ describe("laporan per baris pada impor massal", () => {
 describe("catatan aktivitas penambahan karyawan", () => {
   const single = {
     email: "arif@awan.io",
-    password: "rahasia12345",
+    password: "Rahasia12345!",
     full_name: "Arif Budiman",
     phone: "+628110000601",
     gender: "male",
@@ -1555,7 +1555,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
 
     const noteField = JSON.stringify(lastLogEntry(logger.debug as jest.Mock));
 
-    expect(noteField).not.toContain("rahasia12345");
+    expect(noteField).not.toContain("Rahasia12345!");
     expect(noteField).not.toContain("password");
     expect(noteField).not.toContain("$argon2");
   });
@@ -1620,7 +1620,7 @@ describe("catatan aktivitas penambahan karyawan", () => {
 describe("log tetap ada saat terjadi kegagalan tak terduga", () => {
   const row = {
     email: "zaki@awan.io",
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: "Zaki Rahman",
     phone: "+628110000901",
     gender: "male",
@@ -1695,7 +1695,7 @@ describe("log tetap ada saat terjadi kegagalan tak terduga", () => {
 describe("ukuran catatan dibatasi", () => {
   const row = (n: number) => ({
     email: `massal${n}@awan.io`,
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: `Karyawan Massal ${abjad(n)}`,
     phone: `+62811009${String(n).padStart(4, "0")}`,
     gender: "male",
@@ -1751,7 +1751,7 @@ describe("ukuran catatan dibatasi", () => {
 describe("kiriman berbentuk objek berkunci nomor", () => {
   const row = (n: number) => ({
     email: `idx${n}@awan.io`,
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: `Karyawan Indeks ${abjad(n)}`,
     phone: `+62811044${String(n).padStart(4, "0")}`,
     gender: "male",
@@ -1888,7 +1888,7 @@ describe("kiriman berbentuk objek berkunci nomor", () => {
 describe("respons menyebut index untuk yang berhasil maupun yang gagal", () => {
   const row = (n: number) => ({
     email: `hasil${n}@awan.io`,
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: `Karyawan Hasil ${abjad(n)}`,
     phone: `+62811055${String(n).padStart(4, "0")}`,
     gender: "male",
@@ -2001,7 +2001,7 @@ describe("respons menyebut index untuk yang berhasil maupun yang gagal", () => {
 describe("setiap karyawan wajib punya akun", () => {
   const row = (n: number) => ({
     email: `akun${n}@awan.io`,
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: `Karyawan Akun ${abjad(n)}`,
     phone: `+62811066${String(n).padStart(4, "0")}`,
     gender: "male",
@@ -2106,7 +2106,7 @@ describe("setiap karyawan wajib punya akun", () => {
 describe("nomor telepon karyawan harus unik", () => {
   const baris = (n: number, phone: string) => ({
     email: `telp${n}@awan.io`,
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: `Karyawan Telepon ${abjad(n)}`,
     phone,
     gender: "male",

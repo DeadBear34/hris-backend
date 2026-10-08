@@ -12,7 +12,7 @@ const MANAGER_ID = "55555555-5555-4555-8555-555555555555";
 
 const validCreate = {
   email: "ismail@awan.io",
-  password: "password123",
+  password: "Password123!",
   full_name: "Ismail Muhammad",
   phone: "+628123456789",
   gender: "male",
@@ -433,7 +433,7 @@ describe("updateOwnProfileSchema", () => {
   it("membuang email, password, dan role", () => {
     const result = updateOwnProfileSchema.safeParse({
       email: "penyerang@awan.io",
-      password: "password123",
+      password: "Password123!",
       role: "admin",
     });
 
@@ -530,7 +530,7 @@ describe("updateEmployeeSchema", () => {
   });
 
   it("tidak mengizinkan penggantian password lewat pembaruan", () => {
-    const result = updateEmployeeSchema.safeParse({ password: "password123" });
+    const result = updateEmployeeSchema.safeParse({ password: "Password123!" });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -601,7 +601,7 @@ describe("mengosongkan kolom lewat update", () => {
 describe("kolom opsional yang dikirim kosong", () => {
   const base = {
     email: "ujang@awan.io",
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: "Ujang Sutisna",
     phone: "+628110000001",
     gender: "male",
@@ -655,7 +655,7 @@ describe("kolom opsional yang dikirim kosong", () => {
 describe("kewajaran tanggal", () => {
   const base = {
     email: "ujang@awan.io",
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: "Ujang Sutisna",
     phone: "+628110000001",
     gender: "male",
@@ -734,7 +734,7 @@ describe("kewajaran tanggal", () => {
 describe("usia dihitung secara kalender", () => {
   const base = {
     email: "batas@awan.io",
-    password: "12345678",
+    password: "Abcd1234!",
     full_name: "Uji Batas",
     phone: "+628110000001",
     gender: "male",

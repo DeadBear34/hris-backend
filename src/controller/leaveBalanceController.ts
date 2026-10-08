@@ -11,10 +11,11 @@ import {
   findRequestEmployee,
   requireRequestEmployee,
 } from "../helpers/requestEmployee.js";
-
-function currentYear(): number {
-  return new Date().getUTCFullYear();
-}
+import {
+  currentLeaveYear,
+  ensureAccruals,
+  isAccrualYear,
+} from "../helpers/leaveAccrual.js";
 
 export async function MyLeaveBalanceController(
   req: Request,
@@ -24,8 +25,9 @@ export async function MyLeaveBalanceController(
   try {
     const employee = await requireRequestEmployee(req, res);
     const { period_year } = res.locals.query as { period_year?: number };
-    const period = period_year ?? currentYear();
+    const period = period_year ?? currentLeaveYear();
 
+    await ensureAccruals(employee.id, period);
     const balances = await balanceModel.summaryFor(employee.id, period);
 
     res.json({
@@ -45,11 +47,12 @@ export async function EmployeeLeaveBalanceController(
   try {
     const { id } = res.locals.params as { id: string };
     const { period_year } = res.locals.query as { period_year?: number };
-    const period = period_year ?? currentYear();
+    const period = period_year ?? currentLeaveYear();
 
     const employee = await employeeModel.findById(id);
     if (!employee) throw NotFound("Employee not found");
 
+    await ensureAccruals(employee.id, period);
     const balances = await balanceModel.summaryFor(employee.id, period);
 
     res.json({
@@ -74,6 +77,10 @@ export async function MyLeaveLedgerController(
   try {
     const employee = await requireRequestEmployee(req, res);
     const query = res.locals.query as Omit<ListLedgerParams, "employee_id">;
+
+    // Supaya jatah tahun berjalan ikut tampil di riwayat walau karyawan
+    // belum pernah membuka saldo atau mengajukan cuti
+    await ensureAccruals(employee.id, query.period_year ?? currentLeaveYear());
 
     const { rows, total } = await balanceModel.listLedger({
       ...query,
@@ -126,6 +133,12 @@ export async function AdjustLeaveBalanceController(
     // yang datang bersamaan tidak menghitung saldo dari angka lama
     const { transaction, balance } = await withTransaction(async (client) => {
       await balanceModel.lockEmployeeBalance(client, employee_id);
+
+      // Jatah tahunan dipastikan ada lebih dulu, supaya pengurangan oleh admin
+      // dihitung dari saldo yang sebenarnya, bukan dari nol
+      if (isAccrualYear(period_year)) {
+        await balanceModel.grantAccruals(client, [employee_id], period_year);
+      }
 
       const created = await balanceModel.createTransaction(client, {
         employee_id,

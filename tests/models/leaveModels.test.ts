@@ -443,6 +443,84 @@ describe("model leaveBalance", () => {
   });
 });
 
+describe("model leaveBalance: jatah tahunan", () => {
+  it("memberi jatah sebesar default_quota sebagai transaksi accrual", async () => {
+    (fakeDb.query as jest.Mock).mockResolvedValue({ rowCount: 1 } as never);
+
+    const granted = await balanceModel.grantAccruals(
+      fakeDb as never,
+      [EMPLOYEE_ID],
+      2026,
+    );
+
+    const [sql, params] = (fakeDb.query as jest.Mock).mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+
+    expect(granted).toBe(1);
+    expect(sql).toContain("INSERT INTO leave_balance_transactions");
+    expect(sql).toContain("lt.default_quota");
+    expect(sql).toContain("'accrual'::leave_transaction_type");
+    expect(params).toEqual([[EMPLOYEE_ID], 2026]);
+  });
+
+  it("hanya untuk jenis cuti aktif yang memotong saldo dan punya kuota", async () => {
+    await balanceModel.grantAccruals(fakeDb as never, [EMPLOYEE_ID], 2026);
+
+    const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
+
+    expect(sql).toContain("lt.is_active = true");
+    expect(sql).toContain("lt.deducts_balance = true");
+    expect(sql).toContain("COALESCE(lt.default_quota, 0) > 0");
+    expect(sql).toContain("lt.deleted_at IS NULL");
+  });
+
+  // Dijalankan berulang kali tidak boleh menambah jatah lagi
+  it("tidak memberi jatah dua kali untuk periode yang sama", async () => {
+    await balanceModel.grantAccruals(fakeDb as never, [EMPLOYEE_ID], 2026);
+
+    const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
+
+    expect(sql).toMatch(/NOT EXISTS[\s\S]*t\.type = 'accrual'/);
+  });
+
+  it("karyawan yang bergabung setelah tahun itu belum berhak", async () => {
+    await balanceModel.grantAccruals(fakeDb as never, [EMPLOYEE_ID], 2026);
+
+    const [sql] = (fakeDb.query as jest.Mock).mock.calls[0] as [string];
+
+    expect(sql).toContain("EXTRACT(YEAR FROM e.join_date)::int <= $2::int");
+    expect(sql).toContain("e.deleted_at IS NULL");
+  });
+
+  it("daftar karyawan kosong tidak menyentuh database", async () => {
+    const granted = await balanceModel.grantAccruals(fakeDb as never, [], 2026);
+
+    expect(granted).toBe(0);
+    expect(fakeDb.query).not.toHaveBeenCalled();
+  });
+
+  it("memeriksa jatah yang belum diberikan memakai kondisi yang sama", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ missing: true }] } as never);
+
+    const missing = await balanceModel.hasMissingAccruals(EMPLOYEE_ID, 2026);
+
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(missing).toBe(true);
+    expect(sql).toContain("SELECT EXISTS");
+    expect(sql).toContain("lt.default_quota");
+    expect(params).toEqual([[EMPLOYEE_ID], 2026]);
+  });
+
+  it("menganggap tidak ada yang kurang bila database menjawab false", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ missing: false }] } as never);
+
+    expect(await balanceModel.hasMissingAccruals(EMPLOYEE_ID, 2026)).toBe(false);
+  });
+});
+
 describe("model leaveAttachment", () => {
   it("menyimpan jalur berkas beserta metadatanya", async () => {
     await attachmentModel.createAttachment(

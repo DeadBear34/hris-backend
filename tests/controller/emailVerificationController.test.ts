@@ -99,7 +99,7 @@ const CODE = "123456";
 
 const registerBody = {
   email: EMAIL,
-  password: "password123",
+  password: "Password123!",
   full_name: "Ismail Muhammad",
   phone: "+628123456789",
   gender: "male",
@@ -284,8 +284,8 @@ describe("POST /api/v1/auth/register menerbitkan kode verifikasi", () => {
       { subject: string; html: string },
     ];
 
-    expect(mail.html).not.toContain("password123");
-    expect(mail.subject).not.toContain("password123");
+    expect(mail.html).not.toContain("Password123!");
+    expect(mail.subject).not.toContain("Password123!");
   });
 
   it("tetap berhasil meski pengiriman email gagal", async () => {
@@ -767,13 +767,13 @@ describe("POST /api/v1/auth/login terhadap status akun", () => {
   async function login() {
     return request(app)
       .post("/api/v1/auth/login")
-      .send({ email: EMAIL, password: "password123" });
+      .send({ email: EMAIL, password: "Password123!" });
   }
 
   let hashPasswordUser: string;
 
   beforeAll(async () => {
-    hashPasswordUser = await hashPassword("password123");
+    hashPasswordUser = await hashPassword("Password123!");
   });
 
   function prepareUser(override: Record<string, unknown>) {

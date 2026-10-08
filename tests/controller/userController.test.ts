@@ -69,7 +69,7 @@ const { app } = await import("../../src/app.js");
 
 const validBody = {
   email: "ismail@awan.io",
-  password: "password123",
+  password: "Password123!",
   full_name: "Ismail Muhammad",
   phone: "+628123456789",
   gender: "male",
@@ -145,7 +145,7 @@ function prepareSuccessfulRegistration() {
 }
 
 async function prepareSuccessfulLogin(override: Record<string, unknown> = {}) {
-  const hashed = await hashPassword("password123");
+  const hashed = await hashPassword("Password123!");
 
   (userModel.findByEmail as jest.Mock).mockResolvedValue({
     ...fakeUser,
@@ -212,7 +212,7 @@ describe("POST /api/v1/auth/register", () => {
       .post("/api/v1/auth/register")
       .send(validBody);
 
-    expect(JSON.stringify(res.body)).not.toContain("password123");
+    expect(JSON.stringify(res.body)).not.toContain("Password123!");
   });
 
   it("menyimpan password dalam bentuk hash argon2", async () => {
@@ -223,7 +223,7 @@ describe("POST /api/v1/auth/register", () => {
     const [, , storedPassword] = (userModel.insertUser as jest.Mock).mock
       .calls[0] as [unknown, string, string];
 
-    expect(storedPassword).not.toBe("password123");
+    expect(storedPassword).not.toBe("Password123!");
     expect(storedPassword).toContain("$argon2id$");
   });
 
@@ -369,7 +369,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "tidakada@awan.io", password: "password123" });
+      .send({ email: "tidakada@awan.io", password: "Password123!" });
 
     expect(res.status).toBe(401);
   });
@@ -388,7 +388,7 @@ describe("POST /api/v1/auth/login", () => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
     const resEmail = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "tidakada@awan.io", password: "password123" });
+      .send({ email: "tidakada@awan.io", password: "Password123!" });
 
     await prepareSuccessfulLogin();
     const resPassword = await request(app)
@@ -403,7 +403,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.status).toBe(401);
     expect(res.body.message).toContain("waiting for admin approval");
@@ -414,7 +414,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.status).toBe(401);
     expect(res.body.message).toContain("deactivated");
@@ -425,7 +425,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.body.data).toBeUndefined();
   });
@@ -435,7 +435,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.token.split(".")).toHaveLength(3);
@@ -446,7 +446,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.body.data.user.full_name).toBe("Ismail Muhammad");
     expect(res.body.data.user.employee_number).toBe("001");
@@ -457,7 +457,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.body.data.user).not.toHaveProperty("password");
   });
@@ -467,7 +467,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     const payload = JSON.parse(
       Buffer.from(res.body.data.token.split(".")[1], "base64").toString(),
@@ -483,7 +483,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     const payload = JSON.parse(
       Buffer.from(res.body.data.token.split(".")[1], "base64").toString(),
@@ -497,13 +497,13 @@ describe("POST /api/v1/auth/login", () => {
 
     await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(userModel.updateLastLogin).toHaveBeenCalledWith(fakeUser.id);
   });
 
   it("tetap berhasil meski karyawan belum terhubung ke akun", async () => {
-    const hashed = await hashPassword("password123");
+    const hashed = await hashPassword("Password123!");
     (userModel.findByEmail as jest.Mock).mockResolvedValue({
       ...fakeUser,
       password: hashed,
@@ -512,7 +512,7 @@ describe("POST /api/v1/auth/login", () => {
 
     const res = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "ismail@awan.io", password: "password123" });
+      .send({ email: "ismail@awan.io", password: "Password123!" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.user.full_name).toBeNull();
@@ -606,8 +606,8 @@ describe("PATCH /api/v1/auth/password", () => {
 
   it("menolak request tanpa token", async () => {
     const res = await request(app).patch("/api/v1/auth/password").send({
-      current_password: "password123",
-      new_password: "passwordbaru456",
+      current_password: "Password123!",
+      new_password: "PasswordBaru456!",
     });
 
     expect(res.status).toBe(401);
@@ -617,7 +617,7 @@ describe("PATCH /api/v1/auth/password", () => {
     const res = await request(app)
       .patch("/api/v1/auth/password")
       .set("Authorization", `Bearer ${token}`)
-      .send({ current_password: "password123", new_password: "abc" });
+      .send({ current_password: "Password123!", new_password: "abc" });
 
     expect(res.status).toBe(400);
   });
@@ -627,15 +627,15 @@ describe("PATCH /api/v1/auth/password", () => {
       .patch("/api/v1/auth/password")
       .set("Authorization", `Bearer ${token}`)
       .send({
-        current_password: "password123",
-        new_password: "password123",
+        current_password: "Password123!",
+        new_password: "Password123!",
       });
 
     expect(res.status).toBe(400);
   });
 
   it("menolak jika password saat ini salah", async () => {
-    const hashed = await hashPassword("password123");
+    const hashed = await hashPassword("Password123!");
     (userModel.findByEmail as jest.Mock).mockResolvedValue({
       ...fakeUser,
       password: hashed,
@@ -646,7 +646,7 @@ describe("PATCH /api/v1/auth/password", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({
         current_password: "salah",
-        new_password: "passwordbaru456",
+        new_password: "PasswordBaru456!",
       });
 
     expect(res.status).toBe(401);
@@ -654,7 +654,7 @@ describe("PATCH /api/v1/auth/password", () => {
   });
 
   it("mengubah password saat kredensial benar", async () => {
-    const hashed = await hashPassword("password123");
+    const hashed = await hashPassword("Password123!");
     (userModel.findByEmail as jest.Mock).mockResolvedValue({
       ...fakeUser,
       password: hashed,
@@ -664,8 +664,8 @@ describe("PATCH /api/v1/auth/password", () => {
       .patch("/api/v1/auth/password")
       .set("Authorization", `Bearer ${token}`)
       .send({
-        current_password: "password123",
-        new_password: "passwordbaru456",
+        current_password: "Password123!",
+        new_password: "PasswordBaru456!",
       });
 
     expect(res.status).toBe(200);
@@ -673,7 +673,7 @@ describe("PATCH /api/v1/auth/password", () => {
   });
 
   it("menyimpan password baru dalam bentuk hash", async () => {
-    const hashed = await hashPassword("password123");
+    const hashed = await hashPassword("Password123!");
     (userModel.findByEmail as jest.Mock).mockResolvedValue({
       ...fakeUser,
       password: hashed,
@@ -683,15 +683,15 @@ describe("PATCH /api/v1/auth/password", () => {
       .patch("/api/v1/auth/password")
       .set("Authorization", `Bearer ${token}`)
       .send({
-        current_password: "password123",
-        new_password: "passwordbaru456",
+        current_password: "Password123!",
+        new_password: "PasswordBaru456!",
       });
 
     const [id, storedPassword] = (userModel.updatePassword as jest.Mock).mock
       .calls[0] as [string, string];
 
     expect(id).toBe(fakeUser.id);
-    expect(storedPassword).not.toBe("passwordbaru456");
+    expect(storedPassword).not.toBe("PasswordBaru456!");
     expect(storedPassword).toContain("$argon2id$");
   });
 });

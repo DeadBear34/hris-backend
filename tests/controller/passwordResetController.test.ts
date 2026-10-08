@@ -87,7 +87,7 @@ const EMPLOYEE_ID = "22222222-2222-4222-8222-222222222222";
 const TOKEN_ID = "99999999-9999-4999-8999-999999999999";
 const EMAIL = "ismail@awan.io";
 const TOKEN_VALUE = "a".repeat(64);
-const NEW_PASSWORD = "passwordbaru456";
+const NEW_PASSWORD = "PasswordBaru456!";
 
 const fakeUser = {
   id: USER_ID,
@@ -410,7 +410,7 @@ describe("POST /api/v1/auth/forgot-password", () => {
     ];
 
     expect(mail.html).not.toContain("$argon2id$");
-    expect(mail.subject).not.toContain("password123");
+    expect(mail.subject).not.toContain("Password123!");
   });
 });
 
@@ -432,7 +432,7 @@ describe("POST /api/v1/auth/reset-password", () => {
   it("menolak konfirmasi password yang berbeda", async () => {
     const res = await request(app)
       .post("/api/v1/auth/reset-password")
-      .send({ ...resetBody, password_confirmation: "passwordlain789" });
+      .send({ ...resetBody, password_confirmation: "PasswordLain789!" });
 
     expect(res.status).toBe(400);
     expect(userModel.updatePassword).not.toHaveBeenCalled();

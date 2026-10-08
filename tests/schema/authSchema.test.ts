@@ -11,7 +11,7 @@ import {
 
 const validRegister = {
   email: "ismail@awan.io",
-  password: "password123",
+  password: "Password123!",
   full_name: "Ismail Muhammad",
   phone: "+628123456789",
   gender: "male",
@@ -119,7 +119,7 @@ describe("registerSchema", () => {
   it("menerima password tepat 8 karakter", () => {
     const result = registerSchema.safeParse({
       ...validRegister,
-      password: "12345678",
+      password: "Abcd123!",
     });
 
     expect(result.success).toBe(true);
@@ -270,7 +270,7 @@ describe("loginSchema", () => {
   it("menerima email dan password yang valid", () => {
     const result = loginSchema.safeParse({
       email: "ismail@awan.io",
-      password: "password123",
+      password: "Password123!",
     });
 
     expect(result.success).toBe(true);
@@ -279,7 +279,7 @@ describe("loginSchema", () => {
   it("mengubah email menjadi huruf kecil", () => {
     const result = loginSchema.safeParse({
       email: "Ismail@Awan.IO",
-      password: "password123",
+      password: "Password123!",
     });
 
     expect(result.success).toBe(true);
@@ -309,7 +309,7 @@ describe("loginSchema", () => {
   it("menolak email tidak valid", () => {
     const result = loginSchema.safeParse({
       email: "bukanemail",
-      password: "password123",
+      password: "Password123!",
     });
 
     expect(result.success).toBe(false);
@@ -327,7 +327,7 @@ describe("loginSchema", () => {
   it("membuang field selain email dan password", () => {
     const result = loginSchema.safeParse({
       email: "ismail@awan.io",
-      password: "password123",
+      password: "Password123!",
       role: "admin",
     });
 
@@ -341,8 +341,8 @@ describe("loginSchema", () => {
 describe("changePasswordSchema", () => {
   it("menerima password lama dan baru yang valid", () => {
     const result = changePasswordSchema.safeParse({
-      current_password: "password123",
-      new_password: "passwordbaru456",
+      current_password: "Password123!",
+      new_password: "PasswordBaru456!",
     });
 
     expect(result.success).toBe(true);
@@ -350,8 +350,8 @@ describe("changePasswordSchema", () => {
 
   it("menolak password baru yang sama dengan password lama", () => {
     const result = changePasswordSchema.safeParse({
-      current_password: "password123",
-      new_password: "password123",
+      current_password: "Password123!",
+      new_password: "Password123!",
     });
 
     expect(result.success).toBe(false);
@@ -362,7 +362,7 @@ describe("changePasswordSchema", () => {
 
   it("menolak password baru kurang dari 8 karakter", () => {
     const result = changePasswordSchema.safeParse({
-      current_password: "password123",
+      current_password: "Password123!",
       new_password: "abc",
     });
 
@@ -371,7 +371,7 @@ describe("changePasswordSchema", () => {
 
   it("menolak password baru melebihi 72 karakter", () => {
     const result = changePasswordSchema.safeParse({
-      current_password: "password123",
+      current_password: "Password123!",
       new_password: "a".repeat(73),
     });
 
@@ -381,7 +381,7 @@ describe("changePasswordSchema", () => {
   it("menolak password saat ini yang kosong", () => {
     const result = changePasswordSchema.safeParse({
       current_password: "",
-      new_password: "passwordbaru456",
+      new_password: "PasswordBaru456!",
     });
 
     expect(result.success).toBe(false);
@@ -560,8 +560,8 @@ describe("resetPasswordSchema", () => {
   const validReset = {
     email: "ismail@awan.io",
     token: "a".repeat(64),
-    password: "passwordbaru456",
-    password_confirmation: "passwordbaru456",
+    password: "PasswordBaru456!",
+    password_confirmation: "PasswordBaru456!",
   };
 
   it("menerima data yang valid", () => {
@@ -573,7 +573,7 @@ describe("resetPasswordSchema", () => {
   it("menolak konfirmasi password yang berbeda", () => {
     const result = resetPasswordSchema.safeParse({
       ...validReset,
-      password_confirmation: "passwordlain789",
+      password_confirmation: "PasswordLain789!",
     });
 
     expect(result.success).toBe(false);

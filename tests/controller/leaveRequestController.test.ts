@@ -54,6 +54,9 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
   findByRequest: jest.fn(),
+  // Bawaan: jatah tahun ini sudah ada, jadi tidak ada yang perlu dibuat
+  hasMissingAccruals: jest.fn(() => Promise.resolve(false)),
+  grantAccruals: jest.fn(() => Promise.resolve(0)),
 }));
 
 jest.unstable_mockModule("../../src/models/leaveAttachment.js", () => ({
@@ -345,6 +348,59 @@ describe("POST /api/v1/leave-requests", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain("contains no workdays");
+  });
+});
+
+// Laporan QA: karyawan yang belum pernah diberi jatah selalu ditolak
+// "saldo tidak cukup" karena jatah hanya pernah dibuat oleh skrip seed
+describe("jatah cuti tahunan otomatis saat pengajuan", () => {
+  const PERIOD = Number(START_DATE.slice(0, 4));
+
+  it("memeriksa jatah periode pengajuan sebelum saldo dihitung", async () => {
+    await submitRequest();
+
+    expect(balanceModel.hasMissingAccruals).toHaveBeenCalledWith(
+      EMPLOYEE_ID,
+      PERIOD,
+    );
+
+    const checkedAt = (balanceModel.hasMissingAccruals as jest.Mock).mock
+      .invocationCallOrder[0]!;
+    const balanceReadAt = (balanceModel.balanceFor as jest.Mock).mock
+      .invocationCallOrder[0]!;
+
+    expect(checkedAt).toBeLessThan(balanceReadAt);
+  });
+
+  it("memberi jatah yang belum ada, lalu pengajuan berhasil", async () => {
+    (balanceModel.hasMissingAccruals as jest.Mock).mockResolvedValueOnce(
+      true as never,
+    );
+
+    const res = await submitRequest();
+
+    expect(balanceModel.lockEmployeeBalance).toHaveBeenCalledWith(
+      mockClient,
+      EMPLOYEE_ID,
+    );
+    expect(balanceModel.grantAccruals).toHaveBeenCalledWith(
+      mockClient,
+      [EMPLOYEE_ID],
+      PERIOD,
+    );
+    expect(res.status).toBe(201);
+  });
+
+  it("jenis cuti yang tidak memotong saldo tidak menyentuh jatah", async () => {
+    (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeLeaveType,
+      deducts_balance: false,
+    } as never);
+
+    await submitRequest();
+
+    expect(balanceModel.hasMissingAccruals).not.toHaveBeenCalled();
+    expect(balanceModel.grantAccruals).not.toHaveBeenCalled();
   });
 });
 

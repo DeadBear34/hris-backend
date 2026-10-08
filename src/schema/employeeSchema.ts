@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { expectedUpdatedAt, personName } from "./commonSchema.js";
+import {
+  expectedUpdatedAt,
+  personName,
+  strongPassword,
+} from "./commonSchema.js";
 import { todayInOfficeZone } from "../helpers/timezone.js";
 
 // Sel kosong pada CSV terbaca sebagai string kosong, bukan tidak ada. Tanpa ini
@@ -137,10 +141,7 @@ export const createEmployeeSchema = employeeDataSchema
       .toLowerCase()
       .pipe(z.email("Invalid email format, example: name@domain.com")),
 
-    password: z
-      .string({ message: "Password is required" })
-      .min(8, "Password must be at least 8 characters")
-      .max(72, "Password must be at most 72 characters"),
+    password: strongPassword(),
 
     role: optionalField(
       z.enum(["employee", "admin"], { message: "Unknown role" }),

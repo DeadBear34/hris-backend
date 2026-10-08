@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { personName } from "./commonSchema.js";
+import { personName, strongPassword } from "./commonSchema.js";
 
 export const registerSchema = z.object({
   email: z
@@ -9,10 +9,7 @@ export const registerSchema = z.object({
     .min(1, "Email is required")
     .email("Invalid email format, example: name@domain.com"),
 
-  password: z
-    .string({ message: "Password is required" })
-    .min(8, "Password must be at least 8 characters")
-    .max(72, "Password must be at most 72 characters"),
+  password: strongPassword(),
 
   full_name: personName("Full name"),
 
@@ -52,10 +49,7 @@ export const changePasswordSchema = z
       .string({ message: "Current password is required" })
       .min(1, "Current password is required"),
 
-    new_password: z
-      .string({ message: "New password is required" })
-      .min(8, "New password must be at least 8 characters")
-      .max(72, "New password must be at most 72 characters"),
+    new_password: strongPassword("New password"),
   })
   .refine((data) => data.current_password !== data.new_password, {
     message: "New password must be different from the current password",
@@ -99,10 +93,7 @@ export const resetPasswordSchema = z
       .trim()
       .min(1, "Token is required"),
 
-    password: z
-      .string({ message: "New password is required" })
-      .min(8, "New password must be at least 8 characters")
-      .max(72, "New password must be at most 72 characters"),
+    password: strongPassword("New password"),
 
     password_confirmation: z.string({
       message: "Password confirmation is required",

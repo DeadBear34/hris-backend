@@ -121,7 +121,7 @@ function lastLogEntry(mock: jest.Mock) {
 }
 
 async function prepareLogin(override: Record<string, unknown> = {}) {
-  const hashed = await hashPassword("password123");
+  const hashed = await hashPassword("Password123!");
 
   (userModel.findByEmail as jest.Mock).mockResolvedValue({
     ...fakeUser,
@@ -134,7 +134,7 @@ async function prepareLogin(override: Record<string, unknown> = {}) {
   );
 }
 
-function login(password = "password123", email = "ismail@awan.io") {
+function login(password = "Password123!", email = "ismail@awan.io") {
   return request(app)
     .post("/api/v1/auth/login")
     .set("User-Agent", "PengujiHRIS/1.0")
@@ -169,7 +169,7 @@ describe("catatan aktivitas login", () => {
   it("mencatat email tidak terdaftar tanpa pelaku", async () => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
 
-    const res = await login("password123", "tidakada@awan.io");
+    const res = await login("Password123!", "tidakada@awan.io");
 
     expect(res.status).toBe(401);
 
@@ -224,14 +224,14 @@ describe("catatan aktivitas login", () => {
     ]);
 
     expect(everything).not.toContain("passwordsalah");
-    expect(everything).not.toContain("password123");
+    expect(everything).not.toContain("Password123!");
   });
 });
 
 describe("catatan aktivitas register", () => {
   const body = {
     email: "baru@awan.io",
-    password: "password123",
+    password: "Password123!",
     full_name: "Karyawan Baru",
     phone: "+628123456789",
     gender: "male",
@@ -422,8 +422,8 @@ describe("catatan aktivitas verifikasi email dan password", () => {
     const res = await request(app).post("/api/v1/auth/reset-password").send({
       email: fakeUser.email,
       token: RESET_TOKEN,
-      password: "passwordbaru123",
-      password_confirmation: "passwordbaru123",
+      password: "PasswordBaru123!",
+      password_confirmation: "PasswordBaru123!",
     });
 
     expect(res.status).toBe(200);
@@ -435,7 +435,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
   });
 
   it("mencatat ganti password sendiri, yang berhasil maupun yang ditolak", async () => {
-    const hashed = await hashPassword("password123");
+    const hashed = await hashPassword("Password123!");
 
     (userModel.findByEmail as jest.Mock).mockResolvedValue({
       ...fakeUser,
@@ -453,7 +453,7 @@ describe("catatan aktivitas verifikasi email dan password", () => {
       .set("Authorization", `Bearer ${sessionToken}`)
       .send({
         current_password: "passwordsalah",
-        new_password: "passwordbaru123",
+        new_password: "PasswordBaru123!",
       });
 
     expect(ditolak.status).toBe(401);
@@ -465,8 +465,8 @@ describe("catatan aktivitas verifikasi email dan password", () => {
       .patch("/api/v1/auth/password")
       .set("Authorization", `Bearer ${sessionToken}`)
       .send({
-        current_password: "password123",
-        new_password: "passwordbaru123",
+        current_password: "Password123!",
+        new_password: "PasswordBaru123!",
       });
 
     expect(res.status).toBe(200);

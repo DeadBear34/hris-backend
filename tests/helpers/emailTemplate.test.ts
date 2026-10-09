@@ -93,7 +93,7 @@ describe("accountApprovedEmail", () => {
 });
 
 describe("kerahasiaan isi email", () => {
-  const SECRET = ["password123", "Password123", "$argon2id$"];
+  const SECRET = ["Password123!", "Password123", "$argon2id$"];
 
   it("tidak pernah memuat password pengguna", () => {
     for (const template of ALL_TEMPLATES) {

@@ -23,6 +23,28 @@ export function personName(label: string) {
     );
 }
 
+// Aturan password kuat, dipakai di semua tempat password dibuat atau
+// diganti: daftar, ganti password, reset password, dan tambah karyawan.
+// Login tidak memakainya, supaya akun lama yang passwordnya dibuat sebelum
+// aturan ini tetap bisa masuk. Batas 72 karakter dipertahankan dari aturan
+// sebelumnya. Simbol berarti karakter selain huruf, angka, dan spasi
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 72;
+
+export function strongPassword(label = "Password") {
+  return z
+    .string({ message: `${label} is required` })
+    .min(PASSWORD_MIN_LENGTH, `${label} must be at least ${PASSWORD_MIN_LENGTH} characters`)
+    .max(PASSWORD_MAX_LENGTH, `${label} must be at most ${PASSWORD_MAX_LENGTH} characters`)
+    .regex(/[A-Z]/, `${label} must contain at least one uppercase letter`)
+    .regex(/[a-z]/, `${label} must contain at least one lowercase letter`)
+    .regex(/[0-9]/, `${label} must contain at least one number`)
+    .regex(/[^A-Za-z0-9\s]/, `${label} must contain at least one symbol, for example ! @ # $ %`)
+    .refine((value) => value === value.trim(), {
+      message: `${label} must not start or end with a space`,
+    });
+}
+
 // Nilai updated_at yang diterima klien saat membuka data, dikirim balik saat
 // menyimpan. Dipakai mendeteksi data yang sudah diubah orang lain di tengah jalan
 export const expectedUpdatedAt = z.iso

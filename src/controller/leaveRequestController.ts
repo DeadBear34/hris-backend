@@ -23,6 +23,7 @@ import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { withTransaction } from "../helpers/transaction.js";
+import { ensureAccruals } from "../helpers/leaveAccrual.js";
 import {
   notifyLeaveSubmitted,
   notifyLeaveDecided,
@@ -328,6 +329,12 @@ export async function CreateLeaveRequestController(
 
     assertGenderAllowed(leaveType, requester.employee);
     validateLeaveDates(leaveType, start_date, totalDays);
+
+    // Tanpa ini karyawan yang belum pernah diberi jatah tahun ini bersaldo
+    // nol dan setiap pengajuannya ditolak sebagai saldo tidak cukup
+    if (leaveType.deducts_balance) {
+      await ensureAccruals(requester.employee.id, period);
+    }
 
     // Penyaring awal supaya kasus yang jelas kurang tidak perlu membuka
     // transaksi. Pemeriksaan yang menentukan ada di dalam transaksi

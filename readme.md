@@ -621,6 +621,7 @@ Tidak ada Redis atau layanan tambahan yang diperlukan.
 | CSRF | Tidak berlaku karena autentikasi memakai header `Authorization: Bearer`, bukan cookie yang dikirim peramban secara otomatis |
 | Unggahan berbahaya | Jenis berkas dibaca dari magic bytes isinya, bukan dari nama atau `Content-Type`, maksimal 5 MB |
 | Menebak password | Login dibatasi 5 percobaan per menit untuk setiap pasangan IP dan email, lihat [Rate Limit](#rate-limit) |
+| Password lemah | Setiap password yang dibuat atau diganti (daftar, ganti password, reset password, tambah karyawan) wajib 8–72 karakter, berisi huruf besar, huruf kecil, angka, dan simbol, tanpa spasi di awal atau akhir. Aturannya di `strongPassword()` pada `src/schema/commonSchema.ts`. Login tidak menerapkannya, sehingga akun lama tetap bisa masuk |
 | Menebak kode verifikasi | Maksimal 5 percobaan per kode, dihitung secara atomik sehingga tidak dapat ditembus dengan permintaan bersamaan |
 | Memetakan email terdaftar | `forgot-password` dan `resend-verification` selalu menjawab pesan yang sama |
 | Header HTTP | Helmet |
@@ -1389,6 +1390,29 @@ hold       -3  → saldo  9   pengajuan dibuat, saldo tertahan
                              ┌── disetujui: hold berubah jadi deduction, saldo tetap 9
                              └── ditolak  : refund +3, saldo kembali 12
 ```
+
+### Jatah tahunan diberikan otomatis
+
+Setiap jenis cuti yang aktif, memotong saldo, dan punya `default_quota` (misalnya Cuti Tahunan 12 hari) mendapat transaksi `accrual` sebesar kuota itu untuk setiap karyawan aktif, sekali per tahun. Tidak perlu cron. Jatah dibuat saat pertama kali dibutuhkan:
+
+| Saat | Periode yang dipastikan |
+| ---- | ----------------------- |
+| Melihat saldo sendiri, atau admin melihat saldo karyawan | Periode yang diminta, bawaannya tahun berjalan |
+| Melihat riwayat ledger | Tahun berjalan, atau periode yang disaring |
+| Mengajukan cuti yang memotong saldo | Tahun dari tanggal mulai cuti |
+| Admin melakukan penyesuaian saldo | Periode penyesuaian, di dalam transaksi yang sama |
+
+Aturannya:
+- Hanya tahun berjalan dan tahun depan. Membuka riwayat tahun lampau tidak menciptakan jatah untuk tahun yang sudah lewat.
+- Karyawan yang `join_date`-nya setelah tahun itu belum berhak.
+- Jatah penuh, tidak proporsional terhadap tanggal bergabung.
+- `adjustment` tidak dianggap jatah. Koreksi manual admin selalu ditambahkan di atas jatah.
+- Tahun mengikuti `TIMEZONE`, jadi tahun cuti baru dimulai pukul 00.00 WIB tanggal 1 Januari.
+- Penulisan berlangsung setelah baris karyawan dikunci, jadi permintaan bersamaan tidak pernah membuat jatah tercatat dua kali.
+
+Sebelum fitur ini ada, jatah hanya dibuat oleh skrip seed, sehingga karyawan yang mendaftar atau ditambahkan admin, serta semua karyawan saat berganti tahun, bersaldo nol dan setiap pengajuan cutinya ditolak.
+
+### Penahanan saldo
 
 Penahanan sejak pengajuan dibuat mencegah karyawan mengajukan beberapa cuti yang totalnya melebihi saldo. Pemeriksaan saldo dan penahanannya berjalan di dalam satu transaksi setelah baris karyawan dikunci, sehingga pengajuan yang dikirim bersamaan pun diproses bergiliran. Lihat [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan).
 

@@ -19,6 +19,7 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Keamanan](#keamanan)
 - [Redis](#redis)
 - [Log Terminal](#log-terminal)
+- [Dokumentasi API (OpenAPI)](#dokumentasi-api-openapi)
 - [Rate Limit](#rate-limit)
 - [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan)
 - [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan)
@@ -447,6 +448,7 @@ Hari libur dapat dibaca semua pengguna karena dipakai frontend untuk menghitung 
 | ------- | ----------------------------- | ---------------------------------- | ------------------------------------------- |
 | `GET`   | `/leave-requests/me`          | Login                              | Pengajuan milik sendiri                     |
 | `GET`   | `/leave-requests/approvals`   | Login                              | Pengajuan yang perlu disetujui pengguna ini |
+| `GET`   | `/leave-requests/department-calendar` | Login (departemen lain: `leave.view_all`) | Jumlah rekan yang cuti per tanggal dan tanggal yang penuh. Lihat [Batas cuti bersamaan per departemen](#batas-cuti-bersamaan-per-departemen) |
 | `GET`   | `/leave-requests`             | `leave.view_all`                   | Seluruh pengajuan dengan filter lengkap     |
 | `GET`   | `/leave-requests/:id`         | Pihak terkait                      | Detail pengajuan beserta lampirannya        |
 | `POST`  | `/leave-requests`             | Login                              | Membuat pengajuan baru                      |
@@ -1070,6 +1072,46 @@ Penulisan log tidak pernah ditunggu. Kegagalan mencatat hanya menghasilkan perin
 
 **Catatan volume.** `notification.read` ikut tercatat karena aturannya mencakup semua endpoint non-`GET`, padahal aksi inilah yang paling sering terjadi. Kalau tabelnya tumbuh terlalu cepat, pilihannya mengecualikan aksi ini atau menambah pembersihan berkala seperti yang sudah ada untuk notifikasi.
 
+## Dokumentasi API (OpenAPI)
+
+Dokumentasi seluruh endpoint **dibangkitkan otomatis** dari route dan skema validasi Zod, lalu ditampilkan frontend memakai Swagger UI di menu admin.
+
+```
+GET /api/v1/docs/openapi.json      →  dokumen OpenAPI 3.1
+```
+
+### Apa yang dibaca otomatis
+
+Pembangkit (`src/docs/openapi.ts`) menelusuri router Express yang sebenarnya, jadi dokumen tidak mungkin berbeda dari perilaku server:
+
+| Bagian dokumen | Sumber |
+| --- | --- |
+| Path dan method | Route yang terdaftar |
+| Body, query, parameter path beserta aturannya | Skema Zod di `validate()`, `validateQuery()`, `validateParams()` |
+| Butuh login atau tidak | Ada tidaknya `authenticate` |
+| Fitur atau role yang dibutuhkan | `requireFeature()` dan `authorize()` |
+| Unggah berkas | `uploadSingleImage()` → `multipart/form-data` |
+
+Middleware tersebut hanya **ditandai** lewat `src/docs/routeMeta.ts` (sebuah `WeakMap`). Perilakunya tidak berubah sama sekali.
+
+Yang ditulis manual hanya teks untuk dibaca manusia di `src/docs/routeDocs.ts`: ringkasan, kelompok, status sukses selain 200, dan error khusus endpoint. **Tes gagal** bila ada route tanpa teks di sana, atau ada teks untuk route yang sudah dihapus. Jadi menambah endpoint baru wajib disertai satu baris di `routeDocs.ts`.
+
+### Keamanan
+
+| Lapisan | Penjelasan |
+| --- | --- |
+| Hak akses | Butuh login dan fitur `system.view_api_docs`. Admin otomatis punya. Fitur ini bisa diberikan ke jabatan lain, misalnya QA, tanpa menjadikannya admin |
+| Tidak tersimpan di cache | Respons memakai `Cache-Control: no-store`, sehingga tidak tertinggal di peramban, proxy, maupun Cloudflare |
+| Tanpa rahasia | Dokumen hanya berisi struktur API, tanpa nilai environment, token, atau data |
+| Try it out di production | Dokumen menyatakan `x-try-it-out-methods: ["get"]` untuk production. Frontend mengirim header `x-api-docs-try-it-out` pada setiap percobaan, dan server **menolak (403)** percobaan selain GET/HEAD/OPTIONS yang membawa header itu di production, walaupun halaman frontend salah diatur |
+| Hak akses tetap berlaku | Percobaan memakai token pengguna sendiri, jadi seseorang tidak bisa melakukan lebih dari yang memang boleh dilakukannya di aplikasi |
+
+Pengaman Try it out adalah lapisan kedua untuk mencegah klik yang tidak disengaja. Batas keamanan yang sebenarnya tetap token dan fitur: pengguna yang memegang token memang bisa memanggil API dengan alat lain sesuai haknya.
+
+### Memeriksa dokumen
+
+Dokumen bisa divalidasi dengan validator OpenAPI, misalnya `npx @redocly/cli lint openapi.json`. Fitur ini dibuat oleh migrasi `database/migrations/2026-10-11_fitur_lihat_dokumentasi_api.sql`.
+
 ## Log Terminal
 
 Log dibagi tiga, masing-masing punya tempatnya sendiri:
@@ -1369,8 +1411,54 @@ Durasi dihitung dalam hari kerja: Sabtu, Minggu, dan tanggal di tabel `holidays`
 | Saldo mencukupi            | Penjumlahan ledger di dalam transaksi terkunci, bila `deducts_balance` |
 | Kesesuaian gender          | `gender_restriction`                                          |
 | Tidak tumpang tindih       | Constraint `leave_requests_employee_id_daterange_excl` dan pemeriksaan awal |
+| Batas cuti departemen      | `departments.max_concurrent_leave`, lihat di bawah            |
 
 Kewajiban lampiran diperiksa saat **persetujuan**, karena lampiran hanya dapat diunggah setelah pengajuannya ada. Respons pembuatan pengajuan menyertakan `attachment_required` agar frontend tahu perlu meminta unggahan.
+
+### Batas cuti bersamaan per departemen
+
+Supaya pekerjaan satu divisi tidak berhenti karena semua orangnya cuti di tanggal yang sama, setiap departemen bisa diberi batas `max_concurrent_leave`: paling banyak berapa karyawan yang boleh cuti pada hari yang sama. `null` (bawaan) berarti tanpa batas. Admin mengaturnya lewat `POST`/`PATCH /departments` dengan fitur `organization.manage`.
+
+```
+Engineering, max_concurrent_leave = 2
+
+             Sen  Sel  Rab  Kam
+Andi (ok)     ■    ■    ■
+Budi (ok)               ■    ■
+Citra minta   ■    ■    ■          ← Rabu sudah 2 orang, pengajuan Citra ditolak 409
+```
+
+Aturannya:
+
+| Hal | Perilaku |
+| --- | --- |
+| Yang dihitung | Rekan satu departemen yang pengajuannya sudah **disetujui** dan rentangnya mencakup tanggal itu. Pemohon sendiri tidak dihitung. Pengajuan yang masih pending tidak dihitung, supaya pengajuan tidak saling memblokir sebelum ada keputusan |
+| Tanggal yang diperiksa | Hari kerja pemohon menurut jadwal kerjanya, tanpa hari libur. Karyawan tanpa jadwal dianggap bekerja Senin–Jumat |
+| Saat mengajukan | Ditolak bila ada hari yang sudah penuh, supaya karyawan tidak menunggu keputusan yang pasti gagal |
+| Saat menyetujui | Diperiksa ulang dan **inilah yang menentukan**. Baris departemen dikunci (`FOR UPDATE`) selama transaksi, jadi dua penyetujuan bersamaan tidak sama-sama lolos |
+| Jenis cuti dikecualikan | `leave_types.exempt_from_staffing_limit = true` (bawaan: `SICK`, `BEREAVE`, `MATERNITY`) tidak pernah ditolak karena batas ini, tetapi tetap dihitung sebagai orang yang sedang cuti |
+| Karyawan tanpa departemen | Tidak terkena aturan |
+
+Bila penuh, jawabannya **409** dengan kode `STAFFING_LIMIT_REACHED`:
+
+```json
+{
+  "success": false,
+  "message": "Engineering already has the maximum of 2 employees on leave on 2026-11-04",
+  "code": "STAFFING_LIMIT_REACHED",
+  "details": {
+    "department_id": "...", "department_name": "Engineering", "max_concurrent_leave": 2,
+    "full_dates": [{ "date": "2026-11-04", "on_leave": 2 }],
+    "can_override": false
+  }
+}
+```
+
+**Memaksa setuju.** Pemegang `leave.approve_all` (`can_override: true`) boleh menyetujui walau batasnya terlampaui dengan mengirim `"override_staffing_limit": true` dan alasan minimal 10 karakter di `decision_note`. Tanggal yang dilampaui beserta alasannya tercatat di `metadata.staffing_override` log aktivitas `leave.approve`. Atasan yang hanya memegang `leave.approve_team` tidak bisa memaksa.
+
+**Kalender departemen.** `GET /leave-requests/department-calendar?start_date=&end_date=` (maksimal 62 hari) mengembalikan, untuk setiap tanggal, berapa rekan satu departemen yang cutinya disetujui (`on_leave`, pemohon sendiri tidak dihitung) dan apakah tanggal itu penuh (`is_full`). Hanya jumlah, tanpa nama, supaya karyawan tidak melihat cuti rekannya. Pemegang `leave.view_all` dapat menambahkan `department_id` untuk melihat departemen lain.
+
+Kolom `max_concurrent_leave` dan `exempt_from_staffing_limit` dibuat oleh migrasi `database/migrations/2026-10-11_batas_cuti_bersamaan_per_departemen.sql`, yang wajib dijalankan sebelum men-deploy fitur ini.
 
 ## Cara Kerja Ledger Saldo Cuti
 

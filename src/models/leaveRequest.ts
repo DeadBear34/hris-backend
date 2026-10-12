@@ -174,6 +174,36 @@ export async function findOverlapping(
   return result.rows[0] ?? null;
 }
 
+// Jumlah rekan satu departemen yang cutinya sudah disetujui pada setiap
+// tanggal yang diminta. Pemohon sendiri tidak dihitung. Dihitung dari
+// rentang pengajuan, bukan dari penanda di tabel absensi, supaya cuti yang
+// disetujui sebelum penanda itu ada tetap terhitung. Tanggal tanpa satu pun
+// rekan yang cuti tidak muncul di hasil
+export async function countApprovedLeaveByDate(
+  department_id: string,
+  exclude_employee_id: string,
+  dates: string[],
+  db: Executor = pool,
+): Promise<Map<string, number>> {
+  if (dates.length === 0) return new Map();
+
+  const result = await db.query<{ date: string; on_leave: number }>(
+    `SELECT d::date::text AS date, COUNT(DISTINCT lr.employee_id)::int AS on_leave
+     FROM unnest($3::date[]) AS d
+     JOIN leave_requests lr
+       ON lr.status = 'approved'
+      AND d BETWEEN lr.start_date AND lr.end_date
+     JOIN employees e ON e.id = lr.employee_id
+     WHERE e.department_id = $1::uuid
+       AND e.deleted_at IS NULL
+       AND lr.employee_id <> $2::uuid
+     GROUP BY d`,
+    [department_id, exclude_employee_id, dates],
+  );
+
+  return new Map(result.rows.map((row) => [row.date, row.on_leave]));
+}
+
 export async function createRequest(
   db: Executor,
   data: CreateLeaveRequestInput,

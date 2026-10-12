@@ -52,6 +52,10 @@ export const createLeaveTypeSchema = z.object({
     .enum(["male", "female"], { message: "Invalid gender restriction" })
     .nullable()
     .optional(),
+
+  // true untuk cuti darurat atau yang dilindungi hukum (sakit, duka,
+  // melahirkan): tidak ditolak oleh batas cuti bersamaan departemen
+  exempt_from_staffing_limit: z.boolean().optional(),
 });
 
 export const updateLeaveTypeSchema = createLeaveTypeSchema.partial().extend({

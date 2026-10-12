@@ -9,7 +9,12 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), error: mockLoggerError, warn: jest.fn(), info: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    error: mockLoggerError,
+    warn: jest.fn(),
+    info: jest.fn(),
+  },
 }));
 
 const { withTransaction } = await import("../../src/helpers/transaction.js");

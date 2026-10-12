@@ -8,6 +8,7 @@ import {
   ApproveLeaveRequestController,
   RejectLeaveRequestController,
   CancelLeaveRequestController,
+  DepartmentLeaveCalendarController,
 } from "../controller/leaveRequestController.js";
 import {
   UploadLeaveAttachmentController,
@@ -26,6 +27,8 @@ import {
   listLeaveRequestQuerySchema,
   createLeaveRequestSchema,
   decideLeaveRequestSchema,
+  approveLeaveRequestSchema,
+  departmentCalendarQuerySchema,
 } from "../schema/leaveRequestSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
@@ -45,6 +48,15 @@ router.get(
   ...loggedIn,
   validateQuery(listLeaveRequestQuerySchema),
   ListApprovalLeaveRequestController,
+);
+
+// Didaftarkan sebelum /leave-requests/:id supaya "department-calendar"
+// tidak dibaca sebagai ID pengajuan
+router.get(
+  "/leave-requests/department-calendar",
+  ...loggedIn,
+  validateQuery(departmentCalendarQuerySchema),
+  DepartmentLeaveCalendarController,
 );
 
 router.get(
@@ -72,7 +84,7 @@ router.patch(
   "/leave-requests/:id/approve",
   ...loggedIn,
   validateParams(idParamSchema),
-  validate(decideLeaveRequestSchema),
+  validate(approveLeaveRequestSchema),
   ApproveLeaveRequestController,
 );
 

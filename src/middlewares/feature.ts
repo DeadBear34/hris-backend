@@ -3,6 +3,7 @@ import * as featureModel from "../models/feature.js";
 import { readFromCache, writeToCache } from "../helpers/featureCache.js";
 import { Forbidden } from "../helpers/appError.js";
 import { findRequestEmployee } from "../helpers/requestEmployee.js";
+import { markFeature } from "../docs/routeMeta.js";
 
 async function getPositionFeatureCodes(position_id: string): Promise<string[]> {
   const fromCache = readFromCache(position_id);
@@ -46,38 +47,41 @@ export async function hasFeature(
 }
 
 export function requireFeature(code: string) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (req.user?.role === "admin") return next();
+  return markFeature(
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (req.user?.role === "admin") return next();
 
-      const employee = await findRequestEmployee(req, res);
+        const employee = await findRequestEmployee(req, res);
 
-      if (!employee) {
-        throw Forbidden(
-          "Your account is not linked to an employee record, so it has no access yet. Please contact an admin",
-          { required_feature: code },
-        );
+        if (!employee) {
+          throw Forbidden(
+            "Your account is not linked to an employee record, so it has no access yet. Please contact an admin",
+            { required_feature: code },
+          );
+        }
+
+        if (!employee.position_id) {
+          throw Forbidden(
+            "Your position has not been set, so no features are available yet. Please contact an admin",
+            { required_feature: code },
+          );
+        }
+
+        const codes = await getPositionFeatureCodes(employee.position_id);
+
+        if (!codes.includes(code)) {
+          throw Forbidden(
+            "Your position does not have access to the requested feature",
+            { required_feature: code },
+          );
+        }
+
+        next();
+      } catch (err) {
+        next(err);
       }
-
-      if (!employee.position_id) {
-        throw Forbidden(
-          "Your position has not been set, so no features are available yet. Please contact an admin",
-          { required_feature: code },
-        );
-      }
-
-      const codes = await getPositionFeatureCodes(employee.position_id);
-
-      if (!codes.includes(code)) {
-        throw Forbidden(
-          "Your position does not have access to the requested feature",
-          { required_feature: code },
-        );
-      }
-
-      next();
-    } catch (err) {
-      next(err);
-    }
-  };
+    },
+    code,
+  );
 }

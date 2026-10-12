@@ -1,4 +1,11 @@
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import {
+  jest,
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 
 const mockClient = { query: jest.fn(), release: jest.fn() };
 const mockHasMissing = jest.fn();
@@ -18,9 +25,8 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   lockEmployeeBalance: mockLock,
 }));
 
-const { currentLeaveYear, isAccrualYear, ensureAccruals } = await import(
-  "../../src/helpers/leaveAccrual.js"
-);
+const { currentLeaveYear, isAccrualYear, ensureAccruals } =
+  await import("../../src/helpers/leaveAccrual.js");
 
 const EMPLOYEE_ID = "33333333-3333-4333-8333-333333333333";
 

@@ -13,13 +13,20 @@ import workScheduleRoute from "./workScheduleRoute.js";
 import attendanceRoute from "./attendanceRoute.js";
 import notificationRoute from "./notificationRoute.js";
 import activityLogRoute from "./activityLogRoute.js";
+import docsRoute from "./docsRoute.js";
 import { apiRateLimit } from "../middlewares/rateLimit.js";
+import { createTryItOutGuard } from "../middlewares/apiDocsGuard.js";
+import { registerApiRouter } from "../docs/registry.js";
+import { env } from "../config/env.js";
 
 const router = Router();
 
 // Dipasang paling depan supaya ikut menghitung permintaan ke route yang
 // tidak ada, misalnya pemindaian endpoint
 router.use(apiRateLimit);
+
+// Di production, percobaan dari halaman dokumentasi API hanya boleh membaca
+router.use(createTryItOutGuard(env.NODE_ENV === "production"));
 
 router.use(authRoute);
 router.use(userAccountRoute);
@@ -38,5 +45,9 @@ router.use(workScheduleRoute);
 router.use(attendanceRoute);
 router.use(notificationRoute);
 router.use(activityLogRoute);
+router.use(docsRoute);
+
+// Didaftarkan untuk pembangkit dokumentasi OpenAPI
+registerApiRouter(router);
 
 export default router;

@@ -14,6 +14,9 @@ export interface LeaveType {
   max_days_per_request: number | null;
   min_notice_days: number;
   gender_restriction: EmployeeGender | null;
+  // Tidak ditolak karena batas cuti bersamaan departemen (misalnya cuti
+  // sakit), tetapi tetap dihitung sebagai orang yang sedang cuti
+  exempt_from_staffing_limit: boolean;
   is_active: boolean;
   deleted_at: Date | null;
   created_at: Date;
@@ -31,6 +34,7 @@ export interface LeaveTypeInput {
   max_days_per_request?: number | null;
   min_notice_days?: number;
   gender_restriction?: EmployeeGender | null;
+  exempt_from_staffing_limit?: boolean;
   is_active?: boolean;
 }
 
@@ -45,6 +49,7 @@ const UPDATABLE_COLUMNS = [
   "max_days_per_request",
   "min_notice_days",
   "gender_restriction",
+  "exempt_from_staffing_limit",
   "is_active",
 ] as const;
 
@@ -58,8 +63,8 @@ const COLUMN_CAST: Record<string, string> = {
 
 const COLUMNS = `id, code, name, default_quota::float8 AS default_quota,
   deducts_balance, is_paid, requires_attachment, attachment_required_after,
-  max_days_per_request, min_notice_days, gender_restriction, is_active,
-  deleted_at, created_at, updated_at`;
+  max_days_per_request, min_notice_days, gender_restriction,
+  exempt_from_staffing_limit, is_active, deleted_at, created_at, updated_at`;
 
 export async function findAll(activeOnly = false): Promise<LeaveType[]> {
   const where = activeOnly
@@ -98,11 +103,12 @@ export async function createLeaveType(
     `INSERT INTO leave_types
        (code, name, default_quota, deducts_balance, is_paid,
         requires_attachment, attachment_required_after, max_days_per_request,
-        min_notice_days, gender_restriction)
+        min_notice_days, gender_restriction, exempt_from_staffing_limit)
      VALUES ($1, $2, $3::numeric,
              COALESCE($4::boolean, true), COALESCE($5::boolean, true),
              COALESCE($6::boolean, false), $7::int, $8::int,
-             COALESCE($9::int, 0), $10::employee_gender)
+             COALESCE($9::int, 0), $10::employee_gender,
+             COALESCE($11::boolean, false))
      RETURNING ${COLUMNS}`,
     [
       data.code,
@@ -115,6 +121,7 @@ export async function createLeaveType(
       data.max_days_per_request ?? null,
       data.min_notice_days ?? null,
       data.gender_restriction ?? null,
+      data.exempt_from_staffing_limit ?? null,
     ],
   );
 

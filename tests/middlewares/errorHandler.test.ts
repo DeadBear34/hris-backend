@@ -5,7 +5,12 @@ import { z } from "zod";
 const mockLoggerError = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), error: mockLoggerError, info: jest.fn(), warn: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    error: mockLoggerError,
+    info: jest.fn(),
+    warn: jest.fn(),
+  },
 }));
 
 const { errorHandler, notFoundHandler } =

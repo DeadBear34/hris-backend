@@ -146,7 +146,23 @@ describe("createDepartment", () => {
 
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
-    expect(values).toEqual(["IT", "Teknologi Informasi"]);
+    // Batas cuti bersamaan kosong berarti tanpa batas
+    expect(values).toEqual(["IT", "Teknologi Informasi", null]);
+  });
+
+  it("menyimpan batas cuti bersamaan bila diisi", async () => {
+    mockQuery.mockResolvedValue({ rows: [fakeDepartment] } as never);
+
+    await departmentModel.createDepartment({
+      code: "IT",
+      name: "Teknologi Informasi",
+      max_concurrent_leave: 2,
+    });
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("max_concurrent_leave");
+    expect(values).toEqual(["IT", "Teknologi Informasi", 2]);
   });
 
   it("mengembalikan departemen yang baru dibuat", async () => {
@@ -183,6 +199,29 @@ describe("updateDepartment", () => {
     expect(sql).toContain("name = $1");
     expect(sql).not.toContain("code =");
     expect(values).toEqual(["Keuangan", DEPARTMENT_ID, null]);
+  });
+
+  it("mengubah batas cuti bersamaan sebagai bilangan bulat", async () => {
+    await departmentModel.updateDepartment(DEPARTMENT_ID, {
+      max_concurrent_leave: 3,
+    });
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("max_concurrent_leave = $1::int");
+    expect(values[0]).toBe(3);
+  });
+
+  // null berarti batasnya dihapus, jadi harus ikut terkirim, bukan dilewati
+  it("dapat menghapus batas cuti bersamaan dengan null", async () => {
+    await departmentModel.updateDepartment(DEPARTMENT_ID, {
+      max_concurrent_leave: null,
+    });
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("max_concurrent_leave = $1::int");
+    expect(values[0]).toBeNull();
   });
 
   it("menjadikan updated_at dari klien sebagai syarat perubahan", async () => {
@@ -283,6 +322,22 @@ describe("softDeleteDepartment", () => {
       await departmentModel.softDeleteDepartment(DEPARTMENT_ID);
 
     expect(department).toBeNull();
+  });
+});
+
+describe("lockForLeaveApproval", () => {
+  it("mengunci baris departemen di klien transaksi", async () => {
+    const db = { query: jest.fn(() => Promise.resolve({ rows: [] })) };
+
+    await departmentModel.lockForLeaveApproval(db as never, DEPARTMENT_ID);
+
+    const [sql, values] = db.query.mock.calls[0] as unknown as [
+      string,
+      unknown[],
+    ];
+
+    expect(sql).toContain("FOR UPDATE");
+    expect(values).toEqual([DEPARTMENT_ID]);
   });
 });
 

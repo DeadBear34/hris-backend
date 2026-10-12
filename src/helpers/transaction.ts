@@ -26,7 +26,9 @@ export async function withTransaction<T>(
       await client.query("ROLLBACK");
     } catch (rollbackErr) {
       broken =
-        rollbackErr instanceof Error ? rollbackErr : new Error("Rollback failed");
+        rollbackErr instanceof Error
+          ? rollbackErr
+          : new Error("Rollback failed");
       logger.error({ err: rollbackErr }, "Failed to roll back transaction");
     }
 

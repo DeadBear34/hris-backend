@@ -5,7 +5,12 @@ const mockInfo = jest.fn();
 const mockWarn = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: mockDebug, info: mockInfo, warn: mockWarn, error: jest.fn() },
+  logger: {
+    debug: mockDebug,
+    info: mockInfo,
+    warn: mockWarn,
+    error: jest.fn(),
+  },
 }));
 
 jest.unstable_mockModule("../../src/models/activityLog.js", () => ({

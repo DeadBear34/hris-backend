@@ -1,7 +1,12 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 const { logger } = await import("../../src/config/logger.js");

@@ -70,7 +70,12 @@ jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
 const mockLoggerWarn = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: mockLoggerWarn, error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: mockLoggerWarn,
+    error: jest.fn(),
+  },
 }));
 
 // Ditiru supaya bisa dipastikan kapan penyetuju diberi tahu

@@ -53,7 +53,13 @@ describe("strongPassword", () => {
   });
 
   it("menolak kombinasi lemah yang lazim dipakai", () => {
-    for (const weak of ["12345678", "password", "password123", "Password123", "qwertyuiop"]) {
+    for (const weak of [
+      "12345678",
+      "password",
+      "password123",
+      "Password123",
+      "qwertyuiop",
+    ]) {
       expect(schema.safeParse(weak).success).toBe(false);
     }
   });
@@ -106,7 +112,9 @@ describe("aturan password kuat dipakai di setiap tempat password dibuat", () => 
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((i) => i.path[0] === "password")).toBe(true);
+      expect(result.error.issues.some((i) => i.path[0] === "password")).toBe(
+        true,
+      );
     }
   });
 

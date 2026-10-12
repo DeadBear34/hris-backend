@@ -54,7 +54,12 @@ jest.unstable_mockModule("../src/realtime/crossInstance.js", () => ({
 }));
 
 jest.unstable_mockModule("../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: mockLoggerInfo, error: mockLoggerError, warn: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: mockLoggerInfo,
+    error: mockLoggerError,
+    warn: jest.fn(),
+  },
 }));
 
 const { env } = await import("../src/config/env.js");

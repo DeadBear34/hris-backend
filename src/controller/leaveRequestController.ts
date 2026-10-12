@@ -7,6 +7,8 @@ import * as balanceModel from "../models/leaveBalance.js";
 import * as attachmentModel from "../models/leaveAttachment.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as workScheduleModel from "../models/workSchedule.js";
+import * as employeeModel from "../models/employee.js";
+import * as departmentModel from "../models/department.js";
 import type { Employee } from "../models/employee.js";
 import type { Executor } from "../models/user.js";
 import type { LeaveType } from "../models/leaveType.js";
@@ -17,8 +19,19 @@ import type {
 import {
   countWorkdays,
   daysFromToday,
+  eachDateInRange,
   isPastDate,
+  isWeekend,
+  toIsoDate,
 } from "../helpers/workdays.js";
+import { dateRange } from "../helpers/timezone.js";
+import {
+  OVERRIDE_NOTE_MIN_LENGTH,
+  findFullDays,
+  staffingLimitError,
+} from "../helpers/staffingLimit.js";
+import type { FullDay } from "../helpers/staffingLimit.js";
+import type { Department } from "../models/department.js";
 import { canTransition, statusLabel } from "../helpers/leaveStatus.js";
 import { hasFeature } from "../middlewares/feature.js";
 import { startActivity } from "../helpers/activityLog.js";
@@ -278,6 +291,78 @@ export async function ListAllLeaveRequestController(
   }
 }
 
+// Jumlah rekan satu departemen yang cutinya sudah disetujui per tanggal,
+// untuk menandai tanggal yang penuh di kalender pengajuan. Pemohon sendiri
+// tidak dihitung, jadi is_full berarti "Anda tidak bisa cuti di tanggal ini".
+// Hanya jumlah, tanpa nama, supaya karyawan tidak melihat cuti rekannya.
+// Departemen lain hanya boleh dilihat pemegang leave.view_all
+export async function DepartmentLeaveCalendarController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const requester = await getRequester(req, res);
+    const { start_date, end_date, department_id } = res.locals.query as {
+      start_date: string;
+      end_date: string;
+      department_id?: string;
+    };
+
+    const ownDepartmentId = requester.employee.department_id ?? null;
+
+    if (
+      department_id &&
+      department_id !== ownDepartmentId &&
+      !requester.canViewAll
+    ) {
+      throw Forbidden(
+        "You can only view the leave calendar of your own department",
+      );
+    }
+
+    const targetId = department_id ?? ownDepartmentId;
+
+    if (!targetId) {
+      res.json({ success: true, data: { department: null, days: [] } });
+      return;
+    }
+
+    const department = await departmentModel.findById(targetId);
+    if (!department) throw NotFound("Department not found");
+
+    const limit = department.max_concurrent_leave ?? null;
+    const dates = dateRange(start_date, end_date);
+    const counts = await leaveRequestModel.countApprovedLeaveByDate(
+      department.id,
+      requester.employee.id,
+      dates,
+    );
+
+    res.json({
+      success: true,
+      data: {
+        department: {
+          id: department.id,
+          name: department.name,
+          max_concurrent_leave: limit,
+        },
+        days: dates.map((date) => {
+          const onLeave = counts.get(date) ?? 0;
+
+          return {
+            date,
+            on_leave: onLeave,
+            is_full: limit !== null && onLeave >= limit,
+          };
+        }),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function DetailLeaveRequestController(
   req: Request,
   res: Response,
@@ -358,6 +443,28 @@ export async function CreateLeaveRequestController(
       );
     }
 
+    // Ditolak sejak awal kalo ada hari yang sudah penuh oleh cuti rekan yang
+    // disetujui, supaya karyawan tidak menunggu keputusan yang pasti gagal.
+    // Pengajuan rekan yang masih pending tidak dihitung, jadi pengajuan tidak
+    // saling memblokir sebelum ada keputusan. Pemeriksaan yang menentukan
+    // dilakukan lagi saat penyetujuan
+    const limitedDepartment = await limitedDepartmentFor(
+      leaveType,
+      requester.employee.department_id,
+    );
+
+    if (limitedDepartment) {
+      const fullDays = await findFullDays(
+        limitedDepartment,
+        requester.employee.id,
+        await workingDatesOf(requester.employee.id, start_date, end_date),
+      );
+
+      if (fullDays.length > 0) {
+        throw staffingLimitError(limitedDepartment, fullDays);
+      }
+    }
+
     const request = await withTransaction(async (client) => {
       // Kunci dulu, baru baca saldo. Tanpa ini dua pengajuan bersamaan
       // sama-sama membaca saldo lama dan keduanya lolos
@@ -436,6 +543,79 @@ export async function CreateLeaveRequestController(
   }
 }
 
+// Hari kerja seorang karyawan dalam rentang cuti, menurut jadwal kerjanya.
+// Karyawan yang belum punya jadwal dianggap bekerja Senin sampai Jumat.
+// Hari libur selalu dikeluarkan
+async function workingDatesOf(
+  employee_id: string,
+  start_date: string,
+  end_date: string,
+): Promise<string[]> {
+  const holidays = await holidayModel.findDatesBetween(start_date, end_date);
+  const schedule = await workScheduleModel.resolveForEmployee(employee_id);
+
+  if (schedule) {
+    return workScheduleModel.workingDatesInRange(
+      schedule,
+      start_date,
+      end_date,
+      holidays,
+    );
+  }
+
+  const holidaySet = new Set(holidays);
+
+  return eachDateInRange(start_date, end_date)
+    .filter((date) => !isWeekend(date))
+    .map(toIsoDate)
+    .filter((date) => !holidaySet.has(date));
+}
+
+// Melampaui batas hanya boleh oleh pemegang leave.approve_all, harus diminta
+// secara sadar lewat override_staffing_limit, dan alasannya wajib ditulis.
+// Selain itu penyetujuan ditolak dengan 409 beserta tanggal yang penuh
+function assertStaffingOverride(
+  department: Department,
+  fullDays: FullDay[],
+  requester: Requester,
+  override: boolean | undefined,
+  decisionNote: string | undefined,
+): void {
+  if (!override || !requester.canApproveAll) {
+    throw staffingLimitError(department, fullDays, requester.canApproveAll);
+  }
+
+  if ((decisionNote ?? "").trim().length < OVERRIDE_NOTE_MIN_LENGTH) {
+    throw BadRequest(
+      `Approving above the staffing limit needs a reason of at least ${OVERRIDE_NOTE_MIN_LENGTH} characters in decision_note`,
+    );
+  }
+}
+
+// Departemen yang batas cuti bersamaannya berlaku untuk pengajuan ini.
+// Null bila jenis cutinya dikecualikan, karyawannya tanpa departemen, atau
+// departemennya tanpa batas, sehingga tidak ada yang perlu diperiksa
+async function limitedDepartmentFor(
+  leaveType: LeaveType,
+  department_id: string | null | undefined,
+): Promise<Department | null> {
+  if (leaveType.exempt_from_staffing_limit || !department_id) return null;
+
+  const department = await departmentModel.findById(department_id);
+
+  // undefined juga dianggap tanpa batas, untuk berjaga bila kolomnya belum
+  // dibuat karena migrasi belum dijalankan
+  if (
+    !department ||
+    department.max_concurrent_leave === null ||
+    department.max_concurrent_leave === undefined
+  ) {
+    return null;
+  }
+
+  return department;
+}
+
 async function markLeaveDays(
   db: Executor,
   request: LeaveRequest,
@@ -475,7 +655,10 @@ export async function ApproveLeaveRequestController(
     const activity = startActivity(req);
     const requester = await getRequester(req, res);
     const { id } = res.locals.params as { id: string };
-    const { decision_note } = req.body as { decision_note?: string };
+    const { decision_note, override_staffing_limit } = req.body as {
+      decision_note?: string;
+      override_staffing_limit?: boolean;
+    };
 
     const existing = await leaveRequestModel.findById(id);
     if (!existing) throw NotFound("Leave request not found");
@@ -503,7 +686,51 @@ export async function ApproveLeaveRequestController(
       }
     }
 
+    // Pembacaan yang tidak bergantung pada kunci dilakukan sebelum transaksi,
+    // supaya kunci departemen dipegang sesingkat mungkin
+    const owner = await employeeModel.findById(existing.employee_id);
+    const limitedDepartment = await limitedDepartmentFor(
+      leaveType,
+      owner?.department_id,
+    );
+    const leaveDates = limitedDepartment
+      ? await workingDatesOf(
+          existing.employee_id,
+          existing.start_date,
+          existing.end_date,
+        )
+      : [];
+
+    let overriddenDays: FullDay[] = [];
+
     const request = await withTransaction(async (client) => {
+      if (limitedDepartment) {
+        // Penyetujuan di departemen yang sama dibuat bergiliran, supaya dua
+        // penyetujuan bersamaan tidak sama-sama lolos dari batas
+        await departmentModel.lockForLeaveApproval(
+          client,
+          limitedDepartment.id,
+        );
+
+        const fullDays = await findFullDays(
+          limitedDepartment,
+          existing.employee_id,
+          leaveDates,
+          client,
+        );
+
+        if (fullDays.length > 0) {
+          assertStaffingOverride(
+            limitedDepartment,
+            fullDays,
+            requester,
+            override_staffing_limit,
+            decision_note,
+          );
+          overriddenDays = fullDays;
+        }
+      }
+
       const approved = await leaveRequestModel.approveRequest(
         client,
         id,
@@ -528,10 +755,24 @@ export async function ApproveLeaveRequestController(
       action: "leave.approve",
       entity: "leave_request",
       entity_id: id,
-      summary: `Leave request ${existing.start_date} to ${existing.end_date} approved`,
+      summary:
+        overriddenDays.length > 0
+          ? `Leave request ${existing.start_date} to ${existing.end_date} approved above the department staffing limit`
+          : `Leave request ${existing.start_date} to ${existing.end_date} approved`,
       metadata: {
         employee_id: existing.employee_id,
         total_days: existing.total_days,
+        // Jejak penyetujuan yang melampaui batas: tanggalnya dan alasannya
+        ...(overriddenDays.length > 0
+          ? {
+              staffing_override: {
+                department_id: limitedDepartment?.id,
+                max_concurrent_leave: limitedDepartment?.max_concurrent_leave,
+                full_dates: overriddenDays,
+                reason: decision_note,
+              },
+            }
+          : {}),
       },
     });
 

@@ -1,11 +1,15 @@
 import { pool } from "../config/databaseConnection.js";
 import { sameVersion } from "../helpers/concurrency.js";
+import type { Executor } from "./user.js";
 
 export interface Department {
   id: string;
   code: string;
   name: string;
   is_active: boolean;
+  // Paling banyak berapa karyawan departemen ini yang boleh cuti pada hari
+  // yang sama. Null berarti tanpa batas
+  max_concurrent_leave: number | null;
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -15,9 +19,15 @@ export interface DepartmentInput {
   code: string;
   name: string;
   is_active?: boolean;
+  max_concurrent_leave?: number | null;
 }
 
-const UPDATABLE_COLUMNS = ["code", "name", "is_active"] as const;
+const UPDATABLE_COLUMNS = [
+  "code",
+  "name",
+  "is_active",
+  "max_concurrent_leave",
+] as const;
 
 export async function findAll(): Promise<Department[]> {
   const result = await pool.query<Department>(
@@ -64,10 +74,10 @@ export async function createDepartment(
   data: DepartmentInput,
 ): Promise<Department> {
   const result = await pool.query<Department>(
-    `INSERT INTO departments (code, name)
-     VALUES ($1, $2)
+    `INSERT INTO departments (code, name, max_concurrent_leave)
+     VALUES ($1, $2, $3::int)
      RETURNING *`,
-    [data.code, data.name],
+    [data.code, data.name, data.max_concurrent_leave ?? null],
   );
 
   const department = result.rows[0];
@@ -91,7 +101,8 @@ export async function updateDepartment(
     if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
 
     values.push(value);
-    fields.push(`${key} = $${values.length}`);
+    const cast = key === "max_concurrent_leave" ? "::int" : "";
+    fields.push(`${key} = $${values.length}${cast}`);
   }
 
   if (fields.length === 0) {
@@ -127,6 +138,18 @@ export async function softDeleteDepartment(
   );
 
   return result.rows[0] ?? null;
+}
+
+// Menyetujui cuti di departemen yang sama dilakukan bergiliran. Tanpa kunci
+// ini dua penyetujuan bersamaan sama-sama membaca jumlah lama dan batasnya
+// terlampaui
+export async function lockForLeaveApproval(
+  db: Executor,
+  id: string,
+): Promise<void> {
+  await db.query(`SELECT id FROM departments WHERE id = $1::uuid FOR UPDATE`, [
+    id,
+  ]);
 }
 
 export async function countEmployees(id: string): Promise<number> {

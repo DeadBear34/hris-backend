@@ -1,5 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
-import { sameVersion } from "../helpers/concurrency.js";
+import { updateVersioned } from "./versionedUpdate.js";
 import type { EmployeeGender } from "./employee.js";
 
 export interface LeaveType {
@@ -138,36 +138,16 @@ export async function updateLeaveType(
   data: Partial<LeaveTypeInput>,
   expectedUpdatedAt?: string,
 ): Promise<LeaveType | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
-
-    values.push(value);
-    const cast = COLUMN_CAST[key] ?? "";
-    fields.push(`${key} = $${values.length}${cast}`);
-  }
-
-  if (fields.length === 0) {
-    return findById(id);
-  }
-
-  fields.push("updated_at = now()");
-  values.push(id);
-  const idParam = values.length;
-  values.push(expectedUpdatedAt ?? null);
-
-  const result = await pool.query<LeaveType>(
-    `UPDATE leave_types SET ${fields.join(", ")}
-     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
-       AND ${sameVersion("updated_at", values.length)}
-     RETURNING ${COLUMNS}`,
-    values,
-  );
-
-  return result.rows[0] ?? null;
+  return updateVersioned<LeaveType>({
+    table: "leave_types",
+    id,
+    data,
+    columns: UPDATABLE_COLUMNS,
+    casts: COLUMN_CAST,
+    returning: COLUMNS,
+    expectedUpdatedAt,
+    current: () => findById(id),
+  });
 }
 
 export async function softDeleteLeaveType(

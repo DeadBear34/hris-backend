@@ -18,7 +18,6 @@ jest.unstable_mockModule("../../src/models/feature.js", () => ({
   findFeaturesByPosition: jest.fn(),
   findMatrix: jest.fn(),
   replacePositionFeatures: jest.fn(),
-  countGrantsByPosition: jest.fn(),
 }));
 
 const employeeModel = await import("../../src/models/employee.js");
@@ -167,9 +166,36 @@ describe("requireFeature untuk karyawan", () => {
 
     expect(employeeModel.findByUserId).toHaveBeenCalledTimes(1);
   });
+
+  it("akun tanpa data karyawan juga tidak diquery berulang", async () => {
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue(null as never);
+    const res = makeRes();
+
+    await requireFeature("employee.view_all")(makeReq("employee"), res, next);
+    await hasFeature(makeReq("employee"), res, "employee.view_all");
+
+    expect(employeeModel.findByUserId).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("cache fitur per jabatan", () => {
+  // Controller cuti memeriksa tiga fitur sekaligus lewat Promise.all. Saat
+  // cache kosong, ketiganya tidak boleh memicu tiga query yang sama
+  it("pemeriksaan bersamaan dalam satu request hanya memicu satu query", async () => {
+    const req = makeReq("employee");
+    const res = makeRes();
+    res.locals.employee = fakeEmployee;
+
+    const results = await Promise.all([
+      hasFeature(req, res, "employee.view_all"),
+      hasFeature(req, res, "leave.approve_all"),
+      hasFeature(req, res, "leave.view_all"),
+    ]);
+
+    expect(results).toEqual([true, false, false]);
+    expect(featureModel.findCodesByPosition).toHaveBeenCalledTimes(1);
+  });
+
   it("hanya memanggil database sekali untuk jabatan yang sama", async () => {
     await requireFeature("employee.view_all")(
       makeReq("employee"),

@@ -115,22 +115,6 @@ export async function findFeaturesByPosition(
   return result.rows;
 }
 
-export async function findCodesByEmployee(
-  employee_id: string,
-): Promise<string[]> {
-  const result = await pool.query<{ code: string }>(
-    `SELECT f.code
-     FROM employees e
-     JOIN position_features pf ON pf.position_id = e.position_id
-     JOIN features f ON f.id = pf.feature_id
-     WHERE e.id = $1::uuid AND e.deleted_at IS NULL AND f.is_active = true
-     ORDER BY f.code ASC`,
-    [employee_id],
-  );
-
-  return result.rows.map((row) => row.code);
-}
-
 export async function findMatrix(): Promise<FeatureGrant[]> {
   const result = await pool.query<FeatureGrant>(
     `SELECT pf.position_id, pf.feature_id
@@ -162,15 +146,4 @@ export async function replacePositionFeatures(
   );
 
   return result.rowCount ?? 0;
-}
-
-export async function countGrantsByPosition(
-  position_id: string,
-): Promise<number> {
-  const result = await pool.query<{ count: string }>(
-    "SELECT COUNT(*) FROM position_features WHERE position_id = $1::uuid",
-    [position_id],
-  );
-
-  return Number(result.rows[0]?.count ?? 0);
 }

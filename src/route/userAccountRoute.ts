@@ -6,16 +6,11 @@ import {
 } from "../controller/userAccountController.js";
 import { authenticate } from "../middlewares/auth.js";
 import { requireFeature } from "../middlewares/feature.js";
-import {
-  validate,
-  validateQuery,
-  validateParams,
-} from "../middlewares/validate.js";
+import { validate, validateParams } from "../middlewares/validate.js";
 import { setUserActiveSchema } from "../schema/authSchema.js";
 import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
-const loggedIn = [authenticate];
 const canManageRegistration = [
   authenticate,
   requireFeature("employee.approve_user"),

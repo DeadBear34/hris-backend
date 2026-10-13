@@ -65,22 +65,6 @@ export async function findLatest(
   return result.rows[0] ?? null;
 }
 
-export async function findLatestActive(
-  email: string,
-  purpose: TokenPurpose,
-): Promise<VerificationToken | null> {
-  const result = await pool.query<VerificationToken>(
-    `SELECT * FROM verification_tokens
-     WHERE email = $1 AND purpose = $2::token_purpose
-       AND consumed_at IS NULL AND expires_at > now()
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [email, purpose],
-  );
-
-  return result.rows[0] ?? null;
-}
-
 // Seluruh token yang masih dapat dipakai, terbaru lebih dulu. Dipakai tautan
 // reset password, yang seluruhnya tetap berlaku sampai kedaluwarsa atau salah
 // satunya berhasil dipakai. Dibatasi agar pencocokan argon2 tidak berjalan

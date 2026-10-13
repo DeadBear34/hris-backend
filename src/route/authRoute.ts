@@ -19,11 +19,7 @@ import {
 import { authenticate } from "../middlewares/auth.js";
 import { loginRateLimit } from "../middlewares/rateLimit.js";
 import { uploadSingleImage } from "../middlewares/upload.js";
-import {
-  validate,
-  validateQuery,
-  validateParams,
-} from "../middlewares/validate.js";
+import { validate } from "../middlewares/validate.js";
 import {
   loginSchema,
   registerSchema,

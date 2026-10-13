@@ -38,10 +38,8 @@ jest.unstable_mockModule("../../src/models/feature.js", () => ({
   findByCodes: jest.fn(),
   findCodesByPosition: jest.fn(),
   findFeaturesByPosition: jest.fn(),
-  findCodesByEmployee: jest.fn(),
   findMatrix: jest.fn(),
   replacePositionFeatures: jest.fn(),
-  countGrantsByPosition: jest.fn(),
 }));
 
 const employeeModel = await import("../../src/models/employee.js");

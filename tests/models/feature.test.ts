@@ -91,25 +91,6 @@ describe("findCodesByPosition", () => {
   });
 });
 
-describe("findCodesByEmployee", () => {
-  it("menurunkan fitur lewat jabatan karyawan", async () => {
-    await featureModel.findCodesByEmployee(EMPLOYEE_ID);
-
-    const [sql] = mockQuery.mock.calls[0] as [string];
-
-    expect(sql).toContain("FROM employees e");
-    expect(sql).toContain("pf.position_id = e.position_id");
-  });
-
-  it("mengabaikan karyawan yang sudah dihapus", async () => {
-    await featureModel.findCodesByEmployee(EMPLOYEE_ID);
-
-    const [sql] = mockQuery.mock.calls[0] as [string];
-
-    expect(sql).toContain("e.deleted_at IS NULL");
-  });
-});
-
 describe("replacePositionFeatures", () => {
   it("menghapus seluruh pemberian lama lebih dulu", async () => {
     await featureModel.replacePositionFeatures(
@@ -178,23 +159,5 @@ describe("findMatrix", () => {
 
     expect(sql).toContain("f.is_active = true");
     expect(sql).toContain("pf.position_id, pf.feature_id");
-  });
-});
-
-describe("countGrantsByPosition", () => {
-  it("menghitung pemberian fitur sebuah jabatan", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ count: "13" }] } as never);
-
-    const count = await featureModel.countGrantsByPosition(POSITION_ID);
-
-    expect(count).toBe(13);
-  });
-
-  it("mengembalikan nol bila belum ada pemberian", async () => {
-    mockQuery.mockResolvedValue({ rows: [] } as never);
-
-    const count = await featureModel.countGrantsByPosition(POSITION_ID);
-
-    expect(count).toBe(0);
   });
 });

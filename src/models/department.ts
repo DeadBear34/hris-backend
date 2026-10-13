@@ -1,5 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
-import { sameVersion } from "../helpers/concurrency.js";
+import { updateVersioned } from "./versionedUpdate.js";
 import type { Executor } from "./user.js";
 
 export interface Department {
@@ -28,6 +28,10 @@ const UPDATABLE_COLUMNS = [
   "is_active",
   "max_concurrent_leave",
 ] as const;
+
+const COLUMN_CAST: Record<string, string> = {
+  max_concurrent_leave: "::int",
+};
 
 export async function findAll(): Promise<Department[]> {
   const result = await pool.query<Department>(
@@ -93,37 +97,16 @@ export async function updateDepartment(
   data: Partial<DepartmentInput>,
   expectedUpdatedAt?: string,
 ): Promise<Department | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
-
-    values.push(value);
-    const cast = key === "max_concurrent_leave" ? "::int" : "";
-    fields.push(`${key} = $${values.length}${cast}`);
-  }
-
-  if (fields.length === 0) {
-    return findById(id);
-  }
-
-  fields.push("updated_at = now()");
-  values.push(id);
-  const idParam = values.length;
-  values.push(expectedUpdatedAt ?? null);
-
-  const result = await pool.query<Department>(
-    `UPDATE departments
-     SET ${fields.join(", ")}
-     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
-       AND ${sameVersion("updated_at", values.length)}
-     RETURNING *`,
-    values,
-  );
-
-  return result.rows[0] ?? null;
+  return updateVersioned<Department>({
+    table: "departments",
+    id,
+    data,
+    columns: UPDATABLE_COLUMNS,
+    casts: COLUMN_CAST,
+    returning: "*",
+    expectedUpdatedAt,
+    current: () => findById(id),
+  });
 }
 
 export async function softDeleteDepartment(

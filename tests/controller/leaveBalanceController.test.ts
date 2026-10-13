@@ -35,7 +35,6 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   listLedger: jest.fn(),
   createTransaction: jest.fn(),
   convertHoldToDeduction: jest.fn(),
-  findByRequest: jest.fn(),
   lockEmployeeBalance: jest.fn(),
   // Bawaan: jatah tahun ini sudah ada, jadi tidak ada yang perlu dibuat
   hasMissingAccruals: jest.fn(() => Promise.resolve(false)),

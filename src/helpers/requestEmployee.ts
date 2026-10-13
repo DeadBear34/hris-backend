@@ -10,13 +10,16 @@ export async function findRequestEmployee(
   req: Request,
   res: Response,
 ): Promise<Employee | null> {
-  const stored = res.locals.employee as Employee | undefined;
-  if (stored) return stored;
+  // null juga disimpan, supaya akun tanpa data karyawan tidak memicu query
+  // ulang di setiap pemeriksaan fitur dalam request yang sama
+  if (res.locals.employee !== undefined) {
+    return res.locals.employee as Employee | null;
+  }
 
   if (!req.user) return null;
 
   const employee = await employeeModel.findByUserId(req.user.id);
-  if (employee) res.locals.employee = employee;
+  res.locals.employee = employee;
 
   return employee;
 }

@@ -33,6 +33,7 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { paginationMeta } from "../helpers/pagination.js";
 
 // Satu masalah pada satu kolom
 interface FieldError {
@@ -40,8 +41,6 @@ interface FieldError {
   message: string;
 }
 
-// Memeriksa departemen, jabatan, dan manajer. Mengembalikan daftar masalah
-// beserta kolomnya, bukan melempar, agar bisa dilaporkan per baris
 // Cukup kolom relasi yang diperiksa. null berarti relasinya dilepas
 interface RelationFields {
   department_id?: string | null;
@@ -49,61 +48,64 @@ interface RelationFields {
   manager_id?: string | null;
 }
 
+async function checkManager(
+  manager_id: string,
+  currentId?: string,
+): Promise<FieldError | null> {
+  if (currentId && manager_id === currentId) {
+    return {
+      field: "manager_id",
+      message: "An employee cannot be their own manager",
+    };
+  }
+
+  const manager = await employeeModel.findById(manager_id);
+  if (!manager) return { field: "manager_id", message: "Manager not found" };
+
+  if (
+    currentId &&
+    (await employeeModel.isDescendantOf(manager_id, currentId))
+  ) {
+    return {
+      field: "manager_id",
+      message:
+        "The selected manager reports to this employee, which would create a circular structure",
+    };
+  }
+
+  return null;
+}
+
+// Memeriksa departemen, jabatan, dan manajer sekaligus karena ketiganya tidak
+// saling bergantung. Mengembalikan daftar masalah beserta kolomnya, bukan
+// melempar, agar bisa dilaporkan per baris. Urutannya tetap seperti di atas
 async function checkRelations(
   data: RelationFields,
   currentId?: string,
 ): Promise<FieldError[]> {
-  const errors: FieldError[] = [];
+  const results = await Promise.all([
+    data.department_id
+      ? departmentModel
+          .findById(data.department_id)
+          .then((dept) =>
+            dept
+              ? null
+              : { field: "department_id", message: "Department not found" },
+          )
+      : null,
+    data.position_id
+      ? positionModel
+          .findById(data.position_id)
+          .then((pos) =>
+            pos
+              ? null
+              : { field: "position_id", message: "Position not found" },
+          )
+      : null,
+    data.manager_id ? checkManager(data.manager_id, currentId) : null,
+  ]);
 
-  if (data.department_id) {
-    const dept = await departmentModel.findById(data.department_id);
-    if (!dept) {
-      errors.push({
-        field: "department_id",
-        message: "Department not found",
-      });
-    }
-  }
-
-  if (data.position_id) {
-    const pos = await positionModel.findById(data.position_id);
-    if (!pos) {
-      errors.push({ field: "position_id", message: "Position not found" });
-    }
-  }
-
-  if (data.manager_id) {
-    if (currentId && data.manager_id === currentId) {
-      errors.push({
-        field: "manager_id",
-        message: "An employee cannot be their own manager",
-      });
-    } else {
-      const manager = await employeeModel.findById(data.manager_id);
-
-      if (!manager) {
-        errors.push({
-          field: "manager_id",
-          message: "Manager not found",
-        });
-      } else if (currentId) {
-        const isCycle = await employeeModel.isDescendantOf(
-          data.manager_id,
-          currentId,
-        );
-
-        if (isCycle) {
-          errors.push({
-            field: "manager_id",
-            message:
-              "The selected manager reports to this employee, which would create a circular structure",
-          });
-        }
-      }
-    }
-  }
-
-  return errors;
+  return results.filter((error): error is FieldError => error !== null);
 }
 
 // Pembungkus untuk jalur yang cukup berhenti di masalah pertama
@@ -129,12 +131,7 @@ export async function ListEmployeeController(
     res.json({
       success: true,
       data: rows.map(withPhotoUrl),
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        total_pages: Math.ceil(total / query.limit),
-      },
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -365,14 +362,12 @@ async function validateAgainstDatabase(
   rows: NewEmployee[],
   shapeFailedIndexes: Set<number>,
 ): Promise<FailedRow[]> {
-  const failed: FailedRow[] = [];
-
-  const takenEmails = new Set(
-    await userModel.findExistingEmails(rows.map((row) => row.email)),
-  );
-  const takenPhones = new Set(
-    await employeeModel.findExistingPhones(rows.map((row) => row.phone)),
-  );
+  const [existingEmails, existingPhones] = await Promise.all([
+    userModel.findExistingEmails(rows.map((row) => row.email)),
+    employeeModel.findExistingPhones(rows.map((row) => row.phone)),
+  ]);
+  const takenEmails = new Set(existingEmails);
+  const takenPhones = new Set(existingPhones);
   const relationCache = new Map<string, Promise<FieldError[]>>();
   const seenEmails = new Map<string, number>();
   const seenPhones = new Map<string, number>();
@@ -380,32 +375,40 @@ async function validateAgainstDatabase(
   // rows hanya berisi baris yang lolos tahap 1, jadi penomorannya berjalan
   // sendiri dan tidak sama dengan penomoran rawRows
   let validIndex = 0;
+  const checks: Promise<FailedRow | null>[] = [];
 
+  // Pemeriksaan duplikat berjalan berurutan saat fungsi dipanggil, sedangkan
+  // query relasinya ditunggu bersamaan, bukan satu baris demi satu baris
   for (const index of rawRows.keys()) {
     if (shapeFailedIndexes.has(index)) continue;
 
     const data = rows[validIndex]!;
     validIndex += 1;
 
-    const errors = await checkRowAgainstDatabase(
-      data,
-      index,
-      seenEmails,
-      takenEmails,
-      seenPhones,
-      takenPhones,
-      relationCache,
-    );
+    checks.push(
+      checkRowAgainstDatabase(
+        data,
+        index,
+        seenEmails,
+        takenEmails,
+        seenPhones,
+        takenPhones,
+        relationCache,
+      ).then((errors) => {
+        if (errors.length === 0) return null;
 
-    if (errors.length > 0) {
-      const isDuplicate = errors.some(
-        (g) => g.field === "email" || g.field === "phone",
-      );
-      failed.push(toFailedRow(index, data.email, errors, isDuplicate));
-    }
+        const isDuplicate = errors.some(
+          (g) => g.field === "email" || g.field === "phone",
+        );
+
+        return toFailedRow(index, data.email, errors, isDuplicate);
+      }),
+    );
   }
 
-  return failed;
+  const results = await Promise.all(checks);
+
+  return results.filter((row): row is FailedRow => row !== null);
 }
 
 // Tahap 3: satu baris gagal berarti tidak ada satu pun yang disimpan
@@ -622,7 +625,7 @@ export async function CreateEmployeeController(
     // Bentuk respons mengikuti bentuk kiriman
     res.status(201).json({
       success: true,
-      message: message,
+      message,
       data: isMany ? created : created[0],
       ...(isMany ? { meta: { created: created.length } } : {}),
     });

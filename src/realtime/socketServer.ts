@@ -59,10 +59,7 @@ async function sessionStillValid(
   return issuedAt >= changedAt;
 }
 
-async function authenticateSocket(
-  socket: WebSocket,
-  raw: string,
-): Promise<string | null> {
+async function authenticateSocket(raw: string): Promise<string | null> {
   const token = parseAuth(raw);
   if (!token) return null;
 
@@ -117,7 +114,7 @@ export function attachSocketServer(server: Server): WebSocketServer {
       if (user_id) return;
 
       void (async () => {
-        const authenticated = await authenticateSocket(socket, String(raw));
+        const authenticated = await authenticateSocket(String(raw));
 
         if (!authenticated) {
           socket.close(CLOSE_UNAUTHORIZED, "Invalid token");

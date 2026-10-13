@@ -63,32 +63,6 @@ export async function insertUser(
   return user;
 }
 
-export async function insertUserByAdmin(
-  db: Executor,
-  email: string,
-  password: string,
-  role: UserRole,
-  approved_by: string,
-): Promise<User> {
-  const result = await db.query<User>(
-    `INSERT INTO users
-       (email, password, role, is_active, terms_accepted_at,
-        password_changed_at, email_verified_at, approved_at, approved_by,
-        must_change_password)
-     VALUES ($1, $2, $3::user_role, true, now(), now(), now(), now(),
-             $4::uuid, true)
-     RETURNING ${SAFE_COLUMNS}`,
-    [email, password, role, approved_by],
-  );
-
-  const user = result.rows[0];
-  if (!user) {
-    throw new Error("Failed to save account");
-  }
-
-  return user;
-}
-
 export async function findById(id: string): Promise<User | null> {
   const result = await pool.query<User>(
     `SELECT ${SAFE_COLUMNS} FROM users WHERE id = $1 AND deleted_at IS NULL`,

@@ -12,6 +12,7 @@ import * as departmentModel from "../models/department.js";
 import type { Employee } from "../models/employee.js";
 import type { Executor } from "../models/user.js";
 import type { LeaveType } from "../models/leaveType.js";
+import type { WorkSchedule } from "../models/workSchedule.js";
 import type {
   LeaveRequest,
   ListLeaveRequestParams,
@@ -43,6 +44,7 @@ import {
   clearLeaveApproval,
 } from "../helpers/notify.js";
 import {
+  AppError,
   BadRequest,
   Conflict,
   Forbidden,
@@ -52,6 +54,7 @@ import { plural } from "../helpers/plural.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 import { deleteAttachments, isStorageConfigured } from "../helpers/storage.js";
 import { logger } from "../config/logger.js";
+import { paginationMeta } from "../helpers/pagination.js";
 
 const SICK_LEAVE_CODE = "SICK";
 
@@ -115,19 +118,6 @@ function canDecide(request: LeaveRequest, requester: Requester): boolean {
 
 function periodYearOf(date: string): number {
   return Number(date.slice(0, 4));
-}
-
-function meta(total: number, page: number, limit: number) {
-  return { page, limit, total, total_pages: Math.ceil(total / limit) };
-}
-
-async function countWorkdaysFor(
-  start_date: string,
-  end_date: string,
-): Promise<number> {
-  const holidays = await holidayModel.findDatesBetween(start_date, end_date);
-
-  return countWorkdays(start_date, end_date, holidays);
 }
 
 function validateLeaveDates(
@@ -228,7 +218,7 @@ export async function ListMyLeaveRequestController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -250,7 +240,7 @@ export async function ListApprovalLeaveRequestController(
       res.json({
         success: true,
         data: [],
-        meta: meta(0, query.page, query.limit),
+        meta: paginationMeta(0, query.page, query.limit),
       });
       return;
     }
@@ -264,7 +254,7 @@ export async function ListApprovalLeaveRequestController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -284,7 +274,7 @@ export async function ListAllLeaveRequestController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -333,11 +323,18 @@ export async function DepartmentLeaveCalendarController(
 
     const limit = department.max_concurrent_leave ?? null;
     const dates = dateRange(start_date, end_date);
-    const counts = await leaveRequestModel.countApprovedLeaveByDate(
-      department.id,
-      requester.employee.id,
-      dates,
-    );
+    const [counts, pendingCounts] = await Promise.all([
+      leaveRequestModel.countApprovedLeaveByDate(
+        department.id,
+        requester.employee.id,
+        dates,
+      ),
+      leaveRequestModel.countPendingLeaveByDate(
+        department.id,
+        requester.employee.id,
+        dates,
+      ),
+    ]);
 
     res.json({
       success: true,
@@ -353,6 +350,8 @@ export async function DepartmentLeaveCalendarController(
           return {
             date,
             on_leave: onLeave,
+            // menunggu keputusan, belum mengisi kuota. Untuk peringatan saja
+            pending: pendingCounts.get(date) ?? 0,
             is_full: limit !== null && onLeave >= limit,
           };
         }),
@@ -361,6 +360,31 @@ export async function DepartmentLeaveCalendarController(
   } catch (err) {
     next(err);
   }
+}
+
+// Rekan satu departemen yang cutinya bentrok dengan pengajuan ini, supaya
+// penyetuju bisa menimbang sebelum memutuskan walaupun departemennya belum
+// diberi batas. Berisi nama, jadi hanya untuk penyetujunya atau pemegang
+// leave.view_all, bukan untuk pemohon. undefined berarti tidak ditampilkan
+async function colleaguesOnLeaveFor(
+  request: LeaveRequest,
+  requester: Requester,
+): Promise<leaveRequestModel.ColleagueLeave[] | undefined> {
+  const isOwner = request.employee_id === requester.employee.id;
+
+  if (isOwner || !(canDecide(request, requester) || requester.canViewAll)) {
+    return undefined;
+  }
+
+  const owner = await employeeModel.findById(request.employee_id);
+  if (!owner?.department_id) return [];
+
+  return leaveRequestModel.findColleagueLeaves(
+    owner.department_id,
+    request.employee_id,
+    request.start_date,
+    request.end_date,
+  );
 }
 
 export async function DetailLeaveRequestController(
@@ -379,9 +403,19 @@ export async function DetailLeaveRequestController(
       throw Forbidden("You don't have access to this leave request");
     }
 
-    const attachments = await attachmentModel.findByRequest(id);
+    const [attachments, colleagues_on_leave] = await Promise.all([
+      attachmentModel.findByRequest(id),
+      colleaguesOnLeaveFor(request, requester),
+    ]);
 
-    res.json({ success: true, data: { ...request, attachments } });
+    res.json({
+      success: true,
+      data: {
+        ...request,
+        attachments,
+        ...(colleagues_on_leave ? { colleagues_on_leave } : {}),
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -403,13 +437,18 @@ export async function CreateLeaveRequestController(
       reason?: string;
     };
 
-    const leaveType = await leaveTypeModel.findById(leave_type_id);
+    // Hari libur dipakai lagi untuk pemeriksaan batas departemen di bawah
+    const [leaveType, holidays] = await Promise.all([
+      leaveTypeModel.findById(leave_type_id),
+      holidayModel.findDatesBetween(start_date, end_date),
+    ]);
+
     if (!leaveType) throw BadRequest("Leave type not found");
     if (!leaveType.is_active) {
       throw BadRequest("That leave type is currently inactive");
     }
 
-    const totalDays = await countWorkdaysFor(start_date, end_date);
+    const totalDays = countWorkdays(start_date, end_date, holidays);
     const period = periodYearOf(start_date);
 
     assertGenderAllowed(leaveType, requester.employee);
@@ -454,10 +493,13 @@ export async function CreateLeaveRequestController(
     );
 
     if (limitedDepartment) {
+      const schedule = await workScheduleModel.resolveForEmployee(
+        requester.employee.id,
+      );
       const fullDays = await findFullDays(
         limitedDepartment,
         requester.employee.id,
-        await workingDatesOf(requester.employee.id, start_date, end_date),
+        workingDatesOf({ schedule, holidays }, start_date, end_date),
       );
 
       if (fullDays.length > 0) {
@@ -539,21 +581,60 @@ export async function CreateLeaveRequestController(
       },
     });
   } catch (err) {
+    // Pengajuan yang ditolak tidak disimpan sebagai leave_request, karena
+    // baris itu ikut menentukan saldo dan bentrok tanggal. Jejaknya dicatat
+    // di log aktivitas supaya HR tetap dapat merekap percobaan yang gagal
+    const employee = res.locals.employee as Employee | null | undefined;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    activity.failed({
+      action: "leave.create",
+      entity: "leave_request",
+      actor_name: employee?.full_name ?? null,
+      summary: `Leave request for ${String(body.start_date ?? "?")} to ${String(body.end_date ?? "?")} rejected`,
+      metadata: {
+        employee_id: employee?.id ?? null,
+        leave_type_id: body.leave_type_id ?? null,
+        start_date: body.start_date ?? null,
+        end_date: body.end_date ?? null,
+        reason: err instanceof AppError ? err.message : "unexpected error",
+        code: err instanceof AppError ? err.code : null,
+        details: err instanceof AppError ? (err.details ?? null) : null,
+      },
+    });
+
     next(err);
   }
+}
+
+// Jadwal kerja karyawan dan hari libur dalam rentang cuti. Diambil sekali,
+// lalu dipakai untuk menghitung hari cuti sekaligus menandai absensi
+interface LeaveCalendar {
+  schedule: WorkSchedule | null;
+  holidays: string[];
+}
+
+async function leaveCalendarOf(
+  employee_id: string,
+  start_date: string,
+  end_date: string,
+): Promise<LeaveCalendar> {
+  const [schedule, holidays] = await Promise.all([
+    workScheduleModel.resolveForEmployee(employee_id),
+    holidayModel.findDatesBetween(start_date, end_date),
+  ]);
+
+  return { schedule, holidays };
 }
 
 // Hari kerja seorang karyawan dalam rentang cuti, menurut jadwal kerjanya.
 // Karyawan yang belum punya jadwal dianggap bekerja Senin sampai Jumat.
 // Hari libur selalu dikeluarkan
-async function workingDatesOf(
-  employee_id: string,
+function workingDatesOf(
+  { schedule, holidays }: LeaveCalendar,
   start_date: string,
   end_date: string,
-): Promise<string[]> {
-  const holidays = await holidayModel.findDatesBetween(start_date, end_date);
-  const schedule = await workScheduleModel.resolveForEmployee(employee_id);
-
+): string[] {
   if (schedule) {
     return workScheduleModel.workingDatesInRange(
       schedule,
@@ -616,34 +697,39 @@ async function limitedDepartmentFor(
   return department;
 }
 
+// Karyawan tanpa jadwal kerja tidak punya absensi untuk ditandai
 async function markLeaveDays(
   db: Executor,
   request: LeaveRequest,
+  calendar: LeaveCalendar,
 ): Promise<number> {
-  const schedule = await workScheduleModel.resolveForEmployee(
-    request.employee_id,
-  );
-
-  if (!schedule) return 0;
-
-  const holidays = await holidayModel.findDatesBetween(
-    request.start_date,
-    request.end_date,
-  );
-
-  const workingDates = workScheduleModel.workingDatesInRange(
-    schedule,
-    request.start_date,
-    request.end_date,
-    holidays,
-  );
+  if (!calendar.schedule) return 0;
 
   return attendanceModel.upsertLeaveDays(
     db,
     request.employee_id,
-    workingDates,
+    workingDatesOf(calendar, request.start_date, request.end_date),
     request.id,
   );
+}
+
+// Saldo yang ditahan saat pengajuan dikembalikan bila pengajuannya batal
+function refundHold(
+  db: Executor,
+  request: LeaveRequest,
+  created_by: string,
+  outcome: "rejected" | "cancelled",
+) {
+  return balanceModel.createTransaction(db, {
+    employee_id: request.employee_id,
+    leave_type_id: request.leave_type_id,
+    period_year: periodYearOf(request.start_date),
+    amount: request.total_days,
+    type: "refund",
+    leave_request_id: request.id,
+    note: `Balance refund because the request was ${outcome}`,
+    created_by,
+  });
 }
 
 export async function ApproveLeaveRequestController(
@@ -673,7 +759,18 @@ export async function ApproveLeaveRequestController(
       );
     }
 
-    const leaveType = await leaveTypeModel.findById(existing.leave_type_id);
+    // Pembacaan yang tidak bergantung pada kunci dilakukan sebelum transaksi,
+    // supaya kunci departemen dipegang sesingkat mungkin
+    const [leaveType, owner, calendar] = await Promise.all([
+      leaveTypeModel.findById(existing.leave_type_id),
+      employeeModel.findById(existing.employee_id),
+      leaveCalendarOf(
+        existing.employee_id,
+        existing.start_date,
+        existing.end_date,
+      ),
+    ]);
+
     if (!leaveType) throw BadRequest("Leave type not found");
 
     if (attachmentRequired(leaveType, existing.total_days)) {
@@ -686,20 +783,10 @@ export async function ApproveLeaveRequestController(
       }
     }
 
-    // Pembacaan yang tidak bergantung pada kunci dilakukan sebelum transaksi,
-    // supaya kunci departemen dipegang sesingkat mungkin
-    const owner = await employeeModel.findById(existing.employee_id);
     const limitedDepartment = await limitedDepartmentFor(
       leaveType,
       owner?.department_id,
     );
-    const leaveDates = limitedDepartment
-      ? await workingDatesOf(
-          existing.employee_id,
-          existing.start_date,
-          existing.end_date,
-        )
-      : [];
 
     let overriddenDays: FullDay[] = [];
 
@@ -715,7 +802,7 @@ export async function ApproveLeaveRequestController(
         const fullDays = await findFullDays(
           limitedDepartment,
           existing.employee_id,
-          leaveDates,
+          workingDatesOf(calendar, existing.start_date, existing.end_date),
           client,
         );
 
@@ -746,7 +833,7 @@ export async function ApproveLeaveRequestController(
         await balanceModel.convertHoldToDeduction(client, id);
       }
 
-      await markLeaveDays(client, approved);
+      await markLeaveDays(client, approved, calendar);
 
       return approved;
     });
@@ -835,16 +922,7 @@ export async function RejectLeaveRequestController(
       }
 
       if (leaveType?.deducts_balance) {
-        await balanceModel.createTransaction(client, {
-          employee_id: existing.employee_id,
-          leave_type_id: existing.leave_type_id,
-          period_year: periodYearOf(existing.start_date),
-          amount: existing.total_days,
-          type: "refund",
-          leave_request_id: id,
-          note: "Balance refund because the request was rejected",
-          created_by: requester.employee.id,
-        });
+        await refundHold(client, existing, requester.employee.id, "rejected");
       }
 
       return rejected;
@@ -926,16 +1004,12 @@ export async function CancelLeaveRequestController(
         }
 
         if (leaveType?.deducts_balance) {
-          await balanceModel.createTransaction(client, {
-            employee_id: existing.employee_id,
-            leave_type_id: existing.leave_type_id,
-            period_year: periodYearOf(existing.start_date),
-            amount: existing.total_days,
-            type: "refund",
-            leave_request_id: id,
-            note: "Balance refund because the request was cancelled",
-            created_by: requester.employee.id,
-          });
+          await refundHold(
+            client,
+            existing,
+            requester.employee.id,
+            "cancelled",
+          );
         }
 
         if (existing.status === "approved") {

@@ -4,6 +4,7 @@ import type { HolidayInput, ListHolidayParams } from "../models/holiday.js";
 import { Conflict, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
+import { paginationMeta } from "../helpers/pagination.js";
 
 export async function ListHolidayController(
   _req: Request,
@@ -17,12 +18,7 @@ export async function ListHolidayController(
     res.json({
       success: true,
       data: rows,
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        total_pages: Math.ceil(total / query.limit),
-      },
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);

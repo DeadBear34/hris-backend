@@ -12,7 +12,7 @@ import * as holidayModel from "../models/holiday.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import type { Employee } from "../models/employee.js";
 import type { WorkSchedule } from "../models/workSchedule.js";
-import type { Attendance, ListAttendanceParams } from "../models/attendance.js";
+import type { ListAttendanceParams } from "../models/attendance.js";
 import {
   toLocalTime,
   todayInOfficeZone,
@@ -38,7 +38,6 @@ import {
   decideDailyMarker,
   type ArrivalOutcome,
 } from "../helpers/attendanceStatus.js";
-import { hasFeature } from "../middlewares/feature.js";
 import {
   AppError,
   BadRequest,
@@ -49,19 +48,11 @@ import {
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
+import { paginationMeta } from "../helpers/pagination.js";
 
 const CRON_HEADER = "x-cron-secret";
 
 const BATCH_SIZE = 500;
-
-function meta(total: number, page: number, limit: number) {
-  return {
-    page,
-    limit,
-    total,
-    total_pages: Math.ceil(total / limit),
-  };
-}
 
 function assertMayCheckIn(employee: Employee): void {
   if (!employee.is_active) {
@@ -124,12 +115,15 @@ async function blockedReasonForDate(
     return `${date} is not a workday according to the ${schedule.name} schedule`;
   }
 
-  const holiday = await holidayModel.findByDate(date);
+  // Keduanya dibaca bersamaan. Hari libur tetap didahulukan sebagai alasan
+  const [holiday, leave] = await Promise.all([
+    holidayModel.findByDate(date),
+    leaveRequestModel.findApprovedCovering(employee_id, date),
+  ]);
+
   if (holiday) {
     return `${date} is a holiday: ${holiday.name}`;
   }
-
-  const leave = await leaveRequestModel.findApprovedCovering(employee_id, date);
 
   if (leave) {
     return `You are on approved leave on ${date}`;
@@ -466,11 +460,10 @@ export async function TodayAttendanceController(
     const now = new Date();
     const date = todayInOfficeZone(now);
 
-    const schedule = await workScheduleModel.resolveForEmployee(employee.id);
-    const attendance = await attendanceModel.findByEmployeeAndDate(
-      employee.id,
-      date,
-    );
+    const [schedule, attendance] = await Promise.all([
+      workScheduleModel.resolveForEmployee(employee.id),
+      attendanceModel.findByEmployeeAndDate(employee.id, date),
+    ]);
 
     const blockedReason = schedule
       ? ((await blockedReasonForDate(employee.id, schedule, date)) ??
@@ -520,27 +513,24 @@ export async function MyAttendanceController(
     const { month, year } = requestedMonth(query);
     const { start_date, end_date } = monthRange(month, year);
 
-    const { rows, total } = await attendanceModel.listAttendances({
-      employee_id: employee.id,
-      status: query.status,
-      start_date,
-      end_date,
-      page: query.page,
-      limit: query.limit,
-    });
-
-    const summary = await attendanceModel.summaryFor(
-      employee.id,
-      start_date,
-      end_date,
-    );
+    const [{ rows, total }, summary] = await Promise.all([
+      attendanceModel.listAttendances({
+        employee_id: employee.id,
+        status: query.status,
+        start_date,
+        end_date,
+        page: query.page,
+        limit: query.limit,
+      }),
+      attendanceModel.summaryFor(employee.id, start_date, end_date),
+    ]);
 
     res.json({
       success: true,
       data: rows,
       summary,
       period: { month, year, start_date, end_date },
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -564,7 +554,7 @@ export async function TeamAttendanceController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -583,7 +573,7 @@ export async function ListAttendanceController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -950,7 +940,7 @@ export async function OfflineLogController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -969,7 +959,7 @@ export async function EventLogController(
     res.json({
       success: true,
       data: rows,
-      meta: meta(total, query.page, query.limit),
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);

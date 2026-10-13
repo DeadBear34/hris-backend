@@ -4,6 +4,7 @@ import { toView } from "../realtime/event.js";
 import { Unauthorized, NotFound } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
 import { startActivity } from "../helpers/activityLog.js";
+import { paginationMeta } from "../helpers/pagination.js";
 
 function requireUserId(req: Request): string {
   if (!req.user) {
@@ -37,10 +38,7 @@ export async function ListNotificationController(
       success: true,
       data: rows.map(toView),
       meta: {
-        page,
-        limit,
-        total,
-        total_pages: Math.max(1, Math.ceil(total / limit)),
+        ...paginationMeta(total, page, limit),
         // dipakai lencana di lonceng, tidak terpengaruh pagination
         unread,
       },

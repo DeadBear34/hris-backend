@@ -38,7 +38,7 @@ app.use(express.json());
 
 // Status Redis ikut ditampilkan supaya mudah memeriksa koneksinya, tetapi
 // tidak memengaruhi status HTTP. Redis bersifat opsional, jadi server yang
-// Redis-nya mati tetap dianggap sehat oleh pemeriksa kesehatan Railway
+// Redis-nya mati tetap dianggap sehat oleh healthcheck Docker
 app.get("/health", (_req, res) => {
   res.json({ success: true, message: "Server running", redis: redisState() });
 });

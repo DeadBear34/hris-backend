@@ -8,7 +8,7 @@ export const logLevel = env.NODE_ENV === "test" ? "silent" : env.LOG_LEVEL;
 
 // Di development log dibaca manusia, jadi ditampilkan satu baris berwarna
 // lewat prettyLog. Di production log tetap JSON utuh supaya bisa dicari dan
-// disaring di dashboard Railway
+// disaring, misalnya lewat docker compose logs
 export const logger =
   env.NODE_ENV === "development"
     ? pino({ level: logLevel }, createPrettyStream(env.TIMEZONE))

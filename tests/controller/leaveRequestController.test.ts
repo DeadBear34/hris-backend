@@ -53,7 +53,6 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   convertHoldToDeduction: jest.fn(),
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
-  findByRequest: jest.fn(),
   // Bawaan: jatah tahun ini sudah ada, jadi tidak ada yang perlu dibuat
   hasMissingAccruals: jest.fn(() => Promise.resolve(false)),
   grantAccruals: jest.fn(() => Promise.resolve(0)),

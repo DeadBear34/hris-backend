@@ -1,6 +1,7 @@
 import { pool } from "../config/databaseConnection.js";
-import type { Executor } from "./user.js";
 import { sameVersion } from "../helpers/concurrency.js";
+import { updateVersioned } from "./versionedUpdate.js";
+import type { Executor } from "./user.js";
 
 export interface Position {
   id: string;
@@ -84,36 +85,15 @@ export async function updatePosition(
   data: Partial<PositionInput>,
   expectedUpdatedAt?: string,
 ): Promise<Position | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
-
-    values.push(value);
-    fields.push(`${key} = $${values.length}`);
-  }
-
-  if (fields.length === 0) {
-    return findById(id);
-  }
-
-  fields.push("updated_at = now()");
-  values.push(id);
-  const idParam = values.length;
-  values.push(expectedUpdatedAt ?? null);
-
-  const result = await pool.query<Position>(
-    `UPDATE positions
-     SET ${fields.join(", ")}
-     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
-       AND ${sameVersion("updated_at", values.length)}
-     RETURNING *`,
-    values,
-  );
-
-  return result.rows[0] ?? null;
+  return updateVersioned<Position>({
+    table: "positions",
+    id,
+    data,
+    columns: UPDATABLE_COLUMNS,
+    returning: "*",
+    expectedUpdatedAt,
+    current: () => findById(id),
+  });
 }
 
 export async function softDeletePosition(id: string): Promise<Position | null> {

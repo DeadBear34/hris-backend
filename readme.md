@@ -88,13 +88,15 @@ Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model ti
 | Nama variabel, fungsi, dan tipe dalam bahasa Inggris | Konsisten dengan pustaka dan kolom database |
 | Import lokal selalu diakhiri `.js` | Diwajibkan resolusi modul `NodeNext` |
 | Query selalu memakai parameter (`$1`) beserta cast eksplisit (`$1::uuid`) | Mencegah SQL injection dan salah tebak tipe oleh PostgreSQL |
-| Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`) | Field yang tidak diizinkan tidak mungkin ikut tersimpan |
+| Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`), lewat `updateVersioned` di `src/models/versionedUpdate.ts` | Field yang tidak diizinkan tidak mungkin ikut tersimpan, dan pemeriksaan versi `updated_at` sama di semua tabel |
 | Penulisan ke lebih dari satu tabel dibungkus `withTransaction` dari `src/helpers/transaction.ts`, bukan `BEGIN`/`COMMIT` manual | Tidak ada data setengah jadi bila salah satu langkah gagal. Koneksi baru diambil setelah validasi selesai, dan koneksi yang gagal di-`ROLLBACK` dibuang dari pool |
 | Pekerjaan lambat (hash password, unggah berkas, kirim email) dikerjakan di luar transaksi | Koneksi database tidak tertahan dan kunci baris tidak dipegang lama |
 | Tanggal "hari ini" selalu menurut `TIMEZONE` kantor (`todayInOfficeZone`), bukan `new Date().toISOString()` | Antara pukul 00.00 dan 07.00 WIB tanggal UTC masih tertinggal sehari |
 | Respons create dan update berbentuk `{ success, message, data }` | Seragam dengan endpoint lain, sehingga frontend bisa langsung menampilkan `message` |
 | Error dilempar lewat `src/helpers/appError.ts` | Satu bentuk respons error untuk seluruh aplikasi |
 | Pengambilan karyawan pemilik request lewat `src/helpers/requestEmployee.ts` | Diambil sekali per request dan dipakai bersama middleware dan controller |
+| Metadata daftar memakai `paginationMeta` dari `src/helpers/pagination.ts` | Rumus `total_pages` sama di semua endpoint; data kosong berarti `0` |
+| Query yang tidak saling bergantung dijalankan bersamaan dengan `Promise.all` | Waktu tunggu permintaan mengikuti query terlama, bukan jumlah semuanya |
 
 ## Instalasi dan Menjalankan
 
@@ -130,10 +132,10 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 | `npm test`           | Menjalankan seluruh pengujian                |
 | `npm run test:watch` | Menjalankan pengujian setiap berkas berubah  |
 | `npm run format`     | Merapikan kode `src` dan `tests` dengan Prettier |
-| `npx tsc --noEmit`   | Memeriksa tipe tanpa menghasilkan berkas     |
+| `npm run typecheck`  | Memeriksa tipe serta impor dan variabel yang tidak terpakai |
 | `npm run seed`       | Mengisi database dengan data contoh          |
 
-`npm run lint` belum dapat dipakai karena konfigurasi ESLint belum dibuat. Lihat [Batasan yang Diketahui](#batasan-yang-diketahui).
+Kode mati dicegah oleh compiler: `tsconfig.json` mengaktifkan `noUnusedLocals` dan `noUnusedParameters`, sehingga impor, variabel, atau parameter yang tidak terpakai membuat `tsc` dan CI gagal. Parameter yang memang wajib ada tapi tidak dipakai, misalnya `_req` di handler Express, diberi awalan garis bawah.
 
 ## Deploy ke VM dengan Docker
 
@@ -848,7 +850,7 @@ Bila query tidak mengenai baris mana pun, data dibaca ulang untuk membedakan dua
 
 `updated_at` belum diwajibkan, supaya frontend yang belum mengirimnya tetap berjalan. Permintaan tanpa `updated_at` disimpan seperti biasa tanpa pemeriksaan versi. Setelah seluruh form edit mengirimnya, pemeriksaan ini dapat diwajibkan.
 
-Logikanya ada di `src/helpers/concurrency.ts`: `sameVersion` menyusun syarat SQL, dan `rejectStaleUpdate` menyusun respons 404 atau 409.
+Logikanya ada di `src/helpers/concurrency.ts`: `sameVersion` menyusun syarat SQL, dan `rejectStaleUpdate` menyusun respons 404 atau 409. Seluruh model memakainya lewat satu pembangun query, `updateVersioned` di `src/models/versionedUpdate.ts`.
 
 ## Pengiriman Email
 
@@ -1365,7 +1367,9 @@ Endpoint pengelolaan fitur dijaga **role admin**, bukan oleh fitur. Kalau dijaga
 
 Kode fitur per jabatan di-cache di memori proses selama satu menit, dan dibatalkan seketika setiap kali pemberian fitur jabatan tersebut berubah. Pada penyebaran multi-instance, instance lain paling lama tertinggal selama satu menit.
 
-Data karyawan pemilik request disimpan di `res.locals` oleh `src/helpers/requestEmployee.ts`. Middleware fitur dan controller memakai hasil yang sama, sehingga satu request cukup sekali query ke tabel `employees`.
+Data karyawan pemilik request disimpan di `res.locals` oleh `src/helpers/requestEmployee.ts`, termasuk hasil kosong untuk akun yang belum terhubung ke karyawan. Middleware fitur dan controller memakai hasil yang sama, sehingga satu request cukup sekali query ke tabel `employees`.
+
+Kode fitur jabatan juga disimpan di `res.locals` dalam bentuk janji (promise). Beberapa pemeriksaan fitur yang berjalan bersamaan, misalnya tiga `hasFeature` di controller cuti, tetap hanya memicu satu query walaupun cache sedang kosong.
 
 ## Alur Persetujuan Cuti
 
@@ -1456,7 +1460,11 @@ Bila penuh, jawabannya **409** dengan kode `STAFFING_LIMIT_REACHED`:
 
 **Memaksa setuju.** Pemegang `leave.approve_all` (`can_override: true`) boleh menyetujui walau batasnya terlampaui dengan mengirim `"override_staffing_limit": true` dan alasan minimal 10 karakter di `decision_note`. Tanggal yang dilampaui beserta alasannya tercatat di `metadata.staffing_override` log aktivitas `leave.approve`. Atasan yang hanya memegang `leave.approve_team` tidak bisa memaksa.
 
-**Kalender departemen.** `GET /leave-requests/department-calendar?start_date=&end_date=` (maksimal 62 hari) mengembalikan, untuk setiap tanggal, berapa rekan satu departemen yang cutinya disetujui (`on_leave`, pemohon sendiri tidak dihitung) dan apakah tanggal itu penuh (`is_full`). Hanya jumlah, tanpa nama, supaya karyawan tidak melihat cuti rekannya. Pemegang `leave.view_all` dapat menambahkan `department_id` untuk melihat departemen lain.
+**Kalender departemen.** `GET /leave-requests/department-calendar?start_date=&end_date=` (maksimal 62 hari) mengembalikan, untuk setiap tanggal, berapa rekan satu departemen yang cutinya disetujui (`on_leave`, pemohon sendiri tidak dihitung), berapa yang pengajuannya masih menunggu (`pending`), dan apakah tanggal itu penuh (`is_full`). `pending` tidak mengisi kuota, hanya untuk peringatan di form pengajuan. Hanya jumlah, tanpa nama, supaya karyawan tidak melihat cuti rekannya. Pemegang `leave.view_all` dapat menambahkan `department_id` untuk melihat departemen lain.
+
+**Rekan yang bentrok di detail pengajuan.** `GET /leave-requests/:id` menambahkan `colleagues_on_leave` untuk penyetuju pengajuan itu dan pemegang `leave.view_all` (tidak untuk pemohon): daftar rekan satu departemen yang cutinya menunggu atau disetujui dan bersinggungan dengan tanggal pengajuan, lengkap dengan nama, jenis cuti, rentang, dan status. Tersedia walaupun departemennya belum diberi batas, supaya penyetuju tetap dapat menimbang.
+
+**Pengajuan yang ditolak sistem.** Pengajuan yang gagal divalidasi (saldo kurang, kuota departemen penuh, tanggal bentrok, dan sebagainya) tidak disimpan di `leave_requests`, karena baris di sana ikut menentukan saldo dan bentrok tanggal. Jejaknya dicatat di log aktivitas dengan `action=leave.create` dan `status=failed`, berisi karyawan, jenis cuti, tanggal, alasan, dan kode errornya, sehingga HR dapat merekapnya lewat `GET /activity-logs?action=leave.create&status=failed`.
 
 Kolom `max_concurrent_leave` dan `exempt_from_staffing_limit` dibuat oleh migrasi `database/migrations/2026-10-11_batas_cuti_bersamaan_per_departemen.sql`, yang wajib dijalankan sebelum men-deploy fitur ini.
 
@@ -1640,7 +1648,6 @@ Hal-hal berikut disadari dan belum dikerjakan:
 | ------- | ------ | -------------- |
 | Hitungan rate limit per proses | Pada penyebaran multi-instance setiap instance menghitung sendiri, sehingga batas efektifnya dikali jumlah instance | Ganti `MemoryRateLimitStore` dengan penyimpanan bersama seperti Redis |
 | Endpoint publik lain belum punya batas khusus | `register`, `forgot-password`, dan `reset-password` hanya tertahan batas umum 300 per menit per IP | Pasang pembatas ketat seperti login bila mulai disalahgunakan |
-| Konfigurasi ESLint belum ada | `npm run lint` gagal dijalankan | Tambahkan `eslint.config.js` beserta `typescript-eslint` |
 | `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
 | `updated_at` masih opsional | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain | Wajibkan setelah seluruh form frontend mengirimnya |
 | `system.manage_feature` tidak diberlakukan | Mencentangnya di matriks tidak memberi akses apa pun | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |

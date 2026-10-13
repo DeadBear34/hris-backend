@@ -7,10 +7,6 @@ import { getApiRouter } from "../docs/registry.js";
 // jadi tidak perlu menelusurinya ulang di setiap permintaan
 let cached: ReturnType<typeof buildOpenApiDocument> | null = null;
 
-export function resetOpenApiCache(): void {
-  cached = null;
-}
-
 export function OpenApiDocumentController(
   _req: Request,
   res: Response,
@@ -22,6 +18,7 @@ export function OpenApiDocumentController(
     });
 
     // Dokumen hanya untuk pengguna berhak, jadi tidak boleh tersimpan di
+    // cache browser, proxy, maupun Cloudflare
     res.set("Cache-Control", "no-store");
     res.json(cached);
   } catch (err) {

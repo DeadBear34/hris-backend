@@ -362,7 +362,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     tag: "Pengajuan Cuti",
     summary: "Kalender cuti departemen",
     description:
-      "Untuk setiap tanggal: jumlah rekan satu departemen yang cutinya disetujui (`on_leave`, diri sendiri tidak dihitung) dan `is_full`. Hanya jumlah, tanpa nama. Departemen lain hanya untuk pemegang `leave.view_all`. Rentang maksimal 62 hari.",
+      "Untuk setiap tanggal: jumlah rekan satu departemen yang cutinya disetujui (`on_leave`, diri sendiri tidak dihitung), yang pengajuannya masih menunggu (`pending`, hanya untuk peringatan dan tidak mengisi kuota), dan `is_full`. Hanya jumlah, tanpa nama. Departemen lain hanya untuk pemegang `leave.view_all`. Rentang maksimal 62 hari.",
   },
   "GET /leave-requests": {
     tag: "Pengajuan Cuti",
@@ -384,7 +384,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /leave-requests/:id": {
     tag: "Pengajuan Cuti",
     summary: "Detail pengajuan cuti",
-    description: "Hanya pemohon, penyetujunya, atau pemegang `leave.view_all`.",
+    description:
+      "Hanya pemohon, penyetujunya, atau pemegang `leave.view_all`. Penyetuju dan pemegang `leave.view_all` (bukan pemohon) juga menerima `colleagues_on_leave`: rekan satu departemen yang cutinya menunggu atau disetujui dan bentrok dengan tanggal pengajuan ini.",
   },
   "PATCH /leave-requests/:id/approve": {
     tag: "Pengajuan Cuti",

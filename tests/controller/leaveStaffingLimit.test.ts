@@ -61,6 +61,8 @@ jest.unstable_mockModule("../../src/models/leaveRequest.js", () => ({
   rejectRequest: jest.fn(),
   cancelRequest: jest.fn(),
   countApprovedLeaveByDate: jest.fn(),
+  countPendingLeaveByDate: jest.fn(),
+  findColleagueLeaves: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
@@ -70,7 +72,6 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   convertHoldToDeduction: jest.fn(),
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
-  findByRequest: jest.fn(),
   hasMissingAccruals: jest.fn(() => Promise.resolve(false)),
   grantAccruals: jest.fn(() => Promise.resolve(0)),
 }));
@@ -214,6 +215,13 @@ function colleaguesOnLeave(entries: Record<string, number>) {
   );
 }
 
+// Rekan yang pengajuannya masih menunggu per tanggal
+function colleaguesPending(entries: Record<string, number>) {
+  (leaveRequestModel.countPendingLeaveByDate as jest.Mock).mockResolvedValue(
+    new Map(Object.entries(entries)) as never,
+  );
+}
+
 function grantFeatures(codes: string[]) {
   (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue(
     codes as never,
@@ -263,6 +271,11 @@ beforeEach(() => {
     WEDNESDAY,
   ] as never);
   colleaguesOnLeave({});
+  colleaguesPending({});
+  (leaveRequestModel.findColleagueLeaves as jest.Mock).mockResolvedValue(
+    [] as never,
+  );
+  (attachmentModel.findByRequest as jest.Mock).mockResolvedValue([] as never);
 });
 
 function submit() {
@@ -550,9 +563,9 @@ describe("GET /api/v1/leave-requests/department-calendar", () => {
       max_concurrent_leave: 2,
     });
     expect(res.body.data.days).toEqual([
-      { date: MONDAY, on_leave: 0, is_full: false },
-      { date: TUESDAY, on_leave: 2, is_full: true },
-      { date: WEDNESDAY, on_leave: 1, is_full: false },
+      { date: MONDAY, on_leave: 0, pending: 0, is_full: false },
+      { date: TUESDAY, on_leave: 2, pending: 0, is_full: true },
+      { date: WEDNESDAY, on_leave: 1, pending: 0, is_full: false },
     ]);
   });
 
@@ -565,6 +578,7 @@ describe("GET /api/v1/leave-requests/department-calendar", () => {
       "date",
       "is_full",
       "on_leave",
+      "pending",
     ]);
   });
 
@@ -580,8 +594,29 @@ describe("GET /api/v1/leave-requests/department-calendar", () => {
     expect(res.body.data.days[0]).toEqual({
       date: MONDAY,
       on_leave: 7,
+      pending: 0,
       is_full: false,
     });
+  });
+
+  // Laporan QA: tidak ada peringatan saat rekan satu divisi mengajukan cuti
+  // di tanggal yang sama. Pengajuan yang menunggu tidak mengisi kuota, tapi
+  // jumlahnya dikirim supaya form dapat memperingatkan lebih awal
+  it("menyertakan jumlah pengajuan rekan yang masih menunggu", async () => {
+    colleaguesOnLeave({ [MONDAY]: 1 });
+    colleaguesPending({ [MONDAY]: 2, [TUESDAY]: 1 });
+
+    const res = await calendar({ start_date: MONDAY, end_date: TUESDAY });
+
+    expect(res.body.data.days).toEqual([
+      { date: MONDAY, on_leave: 1, pending: 2, is_full: false },
+      { date: TUESDAY, on_leave: 0, pending: 1, is_full: false },
+    ]);
+    expect(leaveRequestModel.countPendingLeaveByDate).toHaveBeenCalledWith(
+      DEPARTMENT_ID,
+      EMPLOYEE_ID,
+      [MONDAY, TUESDAY],
+    );
   });
 
   it("karyawan tanpa departemen mendapat kalender kosong", async () => {
@@ -640,5 +675,120 @@ describe("GET /api/v1/leave-requests/department-calendar", () => {
 
     expect(res.status).toBe(200);
     expect(leaveRequestModel.findDetailById).not.toHaveBeenCalled();
+  });
+});
+
+describe("rekan yang cutinya bentrok di detail pengajuan", () => {
+  const colleague = {
+    id: "66666666-6666-4666-8666-666666666666",
+    employee_id: "12121212-1212-4121-8121-121212121212",
+    employee_name: "Budi Santoso",
+    leave_type_name: "Cuti Tahunan",
+    start_date: TUESDAY,
+    end_date: TUESDAY,
+    status: "pending",
+  };
+
+  function detail(token = employeeToken) {
+    return request(app)
+      .get(`/api/v1/leave-requests/${REQUEST_ID}`)
+      .set("Authorization", `Bearer ${token}`);
+  }
+
+  beforeEach(() => {
+    (leaveRequestModel.findColleagueLeaves as jest.Mock).mockResolvedValue([
+      colleague,
+    ] as never);
+  });
+
+  it("ditampilkan untuk penyetuju pengajuan, walau departemennya tanpa batas", async () => {
+    (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
+      fakeRequest() as never,
+    );
+
+    const res = await detail();
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.colleagues_on_leave).toEqual([colleague]);
+    expect(leaveRequestModel.findColleagueLeaves).toHaveBeenCalledWith(
+      DEPARTMENT_ID,
+      OWNER_ID,
+      MONDAY,
+      WEDNESDAY,
+    );
+  });
+
+  it("tidak ditampilkan kepada pemohon, karena berisi nama rekan", async () => {
+    (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
+      fakeRequest({ employee_id: EMPLOYEE_ID, approver_id: null }) as never,
+    );
+
+    const res = await detail();
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).not.toHaveProperty("colleagues_on_leave");
+    expect(leaveRequestModel.findColleagueLeaves).not.toHaveBeenCalled();
+  });
+
+  it("karyawan tanpa departemen tidak punya rekan untuk dibandingkan", async () => {
+    (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
+      fakeRequest() as never,
+    );
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: OWNER_ID,
+      department_id: null,
+    } as never);
+
+    const res = await detail();
+
+    expect(res.body.data.colleagues_on_leave).toEqual([]);
+  });
+});
+
+// Laporan QA: pengajuan yang gagal tidak meninggalkan jejak untuk direkap HR
+describe("pengajuan yang ditolak tetap tercatat", () => {
+  function failedActivity() {
+    return (logger.info as jest.Mock).mock.calls
+      .map(
+        ([payload]) =>
+          (
+            payload as {
+              activity?: {
+                action: string;
+                status: string;
+                metadata: Record<string, unknown>;
+              };
+            }
+          ).activity,
+      )
+      .find(
+        (entry) =>
+          entry?.action === "leave.create" && entry.status === "failed",
+      );
+  }
+
+  it("mencatat alasan, kode, dan tanggal yang diajukan", async () => {
+    colleaguesOnLeave({ [TUESDAY]: 2 });
+
+    const res = await submit();
+    const entry = failedActivity();
+
+    expect(res.status).toBe(409);
+    expect(entry).toBeDefined();
+    expect(entry!.metadata).toMatchObject({
+      employee_id: EMPLOYEE_ID,
+      leave_type_id: LEAVE_TYPE_ID,
+      start_date: MONDAY,
+      end_date: WEDNESDAY,
+      code: "STAFFING_LIMIT_REACHED",
+    });
+  });
+
+  it("pengajuan yang berhasil tidak dicatat sebagai gagal", async () => {
+    const res = await submit();
+
+    expect(res.status).toBe(201);
+    expect(failedActivity()).toBeUndefined();
   });
 });

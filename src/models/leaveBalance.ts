@@ -242,19 +242,6 @@ export async function convertHoldToDeduction(
   return result.rows;
 }
 
-export async function findByRequest(
-  leave_request_id: string,
-): Promise<LeaveBalanceTransaction[]> {
-  const result = await pool.query<LeaveBalanceTransaction>(
-    `SELECT ${COLUMNS} FROM leave_balance_transactions
-     WHERE leave_request_id = $1::uuid
-     ORDER BY created_at ASC`,
-    [leave_request_id],
-  );
-
-  return result.rows;
-}
-
 // Mengunci baris karyawan sampai transaksi selesai. Dua pengajuan cuti
 // dari orang yang sama jadi berurutan, bukan saling mendahului
 export async function lockEmployeeBalance(

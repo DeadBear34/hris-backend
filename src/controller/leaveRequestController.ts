@@ -107,8 +107,11 @@ function canView(request: LeaveRequest, requester: Requester): boolean {
 }
 
 // Atasan langsung tetap membutuhkan fitur menyetujui cuti bawahannya, supaya
-// kotak centang leave.approve_team benar-benar menentukan sesuatu
+// kotak centang leave.approve_team benar-benar menentukan sesuatu.
+// Tidak seorang pun boleh memutus cutinya sendiri, termasuk pemegang
+// leave.approve_all, supaya setiap cuti tetap diperiksa orang lain
 function canDecide(request: LeaveRequest, requester: Requester): boolean {
+  if (request.employee_id === requester.employee.id) return false;
   if (requester.canApproveAll) return true;
 
   return (
@@ -245,10 +248,19 @@ export async function ListApprovalLeaveRequestController(
       return;
     }
 
+    // Pemegang leave.approve_all boleh memutus pengajuan siapa pun, jadi
+    // kotak masuknya berisi semua pengajuan, bukan hanya yang menunjuk
+    // dirinya. Tanpa ini pengajuan yang penyetujunya atasan tidak aktif,
+    // atau atasannya diganti setelah pengajuan dibuat, tidak terlihat oleh
+    // siapa pun yang sanggup memutusnya. Pengajuannya sendiri dikeluarkan
+    // karena tidak boleh ia putus
+    const scope: Partial<ListLeaveRequestParams> = requester.canApproveAll
+      ? { exclude_employee_id: requester.employee.id }
+      : { approver_id: requester.employee.id };
+
     const { rows, total } = await leaveRequestModel.listRequests({
       ...query,
-      approver_id: requester.employee.id,
-      include_unassigned: requester.canApproveAll,
+      ...scope,
     });
 
     res.json({

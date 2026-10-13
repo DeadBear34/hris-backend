@@ -356,7 +356,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     tag: "Pengajuan Cuti",
     summary: "Pengajuan yang menunggu keputusan saya",
     description:
-      "Bawahan langsung untuk pemegang `leave.approve_team`, semua untuk `leave.approve_all`. Daftar kosong bila tidak punya keduanya.",
+      "Pemegang `leave.approve_team`: pengajuan yang penyetujunya dirinya (bawahan langsung). Pemegang `leave.approve_all` dan admin: semua pengajuan kecuali miliknya sendiri, termasuk yang penyetujunya orang lain. Daftar kosong bila tidak punya keduanya.",
   },
   "GET /leave-requests/department-calendar": {
     tag: "Pengajuan Cuti",
@@ -391,12 +391,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     tag: "Pengajuan Cuti",
     summary: "Setujui pengajuan",
     description:
-      "Pemegang `leave.approve_all` boleh menyetujui walau batas cuti bersamaan departemen terlampaui dengan `override_staffing_limit: true` dan alasan minimal 10 karakter di `decision_note`; tercatat di log aktivitas.",
+      "Tidak seorang pun boleh menyetujui cutinya sendiri (403), termasuk admin. Pemegang `leave.approve_all` boleh menyetujui walau batas cuti bersamaan departemen terlampaui dengan `override_staffing_limit: true` dan alasan minimal 10 karakter di `decision_note`; tercatat di log aktivitas.",
     errors: [conflict("Status sudah berubah, muat ulang"), STAFFING],
   },
   "PATCH /leave-requests/:id/reject": {
     tag: "Pengajuan Cuti",
     summary: "Tolak pengajuan",
+    description: "Tidak seorang pun boleh menolak cutinya sendiri (403).",
     errors: [conflict("Status sudah berubah, muat ulang")],
   },
   "PATCH /leave-requests/:id/cancel": {

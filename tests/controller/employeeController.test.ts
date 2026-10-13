@@ -15,7 +15,6 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
   insertUser: jest.fn(),
-  insertUserByAdmin: jest.fn(),
   insertUsersByAdmin: jest.fn(),
   findById: jest.fn(),
   findByEmail: jest.fn(),
@@ -32,7 +31,6 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
   insertEmployee: jest.fn(),
-  createEmployee: jest.fn(),
   createEmployees: jest.fn(),
   updateEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
@@ -47,7 +45,12 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 jest.unstable_mockModule("../../src/models/department.js", () => ({
@@ -401,12 +404,6 @@ describe("GET /api/v1/employees/:id", () => {
 describe("POST /api/v1/employees", () => {
   function prepareSuccess() {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
-    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
-    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
-      fakeEmployee as never,
-    );
     (departmentModel.findById as jest.Mock).mockResolvedValue(
       fakeDepartment as never,
     );
@@ -982,12 +979,6 @@ describe("POST /api/v1/employees dengan array", () => {
 
   beforeEach(() => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
-    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
-    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
-      fakeEmployee as never,
-    );
     (departmentModel.findById as jest.Mock).mockResolvedValue({
       id: DEPARTMENT_ID,
       name: "Engineering",
@@ -1119,12 +1110,6 @@ describe("akun buatan admin langsung dapat dipakai", () => {
 
   beforeEach(() => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
-    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
-    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
-      fakeEmployee as never,
-    );
   });
 
   it("penambahan satuan memakai jalur pembuatan akun oleh admin", async () => {
@@ -1190,12 +1175,6 @@ describe("satu endpoint, dua bentuk kiriman", () => {
 
   beforeEach(() => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
-    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
-    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
-      fakeEmployee as never,
-    );
   });
 
   it("objek tunggal menghasilkan data berbentuk objek", async () => {
@@ -1314,12 +1293,6 @@ describe("laporan per baris pada impor massal", () => {
 
   beforeEach(() => {
     (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
-    (userModel.insertUserByAdmin as jest.Mock).mockResolvedValue(
-      fakeAccount as never,
-    );
-    (employeeModel.createEmployee as jest.Mock).mockResolvedValue(
-      fakeEmployee as never,
-    );
     (departmentModel.findById as jest.Mock).mockResolvedValue({
       id: DEPARTMENT_ID,
     } as never);

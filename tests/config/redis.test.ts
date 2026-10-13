@@ -25,7 +25,12 @@ const mockInfo = jest.fn();
 const mockWarn = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: mockInfo, warn: mockWarn, error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: mockInfo,
+    warn: mockWarn,
+    error: jest.fn(),
+  },
 }));
 
 const { startRedis, getRedis, redisState, closeRedis } =

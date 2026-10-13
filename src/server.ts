@@ -71,8 +71,8 @@ async function start() {
     server.close(() => process.exit(0));
   }
 
-  // SIGINT datang dari Ctrl+C saat pengembangan, SIGTERM dari Railway, Docker,
-  // dan systemd setiap kali versi lama diganti. Tanpa SIGTERM, penutupan rapi
+  // SIGINT datang dari Ctrl+C saat pengembangan, SIGTERM dari Docker dan
+  // systemd setiap kali versi lama diganti. Tanpa SIGTERM, penutupan rapi
   // tidak pernah berjalan di production dan koneksi LISTEN ditinggalkan begitu
   // saja sampai dimatikan paksa
   process.on("SIGINT", () => shutdown("SIGINT"));
@@ -81,7 +81,7 @@ async function start() {
   // Keduanya menandakan keadaan proses sudah tidak dapat dipercaya, jadi
   // sengaja tidak ditahan. Yang ditambahkan hanya catatan penyebabnya sebelum
   // proses berhenti, supaya kegagalan terlihat di log dan bukan mati diam-diam.
-  // Sesudahnya Railway yang menyalakan ulang
+  // Sesudahnya Docker yang menyalakan ulang (restart: unless-stopped)
   process.on("uncaughtException", (err) => {
     logger.error({ err }, "Uncaught exception, shutting down");
     process.exit(1);

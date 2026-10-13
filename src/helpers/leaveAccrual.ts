@@ -13,7 +13,10 @@ export function currentLeaveYear(at: Date = new Date()): number {
 // ikut karena cuti akhir Desember boleh diajukan untuk tanggal Januari.
 // Tahun lampau sengaja tidak, supaya membuka riwayat lama tidak menciptakan
 // jatah untuk tahun yang sudah lewat
-export function isAccrualYear(period_year: number, at: Date = new Date()): boolean {
+export function isAccrualYear(
+  period_year: number,
+  at: Date = new Date(),
+): boolean {
   const year = currentLeaveYear(at);
 
   return period_year === year || period_year === year + 1;

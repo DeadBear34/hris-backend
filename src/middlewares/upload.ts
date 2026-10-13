@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { MAX_FILE_SIZE } from "../helpers/fileType.js";
 import { BadRequest } from "../helpers/appError.js";
+import { markUpload } from "../docs/routeMeta.js";
 
 const uploader = multer({
   storage: multer.memoryStorage(),
@@ -11,7 +12,7 @@ const uploader = multer({
 export function uploadSingleImage(field: string) {
   const middleware = uploader.single(field);
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return markUpload((req: Request, res: Response, next: NextFunction) => {
     middleware(req, res, (err: unknown) => {
       if (!err) return next();
 
@@ -33,5 +34,5 @@ export function uploadSingleImage(field: string) {
 
       next(err);
     });
-  };
+  }, field);
 }

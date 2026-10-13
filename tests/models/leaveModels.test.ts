@@ -517,7 +517,9 @@ describe("model leaveBalance: jatah tahunan", () => {
   it("menganggap tidak ada yang kurang bila database menjawab false", async () => {
     mockQuery.mockResolvedValue({ rows: [{ missing: false }] } as never);
 
-    expect(await balanceModel.hasMissingAccruals(EMPLOYEE_ID, 2026)).toBe(false);
+    expect(await balanceModel.hasMissingAccruals(EMPLOYEE_ID, 2026)).toBe(
+      false,
+    );
   });
 });
 

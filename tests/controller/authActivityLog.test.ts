@@ -14,12 +14,16 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
   insertUser: jest.fn(),
-  insertUserByAdmin: jest.fn(),
   findById: jest.fn(),
   findByEmail: jest.fn(),
   updateLastLogin: jest.fn(),
@@ -34,7 +38,6 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
   insertEmployee: jest.fn(),
-  createEmployee: jest.fn(),
   updateEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
   findByUserId: jest.fn(),
@@ -49,7 +52,6 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
 jest.unstable_mockModule("../../src/models/verificationToken.js", () => ({
   createToken: jest.fn(),
   findLatest: jest.fn(),
-  findLatestActive: jest.fn(),
   findActive: jest.fn(),
   claimAttempt: jest.fn(),
   markConsumed: jest.fn(),

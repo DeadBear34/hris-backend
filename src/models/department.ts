@@ -1,11 +1,15 @@
 import { pool } from "../config/databaseConnection.js";
-import { sameVersion } from "../helpers/concurrency.js";
+import { updateVersioned } from "./versionedUpdate.js";
+import type { Executor } from "./user.js";
 
 export interface Department {
   id: string;
   code: string;
   name: string;
   is_active: boolean;
+  // Paling banyak berapa karyawan departemen ini yang boleh cuti pada hari
+  // yang sama. Null berarti tanpa batas
+  max_concurrent_leave: number | null;
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -15,9 +19,19 @@ export interface DepartmentInput {
   code: string;
   name: string;
   is_active?: boolean;
+  max_concurrent_leave?: number | null;
 }
 
-const UPDATABLE_COLUMNS = ["code", "name", "is_active"] as const;
+const UPDATABLE_COLUMNS = [
+  "code",
+  "name",
+  "is_active",
+  "max_concurrent_leave",
+] as const;
+
+const COLUMN_CAST: Record<string, string> = {
+  max_concurrent_leave: "::int",
+};
 
 export async function findAll(): Promise<Department[]> {
   const result = await pool.query<Department>(
@@ -64,10 +78,10 @@ export async function createDepartment(
   data: DepartmentInput,
 ): Promise<Department> {
   const result = await pool.query<Department>(
-    `INSERT INTO departments (code, name)
-     VALUES ($1, $2)
+    `INSERT INTO departments (code, name, max_concurrent_leave)
+     VALUES ($1, $2, $3::int)
      RETURNING *`,
-    [data.code, data.name],
+    [data.code, data.name, data.max_concurrent_leave ?? null],
   );
 
   const department = result.rows[0];
@@ -83,36 +97,16 @@ export async function updateDepartment(
   data: Partial<DepartmentInput>,
   expectedUpdatedAt?: string,
 ): Promise<Department | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
-
-    values.push(value);
-    fields.push(`${key} = $${values.length}`);
-  }
-
-  if (fields.length === 0) {
-    return findById(id);
-  }
-
-  fields.push("updated_at = now()");
-  values.push(id);
-  const idParam = values.length;
-  values.push(expectedUpdatedAt ?? null);
-
-  const result = await pool.query<Department>(
-    `UPDATE departments
-     SET ${fields.join(", ")}
-     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
-       AND ${sameVersion("updated_at", values.length)}
-     RETURNING *`,
-    values,
-  );
-
-  return result.rows[0] ?? null;
+  return updateVersioned<Department>({
+    table: "departments",
+    id,
+    data,
+    columns: UPDATABLE_COLUMNS,
+    casts: COLUMN_CAST,
+    returning: "*",
+    expectedUpdatedAt,
+    current: () => findById(id),
+  });
 }
 
 export async function softDeleteDepartment(
@@ -127,6 +121,18 @@ export async function softDeleteDepartment(
   );
 
   return result.rows[0] ?? null;
+}
+
+// Menyetujui cuti di departemen yang sama dilakukan bergiliran. Tanpa kunci
+// ini dua penyetujuan bersamaan sama-sama membaca jumlah lama dan batasnya
+// terlampaui
+export async function lockForLeaveApproval(
+  db: Executor,
+  id: string,
+): Promise<void> {
+  await db.query(`SELECT id FROM departments WHERE id = $1::uuid FOR UPDATE`, [
+    id,
+  ]);
 }
 
 export async function countEmployees(id: string): Promise<number> {

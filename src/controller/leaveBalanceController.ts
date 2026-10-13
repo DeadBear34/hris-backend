@@ -16,6 +16,7 @@ import {
   ensureAccruals,
   isAccrualYear,
 } from "../helpers/leaveAccrual.js";
+import { paginationMeta } from "../helpers/pagination.js";
 
 export async function MyLeaveBalanceController(
   req: Request,
@@ -90,12 +91,7 @@ export async function MyLeaveLedgerController(
     res.json({
       success: true,
       data: rows,
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        total_pages: Math.ceil(total / query.limit),
-      },
+      meta: paginationMeta(total, query.page, query.limit),
     });
   } catch (err) {
     next(err);
@@ -121,13 +117,14 @@ export async function AdjustLeaveBalanceController(
         note: string;
       };
 
-    const employee = await employeeModel.findById(employee_id);
+    const [employee, leaveType, actor] = await Promise.all([
+      employeeModel.findById(employee_id),
+      leaveTypeModel.findById(leave_type_id),
+      findRequestEmployee(req, res),
+    ]);
+
     if (!employee) throw BadRequest("Employee not found");
-
-    const leaveType = await leaveTypeModel.findById(leave_type_id);
     if (!leaveType) throw BadRequest("Leave type not found");
-
-    const actor = await findRequestEmployee(req, res);
 
     // Dikunci sama seperti pengajuan cuti, supaya penyesuaian dan pengajuan
     // yang datang bersamaan tidak menghitung saldo dari angka lama

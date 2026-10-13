@@ -34,12 +34,21 @@ export const PASSWORD_MAX_LENGTH = 72;
 export function strongPassword(label = "Password") {
   return z
     .string({ message: `${label} is required` })
-    .min(PASSWORD_MIN_LENGTH, `${label} must be at least ${PASSWORD_MIN_LENGTH} characters`)
-    .max(PASSWORD_MAX_LENGTH, `${label} must be at most ${PASSWORD_MAX_LENGTH} characters`)
+    .min(
+      PASSWORD_MIN_LENGTH,
+      `${label} must be at least ${PASSWORD_MIN_LENGTH} characters`,
+    )
+    .max(
+      PASSWORD_MAX_LENGTH,
+      `${label} must be at most ${PASSWORD_MAX_LENGTH} characters`,
+    )
     .regex(/[A-Z]/, `${label} must contain at least one uppercase letter`)
     .regex(/[a-z]/, `${label} must contain at least one lowercase letter`)
     .regex(/[0-9]/, `${label} must contain at least one number`)
-    .regex(/[^A-Za-z0-9\s]/, `${label} must contain at least one symbol, for example ! @ # $ %`)
+    .regex(
+      /[^A-Za-z0-9\s]/,
+      `${label} must contain at least one symbol, for example ! @ # $ %`,
+    )
     .refine((value) => value === value.trim(), {
       message: `${label} must not start or end with a space`,
     });

@@ -8,11 +8,7 @@ import {
 } from "../controller/leaveTypeController.js";
 import { authenticate } from "../middlewares/auth.js";
 import { requireFeature } from "../middlewares/feature.js";
-import {
-  validate,
-  validateQuery,
-  validateParams,
-} from "../middlewares/validate.js";
+import { validate, validateParams } from "../middlewares/validate.js";
 import {
   createLeaveTypeSchema,
   updateLeaveTypeSchema,

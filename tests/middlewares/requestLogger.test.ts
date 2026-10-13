@@ -13,9 +13,8 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
   logger: mockLogger,
 }));
 
-const { createRequestLogger, requestLogLevel, SLOW_REQUEST_MS } = await import(
-  "../../src/middlewares/requestLogger.js"
-);
+const { createRequestLogger, requestLogLevel, SLOW_REQUEST_MS } =
+  await import("../../src/middlewares/requestLogger.js");
 
 function buildApp(isProduction: boolean) {
   const app = express();

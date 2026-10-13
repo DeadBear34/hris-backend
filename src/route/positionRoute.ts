@@ -8,11 +8,7 @@ import {
 } from "../controller/positionController.js";
 import { authenticate } from "../middlewares/auth.js";
 import { requireFeature } from "../middlewares/feature.js";
-import {
-  validate,
-  validateQuery,
-  validateParams,
-} from "../middlewares/validate.js";
+import { validate, validateParams } from "../middlewares/validate.js";
 import {
   createPositionSchema,
   updatePositionSchema,

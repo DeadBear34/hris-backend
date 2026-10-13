@@ -53,7 +53,6 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   convertHoldToDeduction: jest.fn(),
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
-  findByRequest: jest.fn(),
   // Bawaan: jatah tahun ini sudah ada, jadi tidak ada yang perlu dibuat
   hasMissingAccruals: jest.fn(() => Promise.resolve(false)),
   grantAccruals: jest.fn(() => Promise.resolve(0)),
@@ -95,7 +94,12 @@ jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 const userModel = await import("../../src/models/user.js");

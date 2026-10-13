@@ -1,5 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
-import { sameVersion } from "../helpers/concurrency.js";
+import { updateVersioned } from "./versionedUpdate.js";
 import type { Executor } from "./user.js";
 
 export interface Holiday {
@@ -126,36 +126,17 @@ export async function updateHoliday(
   data: Partial<HolidayInput>,
   expectedUpdatedAt?: string,
 ): Promise<Holiday | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    if (!UPDATABLE_COLUMNS.includes(key as never)) continue;
-
-    values.push(value);
-    const cast = COLUMN_CAST[key] ?? "";
-    fields.push(`${key} = $${values.length}${cast}`);
-  }
-
-  if (fields.length === 0) {
-    return findById(id);
-  }
-
-  fields.push("updated_at = now()");
-  values.push(id);
-  const idParam = values.length;
-  values.push(expectedUpdatedAt ?? null);
-
-  const result = await pool.query<Holiday>(
-    `UPDATE holidays SET ${fields.join(", ")}
-     WHERE id = $${idParam}::uuid
-       AND ${sameVersion("updated_at", values.length)}
-     RETURNING ${COLUMNS}`,
-    values,
-  );
-
-  return result.rows[0] ?? null;
+  return updateVersioned<Holiday>({
+    table: "holidays",
+    id,
+    data,
+    columns: UPDATABLE_COLUMNS,
+    casts: COLUMN_CAST,
+    returning: COLUMNS,
+    softDelete: false,
+    expectedUpdatedAt,
+    current: () => findById(id),
+  });
 }
 
 export async function deleteHoliday(id: string): Promise<Holiday | null> {

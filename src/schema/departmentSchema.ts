@@ -14,6 +14,16 @@ export const createDepartmentSchema = z.object({
     .trim()
     .min(3, "Department name must be at least 3 characters")
     .max(100, "Department name must be at most 100 characters"),
+
+  // Paling banyak berapa karyawan departemen ini yang boleh cuti pada hari
+  // yang sama. Kirim null untuk menghapus batas
+  max_concurrent_leave: z.coerce
+    .number()
+    .int("Maximum concurrent leave must be a whole number")
+    .min(1, "Maximum concurrent leave must be at least 1")
+    .max(1000, "Maximum concurrent leave must be at most 1000")
+    .nullable()
+    .optional(),
 });
 
 export const updateDepartmentSchema = createDepartmentSchema.partial().extend({

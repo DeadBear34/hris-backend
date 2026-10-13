@@ -15,7 +15,12 @@ class FakeResend {
 jest.unstable_mockModule("resend", () => ({ Resend: FakeResend }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: mockLoggerInfo, error: jest.fn(), warn: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: mockLoggerInfo,
+    error: jest.fn(),
+    warn: jest.fn(),
+  },
 }));
 
 const env = {

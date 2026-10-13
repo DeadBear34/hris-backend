@@ -22,7 +22,12 @@ class FakePool {
 const mockWarn = jest.fn();
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), warn: mockWarn, info: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    warn: mockWarn,
+    info: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 const recordTypeParser = jest.fn();

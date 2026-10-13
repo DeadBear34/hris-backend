@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { verifyToken, type TokenPayload } from "../helpers/jwt.js";
 import * as userModel from "../models/user.js";
 import { Unauthorized, Forbidden } from "../helpers/appError.js";
+import { markRoles } from "../docs/routeMeta.js";
 
 declare global {
   namespace Express {
@@ -61,7 +62,7 @@ export async function authenticate(
 }
 
 export function authorize(...roles: string[]) {
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return markRoles((req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) {
       return next(Unauthorized("You are not logged in, please log in first"));
     }
@@ -70,5 +71,5 @@ export function authorize(...roles: string[]) {
       return next(Forbidden("You don't have access to this feature"));
     }
     next();
-  };
+  }, roles);
 }

@@ -30,7 +30,6 @@ import {
 import { idParamSchema } from "../schema/commonSchema.js";
 
 const router = Router();
-const loggedIn = [authenticate];
 const canViewEmployees = [authenticate, requireFeature("employee.view_all")];
 const canCreateEmployees = [authenticate, requireFeature("employee.create")];
 const canUpdateEmployees = [authenticate, requireFeature("employee.update")];

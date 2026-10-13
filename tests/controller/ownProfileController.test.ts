@@ -13,7 +13,6 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   findById: jest.fn(),
   findByEmail: jest.fn(),
   insertUser: jest.fn(),
-  insertUserByAdmin: jest.fn(),
   updateLastLogin: jest.fn(),
   updatePassword: jest.fn(),
   approveUser: jest.fn(),
@@ -32,7 +31,6 @@ jest.unstable_mockModule("../../src/models/employee.js", () => ({
   updateOwnProfile: jest.fn(),
   updateEmployee: jest.fn(),
   insertEmployee: jest.fn(),
-  createEmployee: jest.fn(),
   softDeleteEmployee: jest.fn(),
   listEmployees: jest.fn(),
   findSubordinates: jest.fn(),
@@ -47,7 +45,12 @@ jest.unstable_mockModule("../../src/helpers/mailer.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 const userModel = await import("../../src/models/user.js");

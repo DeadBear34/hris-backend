@@ -19,6 +19,7 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Keamanan](#keamanan)
 - [Redis](#redis)
 - [Log Terminal](#log-terminal)
+- [Dokumentasi API (OpenAPI)](#dokumentasi-api-openapi)
 - [Rate Limit](#rate-limit)
 - [Perlindungan dari Permintaan Bersamaan](#perlindungan-dari-permintaan-bersamaan)
 - [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan)
@@ -87,13 +88,15 @@ Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model ti
 | Nama variabel, fungsi, dan tipe dalam bahasa Inggris | Konsisten dengan pustaka dan kolom database |
 | Import lokal selalu diakhiri `.js` | Diwajibkan resolusi modul `NodeNext` |
 | Query selalu memakai parameter (`$1`) beserta cast eksplisit (`$1::uuid`) | Mencegah SQL injection dan salah tebak tipe oleh PostgreSQL |
-| Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`) | Field yang tidak diizinkan tidak mungkin ikut tersimpan |
+| Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`), lewat `updateVersioned` di `src/models/versionedUpdate.ts` | Field yang tidak diizinkan tidak mungkin ikut tersimpan, dan pemeriksaan versi `updated_at` sama di semua tabel |
 | Penulisan ke lebih dari satu tabel dibungkus `withTransaction` dari `src/helpers/transaction.ts`, bukan `BEGIN`/`COMMIT` manual | Tidak ada data setengah jadi bila salah satu langkah gagal. Koneksi baru diambil setelah validasi selesai, dan koneksi yang gagal di-`ROLLBACK` dibuang dari pool |
 | Pekerjaan lambat (hash password, unggah berkas, kirim email) dikerjakan di luar transaksi | Koneksi database tidak tertahan dan kunci baris tidak dipegang lama |
 | Tanggal "hari ini" selalu menurut `TIMEZONE` kantor (`todayInOfficeZone`), bukan `new Date().toISOString()` | Antara pukul 00.00 dan 07.00 WIB tanggal UTC masih tertinggal sehari |
 | Respons create dan update berbentuk `{ success, message, data }` | Seragam dengan endpoint lain, sehingga frontend bisa langsung menampilkan `message` |
 | Error dilempar lewat `src/helpers/appError.ts` | Satu bentuk respons error untuk seluruh aplikasi |
 | Pengambilan karyawan pemilik request lewat `src/helpers/requestEmployee.ts` | Diambil sekali per request dan dipakai bersama middleware dan controller |
+| Metadata daftar memakai `paginationMeta` dari `src/helpers/pagination.ts` | Rumus `total_pages` sama di semua endpoint; data kosong berarti `0` |
+| Query yang tidak saling bergantung dijalankan bersamaan dengan `Promise.all` | Waktu tunggu permintaan mengikuti query terlama, bukan jumlah semuanya |
 
 ## Instalasi dan Menjalankan
 
@@ -129,10 +132,10 @@ HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost
 | `npm test`           | Menjalankan seluruh pengujian                |
 | `npm run test:watch` | Menjalankan pengujian setiap berkas berubah  |
 | `npm run format`     | Merapikan kode `src` dan `tests` dengan Prettier |
-| `npx tsc --noEmit`   | Memeriksa tipe tanpa menghasilkan berkas     |
+| `npm run typecheck`  | Memeriksa tipe serta impor dan variabel yang tidak terpakai |
 | `npm run seed`       | Mengisi database dengan data contoh          |
 
-`npm run lint` belum dapat dipakai karena konfigurasi ESLint belum dibuat. Lihat [Batasan yang Diketahui](#batasan-yang-diketahui).
+Kode mati dicegah oleh compiler: `tsconfig.json` mengaktifkan `noUnusedLocals` dan `noUnusedParameters`, sehingga impor, variabel, atau parameter yang tidak terpakai membuat `tsc` dan CI gagal. Parameter yang memang wajib ada tapi tidak dipakai, misalnya `_req` di handler Express, diberi awalan garis bawah.
 
 ## Deploy ke VM dengan Docker
 
@@ -447,6 +450,7 @@ Hari libur dapat dibaca semua pengguna karena dipakai frontend untuk menghitung 
 | ------- | ----------------------------- | ---------------------------------- | ------------------------------------------- |
 | `GET`   | `/leave-requests/me`          | Login                              | Pengajuan milik sendiri                     |
 | `GET`   | `/leave-requests/approvals`   | Login                              | Pengajuan yang perlu disetujui pengguna ini |
+| `GET`   | `/leave-requests/department-calendar` | Login (departemen lain: `leave.view_all`) | Jumlah rekan yang cuti per tanggal dan tanggal yang penuh. Lihat [Batas cuti bersamaan per departemen](#batas-cuti-bersamaan-per-departemen) |
 | `GET`   | `/leave-requests`             | `leave.view_all`                   | Seluruh pengajuan dengan filter lengkap     |
 | `GET`   | `/leave-requests/:id`         | Pihak terkait                      | Detail pengajuan beserta lampirannya        |
 | `POST`  | `/leave-requests`             | Login                              | Membuat pengajuan baru                      |
@@ -846,7 +850,7 @@ Bila query tidak mengenai baris mana pun, data dibaca ulang untuk membedakan dua
 
 `updated_at` belum diwajibkan, supaya frontend yang belum mengirimnya tetap berjalan. Permintaan tanpa `updated_at` disimpan seperti biasa tanpa pemeriksaan versi. Setelah seluruh form edit mengirimnya, pemeriksaan ini dapat diwajibkan.
 
-Logikanya ada di `src/helpers/concurrency.ts`: `sameVersion` menyusun syarat SQL, dan `rejectStaleUpdate` menyusun respons 404 atau 409.
+Logikanya ada di `src/helpers/concurrency.ts`: `sameVersion` menyusun syarat SQL, dan `rejectStaleUpdate` menyusun respons 404 atau 409. Seluruh model memakainya lewat satu pembangun query, `updateVersioned` di `src/models/versionedUpdate.ts`.
 
 ## Pengiriman Email
 
@@ -1069,6 +1073,46 @@ Absensi punya dua jejak yang saling melengkapi: `activity_logs` mencatat tindaka
 Penulisan log tidak pernah ditunggu. Kegagalan mencatat hanya menghasilkan peringatan di log aplikasi dan tidak membatalkan tindakan yang sudah berhasil.
 
 **Catatan volume.** `notification.read` ikut tercatat karena aturannya mencakup semua endpoint non-`GET`, padahal aksi inilah yang paling sering terjadi. Kalau tabelnya tumbuh terlalu cepat, pilihannya mengecualikan aksi ini atau menambah pembersihan berkala seperti yang sudah ada untuk notifikasi.
+
+## Dokumentasi API (OpenAPI)
+
+Dokumentasi seluruh endpoint **dibangkitkan otomatis** dari route dan skema validasi Zod, lalu ditampilkan frontend memakai Swagger UI di menu admin.
+
+```
+GET /api/v1/docs/openapi.json      →  dokumen OpenAPI 3.1
+```
+
+### Apa yang dibaca otomatis
+
+Pembangkit (`src/docs/openapi.ts`) menelusuri router Express yang sebenarnya, jadi dokumen tidak mungkin berbeda dari perilaku server:
+
+| Bagian dokumen | Sumber |
+| --- | --- |
+| Path dan method | Route yang terdaftar |
+| Body, query, parameter path beserta aturannya | Skema Zod di `validate()`, `validateQuery()`, `validateParams()` |
+| Butuh login atau tidak | Ada tidaknya `authenticate` |
+| Fitur atau role yang dibutuhkan | `requireFeature()` dan `authorize()` |
+| Unggah berkas | `uploadSingleImage()` → `multipart/form-data` |
+
+Middleware tersebut hanya **ditandai** lewat `src/docs/routeMeta.ts` (sebuah `WeakMap`). Perilakunya tidak berubah sama sekali.
+
+Yang ditulis manual hanya teks untuk dibaca manusia di `src/docs/routeDocs.ts`: ringkasan, kelompok, status sukses selain 200, dan error khusus endpoint. **Tes gagal** bila ada route tanpa teks di sana, atau ada teks untuk route yang sudah dihapus. Jadi menambah endpoint baru wajib disertai satu baris di `routeDocs.ts`.
+
+### Keamanan
+
+| Lapisan | Penjelasan |
+| --- | --- |
+| Hak akses | Butuh login dan fitur `system.view_api_docs`. Admin otomatis punya. Fitur ini bisa diberikan ke jabatan lain, misalnya QA, tanpa menjadikannya admin |
+| Tidak tersimpan di cache | Respons memakai `Cache-Control: no-store`, sehingga tidak tertinggal di peramban, proxy, maupun Cloudflare |
+| Tanpa rahasia | Dokumen hanya berisi struktur API, tanpa nilai environment, token, atau data |
+| Try it out di production | Dokumen menyatakan `x-try-it-out-methods: ["get"]` untuk production. Frontend mengirim header `x-api-docs-try-it-out` pada setiap percobaan, dan server **menolak (403)** percobaan selain GET/HEAD/OPTIONS yang membawa header itu di production, walaupun halaman frontend salah diatur |
+| Hak akses tetap berlaku | Percobaan memakai token pengguna sendiri, jadi seseorang tidak bisa melakukan lebih dari yang memang boleh dilakukannya di aplikasi |
+
+Pengaman Try it out adalah lapisan kedua untuk mencegah klik yang tidak disengaja. Batas keamanan yang sebenarnya tetap token dan fitur: pengguna yang memegang token memang bisa memanggil API dengan alat lain sesuai haknya.
+
+### Memeriksa dokumen
+
+Dokumen bisa divalidasi dengan validator OpenAPI, misalnya `npx @redocly/cli lint openapi.json`. Fitur ini dibuat oleh migrasi `database/migrations/2026-10-11_fitur_lihat_dokumentasi_api.sql`.
 
 ## Log Terminal
 
@@ -1323,7 +1367,9 @@ Endpoint pengelolaan fitur dijaga **role admin**, bukan oleh fitur. Kalau dijaga
 
 Kode fitur per jabatan di-cache di memori proses selama satu menit, dan dibatalkan seketika setiap kali pemberian fitur jabatan tersebut berubah. Pada penyebaran multi-instance, instance lain paling lama tertinggal selama satu menit.
 
-Data karyawan pemilik request disimpan di `res.locals` oleh `src/helpers/requestEmployee.ts`. Middleware fitur dan controller memakai hasil yang sama, sehingga satu request cukup sekali query ke tabel `employees`.
+Data karyawan pemilik request disimpan di `res.locals` oleh `src/helpers/requestEmployee.ts`, termasuk hasil kosong untuk akun yang belum terhubung ke karyawan. Middleware fitur dan controller memakai hasil yang sama, sehingga satu request cukup sekali query ke tabel `employees`.
+
+Kode fitur jabatan juga disimpan di `res.locals` dalam bentuk janji (promise). Beberapa pemeriksaan fitur yang berjalan bersamaan, misalnya tiga `hasFeature` di controller cuti, tetap hanya memicu satu query walaupun cache sedang kosong.
 
 ## Alur Persetujuan Cuti
 
@@ -1369,8 +1415,58 @@ Durasi dihitung dalam hari kerja: Sabtu, Minggu, dan tanggal di tabel `holidays`
 | Saldo mencukupi            | Penjumlahan ledger di dalam transaksi terkunci, bila `deducts_balance` |
 | Kesesuaian gender          | `gender_restriction`                                          |
 | Tidak tumpang tindih       | Constraint `leave_requests_employee_id_daterange_excl` dan pemeriksaan awal |
+| Batas cuti departemen      | `departments.max_concurrent_leave`, lihat di bawah            |
 
 Kewajiban lampiran diperiksa saat **persetujuan**, karena lampiran hanya dapat diunggah setelah pengajuannya ada. Respons pembuatan pengajuan menyertakan `attachment_required` agar frontend tahu perlu meminta unggahan.
+
+### Batas cuti bersamaan per departemen
+
+Supaya pekerjaan satu divisi tidak berhenti karena semua orangnya cuti di tanggal yang sama, setiap departemen bisa diberi batas `max_concurrent_leave`: paling banyak berapa karyawan yang boleh cuti pada hari yang sama. `null` (bawaan) berarti tanpa batas. Admin mengaturnya lewat `POST`/`PATCH /departments` dengan fitur `organization.manage`.
+
+```
+Engineering, max_concurrent_leave = 2
+
+             Sen  Sel  Rab  Kam
+Andi (ok)     ■    ■    ■
+Budi (ok)               ■    ■
+Citra minta   ■    ■    ■          ← Rabu sudah 2 orang, pengajuan Citra ditolak 409
+```
+
+Aturannya:
+
+| Hal | Perilaku |
+| --- | --- |
+| Yang dihitung | Rekan satu departemen yang pengajuannya sudah **disetujui** dan rentangnya mencakup tanggal itu. Pemohon sendiri tidak dihitung. Pengajuan yang masih pending tidak dihitung, supaya pengajuan tidak saling memblokir sebelum ada keputusan |
+| Tanggal yang diperiksa | Hari kerja pemohon menurut jadwal kerjanya, tanpa hari libur. Karyawan tanpa jadwal dianggap bekerja Senin–Jumat |
+| Saat mengajukan | Ditolak bila ada hari yang sudah penuh, supaya karyawan tidak menunggu keputusan yang pasti gagal |
+| Saat menyetujui | Diperiksa ulang dan **inilah yang menentukan**. Baris departemen dikunci (`FOR UPDATE`) selama transaksi, jadi dua penyetujuan bersamaan tidak sama-sama lolos |
+| Jenis cuti dikecualikan | `leave_types.exempt_from_staffing_limit = true` (bawaan: `SICK`, `BEREAVE`, `MATERNITY`) tidak pernah ditolak karena batas ini, tetapi tetap dihitung sebagai orang yang sedang cuti |
+| Karyawan tanpa departemen | Tidak terkena aturan |
+
+Bila penuh, jawabannya **409** dengan kode `STAFFING_LIMIT_REACHED`:
+
+```json
+{
+  "success": false,
+  "message": "Engineering already has the maximum of 2 employees on leave on 2026-11-04",
+  "code": "STAFFING_LIMIT_REACHED",
+  "details": {
+    "department_id": "...", "department_name": "Engineering", "max_concurrent_leave": 2,
+    "full_dates": [{ "date": "2026-11-04", "on_leave": 2 }],
+    "can_override": false
+  }
+}
+```
+
+**Memaksa setuju.** Pemegang `leave.approve_all` (`can_override: true`) boleh menyetujui walau batasnya terlampaui dengan mengirim `"override_staffing_limit": true` dan alasan minimal 10 karakter di `decision_note`. Tanggal yang dilampaui beserta alasannya tercatat di `metadata.staffing_override` log aktivitas `leave.approve`. Atasan yang hanya memegang `leave.approve_team` tidak bisa memaksa.
+
+**Kalender departemen.** `GET /leave-requests/department-calendar?start_date=&end_date=` (maksimal 62 hari) mengembalikan, untuk setiap tanggal, berapa rekan satu departemen yang cutinya disetujui (`on_leave`, pemohon sendiri tidak dihitung), berapa yang pengajuannya masih menunggu (`pending`), dan apakah tanggal itu penuh (`is_full`). `pending` tidak mengisi kuota, hanya untuk peringatan di form pengajuan. Hanya jumlah, tanpa nama, supaya karyawan tidak melihat cuti rekannya. Pemegang `leave.view_all` dapat menambahkan `department_id` untuk melihat departemen lain.
+
+**Rekan yang bentrok di detail pengajuan.** `GET /leave-requests/:id` menambahkan `colleagues_on_leave` untuk penyetuju pengajuan itu dan pemegang `leave.view_all` (tidak untuk pemohon): daftar rekan satu departemen yang cutinya menunggu atau disetujui dan bersinggungan dengan tanggal pengajuan, lengkap dengan nama, jenis cuti, rentang, dan status. Tersedia walaupun departemennya belum diberi batas, supaya penyetuju tetap dapat menimbang.
+
+**Pengajuan yang ditolak sistem.** Pengajuan yang gagal divalidasi (saldo kurang, kuota departemen penuh, tanggal bentrok, dan sebagainya) tidak disimpan di `leave_requests`, karena baris di sana ikut menentukan saldo dan bentrok tanggal. Jejaknya dicatat di log aktivitas dengan `action=leave.create` dan `status=failed`, berisi karyawan, jenis cuti, tanggal, alasan, dan kode errornya, sehingga HR dapat merekapnya lewat `GET /activity-logs?action=leave.create&status=failed`.
+
+Kolom `max_concurrent_leave` dan `exempt_from_staffing_limit` dibuat oleh migrasi `database/migrations/2026-10-11_batas_cuti_bersamaan_per_departemen.sql`, yang wajib dijalankan sebelum men-deploy fitur ini.
 
 ## Cara Kerja Ledger Saldo Cuti
 
@@ -1552,7 +1648,6 @@ Hal-hal berikut disadari dan belum dikerjakan:
 | ------- | ------ | -------------- |
 | Hitungan rate limit per proses | Pada penyebaran multi-instance setiap instance menghitung sendiri, sehingga batas efektifnya dikali jumlah instance | Ganti `MemoryRateLimitStore` dengan penyimpanan bersama seperti Redis |
 | Endpoint publik lain belum punya batas khusus | `register`, `forgot-password`, dan `reset-password` hanya tertahan batas umum 300 per menit per IP | Pasang pembatas ketat seperti login bila mulai disalahgunakan |
-| Konfigurasi ESLint belum ada | `npm run lint` gagal dijalankan | Tambahkan `eslint.config.js` beserta `typescript-eslint` |
 | `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
 | `updated_at` masih opsional | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain | Wajibkan setelah seluruh form frontend mengirimnya |
 | `system.manage_feature` tidak diberlakukan | Mencentangnya di matriks tidak memberi akses apa pun | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |

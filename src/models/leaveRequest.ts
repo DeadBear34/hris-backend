@@ -174,6 +174,109 @@ export async function findOverlapping(
   return result.rows[0] ?? null;
 }
 
+// Jumlah rekan satu departemen yang cutinya berstatus tertentu pada setiap
+// tanggal yang diminta. Pemohon sendiri tidak dihitung. Dihitung dari
+// rentang pengajuan, bukan dari penanda di tabel absensi, supaya cuti yang
+// disetujui sebelum penanda itu ada tetap terhitung. Tanggal tanpa satu pun
+// rekan yang cuti tidak muncul di hasil
+async function countLeaveByDate(
+  status: "approved" | "pending",
+  department_id: string,
+  exclude_employee_id: string,
+  dates: string[],
+  db: Executor,
+): Promise<Map<string, number>> {
+  if (dates.length === 0) return new Map();
+
+  const result = await db.query<{ date: string; on_leave: number }>(
+    `SELECT d::date::text AS date, COUNT(DISTINCT lr.employee_id)::int AS on_leave
+     FROM unnest($3::date[]) AS d
+     JOIN leave_requests lr
+       ON lr.status = $4::leave_status
+      AND d BETWEEN lr.start_date AND lr.end_date
+     JOIN employees e ON e.id = lr.employee_id
+     WHERE e.department_id = $1::uuid
+       AND e.deleted_at IS NULL
+       AND lr.employee_id <> $2::uuid
+     GROUP BY d`,
+    [department_id, exclude_employee_id, dates, status],
+  );
+
+  return new Map(result.rows.map((row) => [row.date, row.on_leave]));
+}
+
+// Dasar batas cuti bersamaan: hanya cuti yang sudah disetujui yang mengisi kuota
+export function countApprovedLeaveByDate(
+  department_id: string,
+  exclude_employee_id: string,
+  dates: string[],
+  db: Executor = pool,
+): Promise<Map<string, number>> {
+  return countLeaveByDate(
+    "approved",
+    department_id,
+    exclude_employee_id,
+    dates,
+    db,
+  );
+}
+
+// Pengajuan rekan yang masih menunggu. Tidak mengisi kuota, hanya dipakai
+// untuk peringatan supaya karyawan tahu tanggal itu juga diincar rekannya
+export function countPendingLeaveByDate(
+  department_id: string,
+  exclude_employee_id: string,
+  dates: string[],
+  db: Executor = pool,
+): Promise<Map<string, number>> {
+  return countLeaveByDate(
+    "pending",
+    department_id,
+    exclude_employee_id,
+    dates,
+    db,
+  );
+}
+
+export interface ColleagueLeave {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  leave_type_name: string;
+  start_date: string;
+  end_date: string;
+  status: LeaveStatus;
+}
+
+// Cuti rekan satu departemen (menunggu atau disetujui) yang bersinggungan
+// dengan rentang tanggal tertentu. Berisi nama, jadi hanya untuk penyetuju
+export async function findColleagueLeaves(
+  department_id: string,
+  exclude_employee_id: string,
+  start_date: string,
+  end_date: string,
+): Promise<ColleagueLeave[]> {
+  const result = await pool.query<ColleagueLeave>(
+    `SELECT lr.id, lr.employee_id, e.full_name AS employee_name,
+            lt.name AS leave_type_name,
+            lr.start_date::text AS start_date, lr.end_date::text AS end_date,
+            lr.status
+     FROM leave_requests lr
+     JOIN employees e    ON e.id = lr.employee_id
+     JOIN leave_types lt ON lt.id = lr.leave_type_id
+     WHERE e.department_id = $1::uuid
+       AND e.deleted_at IS NULL
+       AND lr.employee_id <> $2::uuid
+       AND lr.status IN ('pending', 'approved')
+       AND lr.start_date <= $4::date
+       AND lr.end_date >= $3::date
+     ORDER BY lr.start_date ASC, e.full_name ASC`,
+    [department_id, exclude_employee_id, start_date, end_date],
+  );
+
+  return result.rows;
+}
+
 export async function createRequest(
   db: Executor,
   data: CreateLeaveRequestInput,

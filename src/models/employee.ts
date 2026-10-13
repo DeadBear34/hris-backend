@@ -1,5 +1,5 @@
 import { pool } from "../config/databaseConnection.js";
-import { sameVersion } from "../helpers/concurrency.js";
+import { updateVersioned } from "./versionedUpdate.js";
 import type { Executor } from "./user.js";
 
 export type EmployeeGender = "male" | "female";
@@ -156,80 +156,22 @@ export async function insertEmployee(
   return employee;
 }
 
-export async function createEmployee(
-  db: Executor,
-  user_id: string | null,
-  data: CreateEmployeeInput,
-): Promise<Employee> {
-  const result = await db.query<Employee>(
-    `INSERT INTO employees
-       (user_id, full_name, phone, gender, birth_date, address,
-        department_id, position_id, manager_id, employment_status, join_date)
-     VALUES ($1::uuid, $2, $3, $4::employee_gender, $5::date, $6,
-             $7::uuid, $8::uuid, $9::uuid,
-             COALESCE($10::employment_status, 'probation'),
-             COALESCE($11::date, current_date))
-     RETURNING *`,
-    [
-      user_id,
-      data.full_name,
-      data.phone,
-      data.gender,
-      data.birth_date ?? null,
-      data.address ?? null,
-      data.department_id ?? null,
-      data.position_id ?? null,
-      data.manager_id ?? null,
-      data.employment_status ?? null,
-      data.join_date ?? null,
-    ],
-  );
-
-  const employee = result.rows[0];
-  if (!employee) {
-    throw new Error("Failed to save employee data");
-  }
-
-  return employee;
-}
-
-async function updateColumns(
+function updateColumns(
   id: string,
   data: Record<string, unknown>,
   allowed: readonly string[],
   expectedUpdatedAt?: string,
 ): Promise<Employee | null> {
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    if (!allowed.includes(key)) continue;
-
-    values.push(value);
-    const cast = COLUMN_CAST[key] ?? "";
-    fields.push(`${key} = $${values.length}${cast}`);
-  }
-
-  if (fields.length === 0) {
-    return findById(id);
-  }
-
-  fields.push("updated_at = now()");
-  values.push(id);
-  const idParam = values.length;
-  values.push(expectedUpdatedAt ?? null);
-
-  const result = await pool.query<Employee>(
-    `UPDATE employees
-     SET ${fields.join(", ")}
-     WHERE id = $${idParam}::uuid AND deleted_at IS NULL
-       AND ${sameVersion("updated_at", values.length)}
-     RETURNING *`,
-    values,
-  );
-
-  return result.rows[0] ?? null;
+  return updateVersioned<Employee>({
+    table: "employees",
+    id,
+    data,
+    columns: allowed,
+    casts: COLUMN_CAST,
+    returning: "*",
+    expectedUpdatedAt,
+    current: () => findById(id),
+  });
 }
 
 export async function updateEmployee(

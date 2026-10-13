@@ -21,7 +21,7 @@ export class MemoryRateLimitStore {
     // Hitungan disimpan di memori proses. Pada penyebaran multi-instance setiap
     // instance menghitung sendiri, sehingga batas efektifnya dikali jumlah
     // instance. Untuk berbagi hitungan, ganti kelas ini dengan penyimpanan
-    // bersama seperti Redis tanpa mengubah middleware-nya  
+    // bersama seperti Redis tanpa mengubah middleware-nya
     const current = this.windows.get(key);
 
     if (current && current.resetAt > now) {

@@ -146,28 +146,6 @@ describe("findLatest", () => {
   });
 });
 
-describe("findLatestActive", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockQuery.mockResolvedValue({ rows: [] } as never);
-  });
-
-  it("hanya mengambil token yang belum terpakai dan belum kedaluwarsa", async () => {
-    await tokenModel.findLatestActive(EMAIL, "email_verification");
-
-    const [sql] = mockQuery.mock.calls[0] as [string];
-
-    expect(sql).toContain("consumed_at IS NULL");
-    expect(sql).toContain("expires_at > now()");
-  });
-
-  it("mengembalikan null jika tidak ada token aktif", async () => {
-    const token = await tokenModel.findLatestActive(EMAIL, "password_reset");
-
-    expect(token).toBeNull();
-  });
-});
-
 describe("findActive", () => {
   beforeEach(() => {
     jest.clearAllMocks();

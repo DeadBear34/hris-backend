@@ -2,7 +2,12 @@ import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import type { WebSocket } from "ws";
 
 jest.unstable_mockModule("../../src/config/logger.js", () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  },
 }));
 
 const {

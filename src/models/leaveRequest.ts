@@ -46,7 +46,8 @@ export interface CreateLeaveRequestInput {
 export interface ListLeaveRequestParams {
   employee_id?: string;
   approver_id?: string;
-  include_unassigned?: boolean;
+  // dipakai kotak masuk pemegang leave.approve_all: semua kecuali miliknya
+  exclude_employee_id?: string;
   leave_type_id?: string;
   status?: LeaveStatus;
   start_date?: string;
@@ -86,12 +87,12 @@ export async function listRequests(
 
   if (params.approver_id) {
     values.push(params.approver_id);
+    conditions.push(`lr.approver_id = $${values.length}::uuid`);
+  }
 
-    conditions.push(
-      params.include_unassigned
-        ? `(lr.approver_id = $${values.length}::uuid OR lr.approver_id IS NULL)`
-        : `lr.approver_id = $${values.length}::uuid`,
-    );
+  if (params.exclude_employee_id) {
+    values.push(params.exclude_employee_id);
+    conditions.push(`lr.employee_id <> $${values.length}::uuid`);
   }
 
   if (params.leave_type_id) {

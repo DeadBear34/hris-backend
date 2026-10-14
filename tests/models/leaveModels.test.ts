@@ -312,21 +312,22 @@ describe("model leaveRequest", () => {
     expect(sql).not.toContain("approver_id IS NULL");
   });
 
-  it("menyertakan pengajuan tanpa penyetuju untuk admin", async () => {
+  it("mengeluarkan pengajuan milik karyawan tertentu", async () => {
     mockQuery
       .mockResolvedValueOnce({ rows: [{ count: "0" }] } as never)
       .mockResolvedValueOnce({ rows: [] } as never);
 
     await leaveRequestModel.listRequests({
-      approver_id: EMPLOYEE_ID,
-      include_unassigned: true,
+      exclude_employee_id: EMPLOYEE_ID,
       page: 1,
       limit: 10,
     });
 
-    const [sql] = mockQuery.mock.calls[0] as [string];
+    const [sql, params] = mockQuery.mock.calls[0] as [string, unknown[]];
 
-    expect(sql).toContain("lr.approver_id IS NULL");
+    expect(sql).toContain("lr.employee_id <> $1::uuid");
+    expect(sql).not.toContain("lr.approver_id = ");
+    expect(params[0]).toBe(EMPLOYEE_ID);
   });
 
   it("memakai cast enum saat menyaring status", async () => {

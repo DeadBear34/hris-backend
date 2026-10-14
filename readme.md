@@ -1383,6 +1383,17 @@ Pemohon punya manager_id?
 
 Direktur tanpa atasan, staf HR yang mengajukan cuti, maupun manajer yang mengajukan ke atasannya sendiri mengikuti aturan yang sama. Pemegang `leave.approve_all` dapat menyetujui pengajuan mana pun sebagai jalur darurat, misalnya ketika atasan berhalangan, dan pemegang `leave.view_all` dapat melihat seluruh pengajuan.
 
+**Isi kotak masuk `GET /leave-requests/approvals`:**
+
+| Pemegang | Isi |
+| -------- | --- |
+| `leave.approve_team` saja | Pengajuan yang `approver_id`-nya dirinya, yaitu bawahan langsung |
+| `leave.approve_all` atau admin | Semua pengajuan kecuali miliknya sendiri, termasuk yang penyetujunya orang lain |
+
+Penyetuju dicatat saat pengajuan dibuat dan tidak ikut berubah bila atasan pemohon diganti kemudian. Karena itu pemegang `leave.approve_all` melihat seluruh pengajuan: pengajuan yang menunjuk atasan yang tidak aktif, atau atasan yang sudah diganti, tetap dapat diputus HR atau admin dan tidak tertahan selamanya.
+
+**Tidak ada yang memutus cutinya sendiri.** Menyetujui atau menolak pengajuan milik sendiri dijawab 403, termasuk untuk admin dan pemegang `leave.approve_all`. Pengajuan milik sendiri juga tidak muncul di kotak masuknya. Pengajuan seorang pemegang `leave.approve_all` yang tanpa atasan diputus oleh pemegang `leave.approve_all` lain atau admin.
+
 Menjadi atasan saja belum cukup. Penyetuju juga harus memegang `leave.approve_team`, sehingga wewenang menyetujui tetap dapat diatur lewat jabatan. Tanpa fitur itu, `GET /leave-requests/approvals` mengembalikan daftar kosong dan permintaan menyetujui atau menolak dijawab 403.
 
 ### Transisi status

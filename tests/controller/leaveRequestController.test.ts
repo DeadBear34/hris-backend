@@ -125,6 +125,9 @@ const MANAGER_ID = "33333333-3333-4333-8333-333333333333";
 const LEAVE_TYPE_ID = "44444444-4444-4444-8444-444444444444";
 const REQUEST_ID = "55555555-5555-4555-8555-555555555555";
 const OTHER_ID = "66666666-6666-4666-8666-666666666666";
+// Pemilik bawaan pengajuan contoh: bawahan, bukan karyawan yang sedang login,
+// karena tidak seorang pun boleh memutus cutinya sendiri
+const SUBORDINATE_ID = "88888888-8888-4888-8888-888888888888";
 
 const employeeToken = createToken({
   id: USER_ID,
@@ -220,7 +223,7 @@ function pastWorkday(): string {
 function fakeRequest(override: Record<string, unknown> = {}) {
   return {
     id: REQUEST_ID,
-    employee_id: EMPLOYEE_ID,
+    employee_id: SUBORDINATE_ID,
     leave_type_id: LEAVE_TYPE_ID,
     start_date: START_DATE,
     end_date: END_DATE,
@@ -235,6 +238,12 @@ function fakeRequest(override: Record<string, unknown> = {}) {
     cancelled_by: null,
     ...override,
   };
+}
+
+// Pengajuan milik karyawan yang sedang login, untuk tes membatalkan dan
+// melihat pengajuan sendiri
+function ownRequest(override: Record<string, unknown> = {}) {
+  return fakeRequest({ employee_id: EMPLOYEE_ID, ...override });
 }
 
 const requestBody = {
@@ -735,6 +744,28 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     expect(res.status).toBe(200);
   });
 
+  it("menolak admin menyetujui cutinya sendiri", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      ownRequest({ approver_id: null }) as never,
+    );
+
+    const res = await approve(adminToken);
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
+  it("menolak atasan menyetujui cutinya sendiri walau ia penyetujunya", async () => {
+    (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
+      ownRequest({ approver_id: EMPLOYEE_ID }) as never,
+    );
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
   it("mengubah penahanan saldo menjadi pemotongan", async () => {
     await approve(adminToken);
 
@@ -962,10 +993,10 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
 
   beforeEach(() => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest() as never,
+      ownRequest() as never,
     );
     (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "cancelled" }) as never,
+      ownRequest({ status: "cancelled" }) as never,
     );
   });
 
@@ -981,7 +1012,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     const args = (leaveRequestModel.cancelRequest as jest.Mock).mock
       .calls[0] as unknown[];
 
-    expect(args[3]).toBe(fakeRequest().status);
+    expect(args[3]).toBe(ownRequest().status);
   });
 
   it("menolak pembatalan oleh orang lain", async () => {
@@ -1019,7 +1050,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
 
   it("mengizinkan pembatalan pengajuan yang sudah disetujui", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "approved" }) as never,
+      ownRequest({ status: "approved" }) as never,
     );
 
     const res = await cancelLeave();
@@ -1031,7 +1062,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     const yesterday = toIsoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
 
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "approved", start_date: yesterday }) as never,
+      ownRequest({ status: "approved", start_date: yesterday }) as never,
     );
 
     const res = await cancelLeave();
@@ -1042,7 +1073,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
 
   it("menolak pembatalan pengajuan yang sudah ditolak", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "rejected" }) as never,
+      ownRequest({ status: "rejected" }) as never,
     );
 
     const res = await cancelLeave();
@@ -1178,27 +1209,45 @@ describe("daftar dan detail pengajuan", () => {
     expect(leaveRequestModel.listRequests).not.toHaveBeenCalled();
   });
 
-  it("daftar persetujuan disaring berdasarkan penyetuju", async () => {
+  it("atasan dengan leave.approve_team hanya melihat pengajuan yang menunjuk dirinya", async () => {
     await request(app)
       .get("/api/v1/leave-requests/approvals")
       .set("Authorization", `Bearer ${employeeToken}`);
 
     const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
-      .calls[0] as [{ approver_id: string; include_unassigned: boolean }];
+      .calls[0] as [{ approver_id?: string; exclude_employee_id?: string }];
 
     expect(params.approver_id).toBe(EMPLOYEE_ID);
-    expect(params.include_unassigned).toBe(false);
+    expect(params.exclude_employee_id).toBeUndefined();
   });
 
-  it("admin ikut melihat pengajuan yang belum punya penyetuju", async () => {
+  // Laporan QA: pengajuan yang penyetujunya atasan tidak aktif, atau yang
+  // atasannya diganti setelah pengajuan dibuat, tidak terlihat oleh HR
+  // maupun admin padahal mereka boleh memutusnya
+  it("pemegang leave.approve_all melihat semua pengajuan kecuali miliknya", async () => {
+    grantFeatures(["leave.approve_all"]);
+
+    await request(app)
+      .get("/api/v1/leave-requests/approvals")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
+      .calls[0] as [{ approver_id?: string; exclude_employee_id?: string }];
+
+    expect(params.approver_id).toBeUndefined();
+    expect(params.exclude_employee_id).toBe(EMPLOYEE_ID);
+  });
+
+  it("admin diperlakukan sama dengan pemegang leave.approve_all", async () => {
     await request(app)
       .get("/api/v1/leave-requests/approvals")
       .set("Authorization", `Bearer ${adminToken}`);
 
     const [params] = (leaveRequestModel.listRequests as jest.Mock).mock
-      .calls[0] as [{ include_unassigned: boolean }];
+      .calls[0] as [{ approver_id?: string; exclude_employee_id?: string }];
 
-    expect(params.include_unassigned).toBe(true);
+    expect(params.approver_id).toBeUndefined();
+    expect(params.exclude_employee_id).toBe(EMPLOYEE_ID);
   });
 
   it("daftar seluruh pengajuan hanya untuk pemegang leave.view_all", async () => {
@@ -1246,7 +1295,7 @@ describe("daftar dan detail pengajuan", () => {
 
   it("detail dapat dilihat pemohon", async () => {
     (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
-      fakeRequest() as never,
+      ownRequest() as never,
     );
 
     const res = await request(app)
@@ -1304,7 +1353,7 @@ describe("penandaan absensi saat cuti disetujui", () => {
     expect(res.status).toBe(200);
     expect(attendanceModel.upsertLeaveDays).toHaveBeenCalledWith(
       mockClient,
-      EMPLOYEE_ID,
+      SUBORDINATE_ID,
       [START_DATE, END_DATE],
       REQUEST_ID,
     );
@@ -1373,13 +1422,13 @@ describe("penghapusan absensi saat cuti dibatalkan", () => {
 
   beforeEach(() => {
     (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "cancelled" }) as never,
+      ownRequest({ status: "cancelled" }) as never,
     );
   });
 
   it("menghapus baris absensi cuti dari pengajuan yang sudah disetujui", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "approved" }) as never,
+      ownRequest({ status: "approved" }) as never,
     );
 
     const res = await cancelLeave();
@@ -1393,7 +1442,7 @@ describe("penghapusan absensi saat cuti dibatalkan", () => {
 
   it("tidak menghapus apa pun untuk pengajuan yang masih menunggu", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "pending" }) as never,
+      ownRequest({ status: "pending" }) as never,
     );
 
     const res = await cancelLeave();
@@ -1404,7 +1453,7 @@ describe("penghapusan absensi saat cuti dibatalkan", () => {
 
   it("membatalkan transaksi ketika penghapusan absensi gagal", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "approved" }) as never,
+      ownRequest({ status: "approved" }) as never,
     );
     (attendanceModel.deleteLeaveDays as jest.Mock).mockRejectedValue(
       new Error("gagal menghapus") as never,
@@ -1505,10 +1554,10 @@ describe("catatan aktivitas cuti", () => {
 
   it("mencatat pembatalan beserta status sebelumnya", async () => {
     (leaveRequestModel.findById as jest.Mock).mockResolvedValue(
-      fakeRequest() as never,
+      ownRequest() as never,
     );
     (leaveRequestModel.cancelRequest as jest.Mock).mockResolvedValue(
-      fakeRequest({ status: "cancelled" }) as never,
+      ownRequest({ status: "cancelled" }) as never,
     );
 
     const res = await request(app)

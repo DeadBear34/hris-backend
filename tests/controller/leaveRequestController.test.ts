@@ -853,6 +853,37 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     expect(mockClient.query).not.toHaveBeenCalled();
     expect(mockClient.release).not.toHaveBeenCalled();
   });
+
+  // leave.view_all hanya untuk melihat, bukan wewenang memutus
+  it("menolak pemegang leave.view_all yang tidak punya fitur penyetuju", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
+  it("menolak penyetuju yang ditugaskan bila ia hanya memegang leave.view_all", async () => {
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: MANAGER_ID,
+    } as never);
+    grantFeatures(["leave.view_all"]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
+  it("pemegang leave.view_all tetap dapat menyetujui bila juga memegang leave.approve_all", async () => {
+    grantFeatures(["leave.view_all", "leave.approve_all"]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("kewajiban lampiran saat persetujuan", () => {
@@ -991,6 +1022,15 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
     const res = await reject();
 
     expect(res.status).toBe(400);
+  });
+
+  it("menolak pemegang leave.view_all yang tidak punya fitur penyetuju", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await reject(employeeToken);
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.rejectRequest).not.toHaveBeenCalled();
   });
 });
 
@@ -1337,6 +1377,41 @@ describe("daftar dan detail pengajuan", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
+  });
+
+  it("pemegang leave.view_all melihat daftar seluruh pengajuan", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await request(app)
+      .get("/api/v1/leave-requests")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("pemegang leave.view_all dapat membuka detail pengajuan siapa pun", async () => {
+    grantFeatures(["leave.view_all"]);
+    (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
+      fakeRequest({ employee_id: OTHER_ID, approver_id: OTHER_ID }) as never,
+    );
+
+    const res = await request(app)
+      .get(`/api/v1/leave-requests/${REQUEST_ID}`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("kotak masuk persetujuan pemegang leave.view_all saja tetap kosong", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await request(app)
+      .get("/api/v1/leave-requests/approvals")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(leaveRequestModel.listRequests).not.toHaveBeenCalled();
   });
 });
 

@@ -121,37 +121,79 @@ async function userIdOf(employee_id: string): Promise<string | null> {
 export interface LeaveDecidedInput {
   request_id: string;
   requester_employee_id: string;
+  requester_name?: string;
   decision: "approved" | "rejected";
   leave_type_name: string;
   start_date: string;
   end_date: string;
   decision_note?: string | null;
+  decided_by_name?: string | null;
+  decider_user_id?: string | null;
 }
 
-// Pemohon diberi tahu hasilnya, dan notifikasi "perlu disetujui" milik
-// semua penerimanya dihapus karena sudah tidak ada yang perlu ditindak
+// Pemohon dan orang-orang dengan fitur leave.view_all diberi tahu hasilnya.
+// Bila disetujui, pesan memuat informasi siapa yang menyetujuinya.
+// Notifikasi pengajuan untuk manajer tetap disimpan sebagai riwayat.
 export async function notifyLeaveDecided(
   input: LeaveDecidedInput,
 ): Promise<void> {
-  clearPending("leave_approval_needed", input.request_id);
+  try {
+    const [requesterEmployee, viewAllUsers] = await Promise.all([
+      employeeModel.findById(input.requester_employee_id),
+      featureModel.findUserIdsWithFeature("leave.view_all"),
+    ]);
 
-  const recipient = await userIdOf(input.requester_employee_id);
-  if (!recipient) return;
+    const requesterUserId = requesterEmployee?.user_id ?? null;
+    const requesterName =
+      input.requester_name ?? requesterEmployee?.full_name ?? "Employee";
 
-  const decided = input.decision === "approved" ? "approved" : "rejected";
-  const note = input.decision_note ? `. Note: ${input.decision_note}` : "";
+    const decided = input.decision === "approved" ? "approved" : "rejected";
+    const note = input.decision_note ? `. Note: ${input.decision_note}` : "";
 
-  persist([
-    {
-      recipient_user_id: recipient,
-      type: "leave_status_changed",
-      title: `Leave request ${decided}`,
-      message: `${input.leave_type_name} for ${dateRangeLabel(input.start_date, input.end_date)} ${decided}${note}`,
-      link: "/leave",
-      entity: "leave_request",
-      entity_id: input.request_id,
-    },
-  ]);
+    const approvalSuffix =
+      input.decision === "approved" && input.decided_by_name
+        ? ` approved by ${input.decided_by_name}`
+        : ` ${decided}`;
+
+    const notifications: NewNotification[] = [];
+
+    // Notifikasi untuk pemohon
+    if (requesterUserId) {
+      notifications.push({
+        recipient_user_id: requesterUserId,
+        type: "leave_status_changed",
+        title: `Leave request ${decided}`,
+        message: `${input.leave_type_name} for ${dateRangeLabel(input.start_date, input.end_date)}${approvalSuffix}${note}`,
+        link: "/leave",
+        entity: "leave_request",
+        entity_id: input.request_id,
+      });
+    }
+
+    // Notifikasi untuk yang menyetujui/memutus dan pemegang leave.view_all (kecuali pemohon)
+    const otherRecipients = new Set(viewAllUsers);
+    if (input.decider_user_id) otherRecipients.add(input.decider_user_id);
+    if (requesterUserId) otherRecipients.delete(requesterUserId);
+
+    for (const recipient_user_id of otherRecipients) {
+      notifications.push({
+        recipient_user_id,
+        type: "leave_status_changed",
+        title: `Leave request ${decided}`,
+        message: `${requesterName}'s ${input.leave_type_name} for ${dateRangeLabel(input.start_date, input.end_date)}${approvalSuffix}${note}`,
+        link: "/leave-management",
+        entity: "leave_request",
+        entity_id: input.request_id,
+      });
+    }
+
+    persist(notifications);
+  } catch (err) {
+    logger.error(
+      { err, request_id: input.request_id },
+      "Failed to send leave decision notifications",
+    );
+  }
 }
 
 export interface AccountRegisteredInput {
@@ -195,8 +237,8 @@ export function clearAccountApproval(user_id: string): void {
   clearPending("account_approval_needed", user_id);
 }
 
-// Pemohon membatalkan sendiri, jadi notifikasi "perlu disetujui" milik atasan
-// sudah tidak punya tindakan yang bisa dikerjakan
-export function clearLeaveApproval(request_id: string): void {
-  clearPending("leave_approval_needed", request_id);
+// Pemohon membatalkan sendiri, tetapi notifikasi untuk manajer tetap disimpan
+// sebagai riwayat dan tidak dihapus
+export function clearLeaveApproval(_request_id: string): void {
+  // sengaja tidak memanggil clearPending agar notifikasi tidak hilang
 }

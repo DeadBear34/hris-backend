@@ -36,6 +36,7 @@ const {
   notifyLeaveDecided,
   notifyAccountNeedsApproval,
   clearLeaveApproval,
+  clearAccountApproval,
 } = await import("../../src/helpers/notify.js");
 
 const MANAGER_EMPLOYEE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -74,11 +75,16 @@ beforeEach(() => {
 function givenApprovers({
   approveAll = [] as string[],
   approveTeam = [] as string[],
+  viewAll = [] as string[],
   managerUser = MANAGER_USER as string | null,
 } = {}) {
   (featureModel.findUserIdsWithFeature as jest.Mock).mockImplementation(
-    async (code: unknown) =>
-      (code === "leave.approve_all" ? approveAll : approveTeam) as never,
+    async (code: unknown) => {
+      if (code === "leave.approve_all") return approveAll;
+      if (code === "leave.approve_team") return approveTeam;
+      if (code === "leave.view_all") return viewAll;
+      return [];
+    },
   );
   (employeeModel.findById as jest.Mock).mockImplementation(
     async (id: unknown) =>
@@ -232,7 +238,7 @@ describe("notifikasi keputusan cuti", () => {
     end_date: "2027-07-12",
   };
 
-  it("menghapus antrean persetujuan milik atasan", async () => {
+  it("tidak menghapus antrean persetujuan milik atasan agar riwayat tidak hilang", async () => {
     (employeeModel.findById as jest.Mock).mockResolvedValue({
       user_id: REQUESTER_USER,
     } as never);
@@ -240,20 +246,14 @@ describe("notifikasi keputusan cuti", () => {
     await notifyLeaveDecided(decided);
     await settle();
 
-    expect(notificationModel.deletePending).toHaveBeenCalledWith(
-      "leave_approval_needed",
-      REQUEST_ID,
-    );
+    expect(notificationModel.deletePending).not.toHaveBeenCalled();
   });
 
-  it("pembatalan oleh pemohon juga menghapus antrean persetujuan atasan", async () => {
+  it("pembatalan oleh pemohon juga tidak menghapus antrean persetujuan atasan", async () => {
     clearLeaveApproval(REQUEST_ID);
     await settle();
 
-    expect(notificationModel.deletePending).toHaveBeenCalledWith(
-      "leave_approval_needed",
-      REQUEST_ID,
-    );
+    expect(notificationModel.deletePending).not.toHaveBeenCalled();
   });
 
   it("memberi tahu pemohon bahwa cutinya disetujui", async () => {
@@ -288,7 +288,7 @@ describe("notifikasi keputusan cuti", () => {
     );
   });
 
-  it("tidak menyimpan apa pun kalau pemohon tidak punya akun", async () => {
+  it("tidak menyimpan apa pun kalau pemohon tidak punya akun dan tidak ada view_all", async () => {
     (employeeModel.findById as jest.Mock).mockResolvedValue({
       user_id: null,
     } as never);
@@ -297,6 +297,67 @@ describe("notifikasi keputusan cuti", () => {
     await settle();
 
     expect(notificationModel.insertMany).not.toHaveBeenCalled();
+  });
+
+  it("menyertakan nama penyetuju saat cuti disetujui", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: REQUESTER_USER,
+    } as never);
+
+    await notifyLeaveDecided({
+      ...decided,
+      decided_by_name: "Budi Santoso",
+    });
+    await settle();
+
+    const rows = firstBatch()!;
+    expect(rows[0]!.message).toContain("approved by Budi Santoso");
+  });
+
+  it("mengirim notifikasi ke pengguna yang memiliki fitur leave.view_all dan orang yang menyetujui", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      user_id: REQUESTER_USER,
+      full_name: "Yusuf Ramadhan",
+    } as never);
+    (featureModel.findUserIdsWithFeature as jest.Mock).mockResolvedValue([
+      "viewer-1",
+      REQUESTER_USER, // pemohon sendiri tidak boleh menerima duplikat
+    ] as never);
+
+    await notifyLeaveDecided({
+      ...decided,
+      requester_name: "Yusuf Ramadhan",
+      decided_by_name: "Budi Santoso",
+      decider_user_id: "approver-1", // orang yang menyetujui cuti
+    });
+    await settle();
+
+    const rows = firstBatch()!;
+    // 1 untuk pemohon, 1 untuk viewer-1, 1 untuk approver-1
+    expect(rows).toHaveLength(3);
+
+    const requesterNotif = rows.find(
+      (r) => r.recipient_user_id === REQUESTER_USER,
+    );
+    expect(requesterNotif).toBeDefined();
+    expect(requesterNotif!.link).toBe("/leave");
+    expect(requesterNotif!.message).toBe(
+      "Cuti Duka for 2027-07-12 approved by Budi Santoso",
+    );
+
+    const viewerNotif = rows.find((r) => r.recipient_user_id === "viewer-1");
+    expect(viewerNotif).toBeDefined();
+    expect(viewerNotif!.link).toBe("/leave-management");
+    expect(viewerNotif!.message).toBe(
+      "Yusuf Ramadhan's Cuti Duka for 2027-07-12 approved by Budi Santoso",
+    );
+
+    const approverNotif = rows.find((r) => r.recipient_user_id === "approver-1");
+    expect(approverNotif).toBeDefined();
+    expect(approverNotif!.link).toBe("/leave-management");
+    expect(approverNotif!.message).toBe(
+      "Yusuf Ramadhan's Cuti Duka for 2027-07-12 approved by Budi Santoso",
+    );
   });
 });
 
@@ -431,22 +492,12 @@ describe("dorongan realtime", () => {
   });
 
   it("memberi tahu penerima bahwa antrean persetujuan sudah dibersihkan", async () => {
-    (employeeModel.findById as jest.Mock).mockResolvedValue({
-      user_id: REQUESTER_USER,
-    } as never);
     (notificationModel.deletePending as jest.Mock).mockResolvedValue([
       { id: "n1", recipient_user_id: "a1" },
       { id: "n2", recipient_user_id: "a2" },
     ] as never);
 
-    await notifyLeaveDecided({
-      request_id: REQUEST_ID2,
-      requester_employee_id: REQUESTER_EMPLOYEE,
-      decision: "approved",
-      leave_type_name: "Cuti Duka",
-      start_date: "2027-07-12",
-      end_date: "2027-07-12",
-    });
+    clearAccountApproval("user-1");
     await settle();
 
     const [targets, message] = (dispatcher.dispatch as jest.Mock).mock
@@ -458,21 +509,11 @@ describe("dorongan realtime", () => {
   });
 
   it("tidak mengirim pesan pembersihan kalau tidak ada yang terhapus", async () => {
-    (employeeModel.findById as jest.Mock).mockResolvedValue({
-      user_id: REQUESTER_USER,
-    } as never);
     (notificationModel.deletePending as jest.Mock).mockResolvedValue(
       [] as never,
     );
 
-    await notifyLeaveDecided({
-      request_id: REQUEST_ID2,
-      requester_employee_id: REQUESTER_EMPLOYEE,
-      decision: "rejected",
-      leave_type_name: "Cuti Duka",
-      start_date: "2027-07-12",
-      end_date: "2027-07-12",
-    });
+    clearAccountApproval("user-2");
     await settle();
 
     expect(dispatcher.dispatch).not.toHaveBeenCalled();

@@ -542,11 +542,11 @@ Notifikasi dikirim lewat WebSocket milik server ini sendiri di jalur `/ws`, pada
 
 | Tipe                      | Dibuat saat                  | Penerima                                                                   | Dihapus saat                                     |
 | ------------------------- | ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| `leave_approval_needed`   | Pengajuan cuti dibuat        | Semua yang boleh memutusnya: atasan langsung (bila memegang `leave.approve_team`), semua admin, dan semua pemegang `leave.approve_all`. Pemohon tidak pernah menerima notifikasi cutinya sendiri | Pengajuan disetujui, ditolak, atau dibatalkan (dihapus dari semua penerima)   |
-| `leave_status_changed`    | Pengajuan disetujui/ditolak  | Pemohon                                                                    | Tidak dihapus, hanya ditandai dibaca             |
+| `leave_approval_needed`   | Pengajuan cuti dibuat        | Semua yang boleh memutusnya: atasan langsung (bila memegang `leave.approve_team`), semua admin, dan semua pemegang `leave.approve_all`. Pemohon tidak pernah menerima notifikasi cutinya sendiri | Tidak dihapus, tetap ada sebagai riwayat bagi manajer/penyetuju |
+| `leave_status_changed`    | Pengajuan disetujui/ditolak  | Pemohon, orang yang menyetujui, dan semua pemegang `leave.view_all` (memuat nama penyetuju bila disetujui) | Tidak dihapus, hanya ditandai dibaca             |
 | `account_approval_needed` | Seseorang mendaftar akun     | Semua pemegang `employee.approve_user`                                     | Akun disetujui                                   |
 
-Notifikasi yang meminta tindakan dihapus begitu tindakannya selesai, supaya penyetuju lain tidak melihat tugas yang sudah ditangani orang lain. Indeks unik `(recipient_user_id, type, entity_id)` menjamin satu penerima hanya mendapat satu notifikasi per pengajuan atau per akun.
+Notifikasi persetujuan cuti (`leave_approval_needed`) tetap disimpan agar manajer memiliki riwayat pengajuan cuti yang pernah masuk. Sedangkan notifikasi pendaftaran akun (`account_approval_needed`) dihapus begitu ditindak, supaya penyetuju lain tidak melihat akun yang sudah disetujui. Indeks unik `(recipient_user_id, type, entity_id)` menjamin satu penerima hanya mendapat satu notifikasi per pengajuan atau per akun.
 
 Notifikasi yang sudah dibaca dan berumur lebih dari 30 hari dibersihkan otomatis sekali sehari.
 

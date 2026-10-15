@@ -18,7 +18,13 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
-  findSessionInfo: jest.fn(() => Promise.resolve(null)),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
 }));
 
 jest.unstable_mockModule("../../src/models/notification.js", () => ({
@@ -31,7 +37,8 @@ const { attachSocketServer } =
   await import("../../src/realtime/socketServer.js");
 const { connectionCount, isConnected, resetHub } =
   await import("../../src/realtime/hub.js");
-const { createToken } = await import("../../src/helpers/jwt.js");
+const { createToken, verifyToken } = await import("../../src/helpers/jwt.js");
+const { revokeToken } = await import("../../src/helpers/sessionStore.js");
 const { WebSocket } = await import("ws");
 const { allowedOrigins } = await import("../../src/config/allowedOrigins.js");
 
@@ -68,7 +75,11 @@ function closed(socket: InstanceType<typeof WebSocket>) {
 beforeEach(async () => {
   jest.clearAllMocks();
   resetHub();
-  (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+  (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+    id: "session-user",
+    password_changed_at: null,
+    is_active: true,
+  } as never);
   (notificationModel.countUnread as jest.Mock).mockResolvedValue(0 as never);
 
   server = createServer();
@@ -154,7 +165,9 @@ describe("autentikasi soket", () => {
 
   it("menolak token yang diterbitkan sebelum password diganti", async () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: USER_ID,
       password_changed_at: new Date(Date.now() + 60_000),
+      is_active: true,
     } as never);
 
     const token = createToken({
@@ -162,6 +175,41 @@ describe("autentikasi soket", () => {
       email: "yusuf@awan.io",
       role: "employee",
     });
+
+    const socket = connect();
+    await opened(socket);
+    socket.send(JSON.stringify({ action: "auth", token }));
+
+    expect(await closed(socket)).toBe(4001);
+  });
+
+  it("menolak token milik akun yang dinonaktifkan", async () => {
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: USER_ID,
+      password_changed_at: null,
+      is_active: false,
+    } as never);
+
+    const token = createToken({
+      id: USER_ID,
+      email: "yusuf@awan.io",
+      role: "employee",
+    });
+
+    const socket = connect();
+    await opened(socket);
+    socket.send(JSON.stringify({ action: "auth", token }));
+
+    expect(await closed(socket)).toBe(4001);
+  });
+
+  it("menolak token yang sudah dicabut lewat logout", async () => {
+    const token = createToken({
+      id: USER_ID,
+      email: "yusuf@awan.io",
+      role: "employee",
+    });
+    await revokeToken(verifyToken(token));
 
     const socket = connect();
     await opened(socket);

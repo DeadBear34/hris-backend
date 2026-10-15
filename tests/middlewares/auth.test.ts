@@ -10,6 +10,8 @@ const userModel = await import("../../src/models/user.js");
 const { authenticate, authorize } =
   await import("../../src/middlewares/auth.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
+const { revokeToken, resetRevokedTokens } =
+  await import("../../src/helpers/sessionStore.js");
 const { AppError } = await import("../../src/helpers/appError.js");
 const { env } = await import("../../src/config/env.js");
 
@@ -37,7 +39,11 @@ describe("authenticate", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: payload.id,
+      password_changed_at: null,
+      is_active: true,
+    } as never);
     next = jest.fn() as unknown as NextFunction;
   });
 
@@ -133,6 +139,7 @@ describe("authenticate terhadap perubahan password", () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
       id: payload.id,
       password_changed_at,
+      is_active: true,
     } as never);
   }
 
@@ -184,12 +191,34 @@ describe("authenticate terhadap perubahan password", () => {
     expect(next).toHaveBeenCalledWith();
   });
 
-  it("membiarkan controller menangani user yang sudah dihapus", async () => {
+  // Sebelumnya token milik akun yang sudah dihapus tetap diloloskan sampai
+  // kedaluwarsa
+  it("menolak token milik akun yang sudah dihapus", async () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+
+    const req = makeReq(`Bearer ${token}`);
+    await authenticate(req, {} as Response, next);
+
+    const err = captureError(next);
+
+    expect(err.statusCode).toBe(401);
+    expect(err.message).toContain("no longer exists");
+    expect(req.user).toBeUndefined();
+  });
+
+  it("menolak token milik akun yang dinonaktifkan admin", async () => {
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: payload.id,
+      password_changed_at: null,
+      is_active: false,
+    } as never);
 
     await authenticate(makeReq(`Bearer ${token}`), {} as Response, next);
 
-    expect(next).toHaveBeenCalledWith();
+    const err = captureError(next);
+
+    expect(err.statusCode).toBe(401);
+    expect(err.message).toContain("deactivated");
   });
 
   it("meneruskan error database ke penanganan error", async () => {
@@ -202,6 +231,68 @@ describe("authenticate terhadap perubahan password", () => {
     const [err] = (next as jest.Mock).mock.calls[0] as [Error];
 
     expect(err.message).toBe("koneksi putus");
+  });
+});
+
+describe("authenticate setelah logout", () => {
+  let next: NextFunction;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resetRevokedTokens();
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: payload.id,
+      password_changed_at: null,
+      is_active: true,
+    } as never);
+    next = jest.fn() as unknown as NextFunction;
+  });
+
+  function decode(raw: string) {
+    return jwt.decode(raw) as {
+      id: string;
+      email: string;
+      role: string;
+      jti?: string;
+      iat: number;
+      exp: number;
+    };
+  }
+
+  it("setiap token membawa jti yang unik", () => {
+    const first = decode(createToken(payload));
+    const second = decode(createToken(payload));
+
+    expect(first.jti).toBeDefined();
+    expect(first.jti).not.toBe(second.jti);
+  });
+
+  it("menolak token yang sudah dicabut lewat logout", async () => {
+    const own = createToken(payload);
+    await revokeToken(decode(own));
+
+    const req = makeReq(`Bearer ${own}`);
+    await authenticate(req, {} as Response, next);
+
+    const err = captureError(next);
+
+    expect(err.statusCode).toBe(401);
+    expect(err.message).toContain("logged out");
+    expect(req.user).toBeUndefined();
+    // token yang sudah dicabut tidak perlu membaca data sesi lagi
+    expect(userModel.findSessionInfo).not.toHaveBeenCalled();
+  });
+
+  it("token lain milik pengguna yang sama tetap berlaku", async () => {
+    await revokeToken(decode(createToken(payload)));
+
+    await authenticate(
+      makeReq(`Bearer ${createToken(payload)}`),
+      {} as Response,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith();
   });
 });
 

@@ -394,6 +394,7 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`, kecuali `GET /health`.
 | `GET`    | `/auth/me`                  | Login  | Profil pengguna yang sedang login              |
 | `PATCH`  | `/auth/me`                  | Login  | Mengubah profil sendiri                        |
 | `PATCH`  | `/auth/password`            | Login  | Mengubah password sendiri                      |
+| `POST`   | `/auth/logout`              | Login  | Mencabut token yang sedang dipakai             |
 | `POST`   | `/auth/me/photo`            | Login  | Mengunggah foto profil sendiri                 |
 | `DELETE` | `/auth/me/photo`            | Login  | Menghapus foto profil sendiri                  |
 
@@ -541,7 +542,7 @@ Notifikasi dikirim lewat WebSocket milik server ini sendiri di jalur `/ws`, pada
 
 | Tipe                      | Dibuat saat                  | Penerima                                                                   | Dihapus saat                                     |
 | ------------------------- | ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| `leave_approval_needed`   | Pengajuan cuti dibuat        | Atasan langsung, atau semua pemegang `leave.approve_all` bila tanpa atasan | Pengajuan disetujui, ditolak, atau dibatalkan    |
+| `leave_approval_needed`   | Pengajuan cuti dibuat        | Semua yang boleh memutusnya: atasan langsung (bila memegang `leave.approve_team`), semua admin, dan semua pemegang `leave.approve_all`. Pemohon tidak pernah menerima notifikasi cutinya sendiri | Pengajuan disetujui, ditolak, atau dibatalkan (dihapus dari semua penerima)   |
 | `leave_status_changed`    | Pengajuan disetujui/ditolak  | Pemohon                                                                    | Tidak dihapus, hanya ditandai dibaca             |
 | `account_approval_needed` | Seseorang mendaftar akun     | Semua pemegang `employee.approve_user`                                     | Akun disetujui                                   |
 
@@ -621,6 +622,8 @@ Tidak ada Redis atau layanan tambahan yang diperlukan.
 | SQL injection | Seluruh query memakai parameter, tidak ada penggabungan string berisi input |
 | Kebocoran password | Argon2id, tidak pernah dicatat ke log maupun dikirim lewat email |
 | Sesi lama setelah ganti password | JWT yang `iat`-nya lebih awal dari `password_changed_at` ditolak, termasuk di WebSocket |
+| Token yang bocor atau perangkat yang tertinggal | `POST /auth/logout` mencabut token itu sampai kedaluwarsa, lihat [Sesi dan logout](#sesi-dan-logout) |
+| Akun dihapus atau dinonaktifkan | Token yang masih berlaku langsung ditolak di request berikutnya, termasuk di WebSocket |
 | Cross-Site WebSocket Hijacking | Jabat tangan WebSocket tidak tunduk pada CORS, sehingga header `Origin` diperiksa sendiri terhadap `CORS_ORIGIN` |
 | CSRF | Tidak berlaku karena autentikasi memakai header `Authorization: Bearer`, bukan cookie yang dikirim peramban secara otomatis |
 | Unggahan berbahaya | Jenis berkas dibaca dari magic bytes isinya, bukan dari nama atau `Content-Type`, maksimal 5 MB |
@@ -684,6 +687,15 @@ Koneksi disiapkan di [src/config/redis.ts](src/config/redis.ts) saat server meny
 | Pendengar `error` | Tanpanya, putusnya Redis dianggap galat tak tertangani. Peringatan hanya dicatat sekali per putusnya koneksi |
 
 Kode lain mengambil klien lewat `getRedis()`, yang hanya mengembalikan klien bila statusnya benar-benar siap. `null` berarti pemanggil harus memakai jalur cadangannya.
+
+Pemakaian saat ini:
+
+| Kunci | Isi | Umur | Tanpa Redis |
+| ----- | --- | ---- | ----------- |
+| `session:<userId>` | Cache sesi: `password_changed_at`, `is_active` | 60 detik | Dibaca dari database setiap request |
+| `revoked:<jti>` | Token yang sudah logout | Sampai token kedaluwarsa | Disimpan di memori proses saja |
+
+Lihat [Sesi dan logout](#sesi-dan-logout).
 
 ## Rate Limit
 
@@ -1635,9 +1647,30 @@ Akun baru bisa login setelah email terverifikasi **dan** akun disetujui pemegang
 5. Kalau token sah, **token ditandai terpakai lebih dulu**. Hanya permintaan yang berhasil menandainya yang boleh melanjutkan: password diperbarui, `password_changed_at` diisi, `must_change_password` dimatikan, lalu email pemberitahuan dikirim tanpa memuat password baru.
 6. Endpoint ini sengaja tidak menerbitkan JWT. Pengguna harus login ulang.
 
-### Pembatalan sesi lama
+### Sesi dan logout
 
-Middleware `authenticate` dan server WebSocket menolak JWT yang klaim `iat`-nya lebih awal dari `password_changed_at`. Begitu password berubah lewat reset maupun `PATCH /auth/password`, seluruh sesi sebelumnya langsung berhenti berlaku, termasuk koneksi WebSocket yang tersambung ulang. Konsekuensinya, setiap request yang memakai token melakukan satu query ringan ke tabel `users`.
+Middleware `authenticate` dan server WebSocket memakai satu aturan yang sama, `sessionRejection()` di `src/helpers/sessionStore.ts`. Token yang tanda tangannya sah tetap ditolak (401) bila:
+
+| Keadaan | Pesan |
+| ------- | ----- |
+| Token sudah dicabut lewat `POST /auth/logout` | `You have logged out from this session...` |
+| Akunnya sudah dihapus | `Your account no longer exists...` |
+| Akunnya dinonaktifkan admin | `Your account has been deactivated...` |
+| Token terbit sebelum `password_changed_at` | `...because the password was changed...` |
+
+**Logout.** Setiap token membawa klaim `jti` yang unik. `POST /auth/logout` mencatat `revoked:<jti>` di Redis sampai token itu kedaluwarsa, sehingga semua instance backend ikut menolaknya. Salinannya juga disimpan di memori proses, jadi logout tetap berlaku walau Redis sedang mati; salinan memori itu hilang bila server dinyalakan ulang. Hanya token yang dipakai saat logout yang dicabut; login di perangkat lain tetap berlaku. Untuk keluar dari semua perangkat sekaligus, ganti password. Token lama yang terbit sebelum ada `jti` tidak dapat dicabut satu per satu, tetapi tetap kedaluwarsa sendiri dalam 24 jam.
+
+**Cache sesi.** Data sesi (`password_changed_at` dan `is_active`) dibaca di setiap request yang butuh login. Database berada di Supabase, terpisah dari VM, jadi hasilnya disimpan di Redis sebagai `session:<userId>` selama 60 detik. Cache dibuang segera setelah perubahan ini tersimpan, sehingga akibatnya langsung terasa tanpa menunggu 60 detik:
+
+| Perubahan | Tempat |
+| --------- | ------ |
+| Ganti password sendiri | `ChangePasswordController` |
+| Reset password | `ResetPasswordController` |
+| Akun disetujui | `ApproveUserController` |
+| Akun diaktifkan atau dinonaktifkan | `SetUserActiveController` |
+| Karyawan beserta akunnya dihapus | `DeleteEmployeeController` |
+
+Fitur baru yang mengubah salah satu kolom itu wajib memanggil `forgetSession(userId)` setelah perubahannya tersimpan. Bila Redis tidak tersedia, sesi dibaca langsung dari database seperti sebelumnya, dan kegagalan Redis hanya dicatat sebagai `warn`.
 
 ## Data Contoh
 

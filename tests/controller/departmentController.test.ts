@@ -1,12 +1,27 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 
-// middleware authenticate memeriksa password_changed_at lewat model user,
-// jadi pool harus mengembalikan hasil kosong alih-alih undefined
+// middleware authenticate memeriksa sesi lewat model user, jadi pool harus
+// mengembalikan akun aktif untuk query itu dan hasil kosong untuk yang lain
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
   pool: {
     connect: jest.fn(),
-    query: jest.fn(() => Promise.resolve({ rows: [] })),
+    // query sesi di middleware authenticate dijawab akun aktif, sisanya kosong
+    query: jest.fn((sql: unknown) =>
+      Promise.resolve(
+        String(sql).includes("is_active FROM users")
+          ? {
+              rows: [
+                {
+                  id: "session-user",
+                  password_changed_at: null,
+                  is_active: true,
+                },
+              ],
+            }
+          : { rows: [] },
+      ),
+    ),
   },
 }));
 

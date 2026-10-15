@@ -26,7 +26,13 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   softDeleteUser: jest.fn(),
   findPending: jest.fn(),
   setEmailVerified: jest.fn(),
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
@@ -657,6 +663,7 @@ describe("sesi lama setelah password diubah", () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
       id: USER_ID,
       password_changed_at: new Date(Date.now() + 60_000),
+      is_active: true,
     } as never);
 
     const res = await request(app)
@@ -671,6 +678,7 @@ describe("sesi lama setelah password diubah", () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
       id: USER_ID,
       password_changed_at: new Date(Date.now() + 60_000),
+      is_active: true,
     } as never);
 
     await request(app)
@@ -684,6 +692,7 @@ describe("sesi lama setelah password diubah", () => {
     (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
       id: USER_ID,
       password_changed_at: new Date(Date.now() - 60_000),
+      is_active: true,
     } as never);
     (userModel.findById as jest.Mock).mockResolvedValue(fakeUser as never);
 

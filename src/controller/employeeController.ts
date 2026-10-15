@@ -33,6 +33,7 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { forgetSession } from "../helpers/sessionStore.js";
 import { paginationMeta } from "../helpers/pagination.js";
 
 // Satu masalah pada satu kolom
@@ -731,6 +732,10 @@ export async function DeleteEmployeeController(
         await userModel.softDeleteUser(client, existing.user_id);
       }
     });
+
+    // setelah COMMIT, supaya cache tidak terisi ulang dengan akun yang
+    // ternyata batal dihapus
+    if (existing.user_id) await forgetSession(existing.user_id);
 
     activity.success({
       action: "employee.delete",

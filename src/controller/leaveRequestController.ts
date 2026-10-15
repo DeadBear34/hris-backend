@@ -560,6 +560,7 @@ export async function CreateLeaveRequestController(
     // setelah COMMIT, supaya atasan tidak diberi tahu pengajuan yang batal
     await notifyLeaveSubmitted({
       request_id: request.id,
+      requester_employee_id: requester.employee.id,
       requester_name: requester.employee.full_name,
       approver_employee_id: request.approver_id,
       leave_type_name: leaveType.name,
@@ -806,6 +807,7 @@ export async function ApproveLeaveRequestController(
       if (limitedDepartment) {
         // Penyetujuan di departemen yang sama dibuat bergiliran, supaya dua
         // penyetujuan bersamaan tidak sama-sama lolos dari batas
+        // penanda untuk limit
         await departmentModel.lockForLeaveApproval(
           client,
           limitedDepartment.id,

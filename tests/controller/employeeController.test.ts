@@ -26,7 +26,13 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   softDeleteUser: jest.fn(),
   findPending: jest.fn(),
   setEmailVerified: jest.fn(),
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({

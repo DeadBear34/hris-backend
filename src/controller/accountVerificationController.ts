@@ -35,6 +35,7 @@ import {
 import { startActivity } from "../helpers/activityLog.js";
 import { notifyAccountNeedsApproval } from "../helpers/notify.js";
 import { plural } from "../helpers/plural.js";
+import { forgetSession } from "../helpers/sessionStore.js";
 
 const CODE_VALID_MINUTES = 10;
 const RESET_LINK_TTL_MINUTES = 15;
@@ -542,6 +543,7 @@ export async function ResetPasswordController(
     const hashed = await hashPassword(password);
 
     await userModel.updatePassword(user.id, hashed);
+    await forgetSession(user.id);
 
     // Tautan lain dari permintaan sebelumnya ikut dibatalkan, supaya satu
     // email lama yang masih tersimpan tidak bisa dipakai mengganti password

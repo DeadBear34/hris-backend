@@ -118,6 +118,12 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
       },
     ],
   },
+  "POST /auth/logout": {
+    tag: "Auth",
+    summary: "Logout",
+    description:
+      "Mencabut token yang dipakai request ini sampai waktu kedaluwarsanya, sehingga token itu ditolak (401) walau belum habis masa berlakunya. Token di perangkat lain tetap berlaku; untuk keluar dari semua perangkat, ganti password.",
+  },
   "POST /auth/verify-email": {
     tag: "Auth",
     summary: "Verifikasi email dengan kode 6 digit",

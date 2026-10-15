@@ -3,7 +3,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { logger } from "../config/logger.js";
 import { originAllowed } from "../config/allowedOrigins.js";
 import { verifyToken } from "../helpers/jwt.js";
-import * as userModel from "../models/user.js";
+import { sessionRejection } from "../helpers/sessionStore.js";
 import * as notificationModel from "../models/notification.js";
 import { register, unregister, pushToLocal, countFor } from "./hub.js";
 
@@ -44,21 +44,6 @@ function parseAuth(raw: string): string | null {
   }
 }
 
-// Sama dengan middleware authenticate: token yang diterbitkan sebelum
-// password diganti tidak boleh dipakai lagi
-async function sessionStillValid(
-  user_id: string,
-  issuedAt: number | undefined,
-): Promise<boolean> {
-  const session = await userModel.findSessionInfo(user_id);
-
-  if (!session?.password_changed_at || issuedAt === undefined) return true;
-
-  const changedAt = Math.floor(session.password_changed_at.getTime() / 1000);
-
-  return issuedAt >= changedAt;
-}
-
 async function authenticateSocket(raw: string): Promise<string | null> {
   const token = parseAuth(raw);
   if (!token) return null;
@@ -66,7 +51,9 @@ async function authenticateSocket(raw: string): Promise<string | null> {
   try {
     const payload = verifyToken(token);
 
-    if (!(await sessionStillValid(payload.id, payload.iat))) return null;
+    // Aturan yang sama dengan middleware authenticate: logout, akun terhapus
+    // atau nonaktif, dan password yang diganti setelah token terbit
+    if (await sessionRejection(payload)) return null;
 
     return payload.id;
   } catch {

@@ -54,6 +54,7 @@ function dateRangeLabel(start: string, end: string): string {
 
 export interface LeaveSubmittedInput {
   request_id: string;
+  requester_employee_id: string;
   requester_name: string;
   approver_employee_id: string | null;
   leave_type_name: string;
@@ -62,23 +63,41 @@ export interface LeaveSubmittedInput {
   total_days: number;
 }
 
-// Penerimanya atasan langsung. Kalau karyawan belum punya atasan, jatuh ke
-// siapa pun yang boleh menyetujui cuti mana saja, supaya pengajuan tidak
-// menggantung tanpa ada yang tahu
+// Penerimanya semua orang yang boleh memutus pengajuan ini, mengikuti aturan
+// canDecide di leaveRequestController:
+// atasan langsung, bila jabatannya memegang leave.approve_team
+// semua admin dan pemegang leave.approve_all (misalnya HR Manager), karena
+// mereka boleh memutus pengajuan siapa pun dan kotak masuknya berisi semua
+// Pemohon tidak pernah diberi tahu tentang cutinya sendiri, karena ia tidak
+// boleh memutusnya. Akun nonaktif atau terhapus sudah disaring oleh
+// findUserIdsWithFeature
 export async function notifyLeaveSubmitted(
   input: LeaveSubmittedInput,
 ): Promise<void> {
   try {
-    const approver = input.approver_employee_id
-      ? await userIdOf(input.approver_employee_id)
-      : null;
+    const [approverUser, approveAll, approveTeam, requesterUser] =
+      await Promise.all([
+        input.approver_employee_id
+          ? userIdOf(input.approver_employee_id)
+          : null,
+        featureModel.findUserIdsWithFeature("leave.approve_all"),
+        input.approver_employee_id
+          ? featureModel.findUserIdsWithFeature("leave.approve_team")
+          : ([] as string[]),
+        userIdOf(input.requester_employee_id),
+      ]);
 
-    const recipients = approver
-      ? [approver]
-      : await featureModel.findUserIdsWithFeature("leave.approve_all");
+    // Set, supaya atasan yang sekaligus HR atau admin hanya menerima satu
+    const recipients = new Set(approveAll);
+
+    if (approverUser && approveTeam.includes(approverUser)) {
+      recipients.add(approverUser);
+    }
+
+    if (requesterUser) recipients.delete(requesterUser);
 
     persist(
-      recipients.map((recipient_user_id) => ({
+      [...recipients].map((recipient_user_id) => ({
         recipient_user_id,
         type: "leave_approval_needed" as const,
         title: "New leave request",
@@ -110,7 +129,7 @@ export interface LeaveDecidedInput {
 }
 
 // Pemohon diberi tahu hasilnya, dan notifikasi "perlu disetujui" milik
-// atasan dihapus karena sudah tidak ada yang perlu ditindak
+// semua penerimanya dihapus karena sudah tidak ada yang perlu ditindak
 export async function notifyLeaveDecided(
   input: LeaveDecidedInput,
 ): Promise<void> {

@@ -40,6 +40,7 @@ export type ActivityAction =
   | "auth.forgot_password"
   | "auth.reset_password"
   | "auth.change_password"
+  | "auth.logout"
   | "profile.update"
   | "profile.photo_upload"
   | "profile.photo_delete"

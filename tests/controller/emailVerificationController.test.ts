@@ -31,7 +31,13 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   softDeleteUser: jest.fn(),
   findPending: jest.fn(),
   setEmailVerified: jest.fn(),
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
@@ -966,7 +972,11 @@ describe("notifikasi persetujuan akun menunggu verifikasi email", () => {
       role: "admin",
     });
 
-    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    } as never);
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
       email_verified_at: null,
@@ -994,7 +1004,11 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
       role: "admin",
     });
 
-    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    } as never);
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
       email_verified_at: new Date(),
@@ -1029,7 +1043,11 @@ describe("PATCH /api/v1/users/:id/approve mengirim pemberitahuan", () => {
     });
 
     mockSendMail.mockRejectedValue(new Error("smtp mati") as never);
-    (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+    (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    } as never);
     (userModel.findById as jest.Mock).mockResolvedValue({
       ...fakeUser,
       email_verified_at: new Date(),

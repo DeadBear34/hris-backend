@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken, type TokenPayload } from "../helpers/jwt.js";
-import * as userModel from "../models/user.js";
+import { sessionRejection } from "../helpers/sessionStore.js";
 import { Unauthorized, Forbidden } from "../helpers/appError.js";
 import { markRoles } from "../docs/routeMeta.js";
 
@@ -38,21 +38,11 @@ export async function authenticate(
   }
 
   try {
-    const session = await userModel.findSessionInfo(payload.id);
-
-    if (session?.password_changed_at && payload.iat !== undefined) {
-      const changedAt = Math.floor(
-        session.password_changed_at.getTime() / 1000,
-      );
-
-      if (payload.iat < changedAt) {
-        return next(
-          Unauthorized(
-            "Your session is no longer valid because the password was changed, please log in again",
-          ),
-        );
-      }
-    }
+    // Token yang tanda tangannya sah belum tentu masih boleh dipakai: bisa
+    // sudah logout, akunnya dihapus atau dinonaktifkan, atau passwordnya
+    // diganti setelah token terbit
+    const rejection = await sessionRejection(payload);
+    if (rejection) return next(Unauthorized(rejection));
 
     req.user = payload;
     next();

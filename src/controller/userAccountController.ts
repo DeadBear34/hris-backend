@@ -8,6 +8,7 @@ import { accountApprovedEmail } from "../helpers/emailTemplate.js";
 import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { clearAccountApproval } from "../helpers/notify.js";
+import { forgetSession } from "../helpers/sessionStore.js";
 
 export async function ListPendingUserController(
   _req: Request,
@@ -55,6 +56,7 @@ export async function ApproveUserController(
     // tidak mengirim email persetujuan dua kali
     const user = await userModel.approveUser(id, req.user.id);
     if (!user) throw BadRequest("This account has already been approved");
+    await forgetSession(id);
 
     const employee = await employeeModel.findByUserId(id);
     const body = accountApprovedEmail(
@@ -127,6 +129,9 @@ export async function SetUserActiveController(
     }
 
     const user = await userModel.setUserActive(id, is_active);
+    // akun yang dinonaktifkan langsung kehilangan aksesnya, termasuk token
+    // yang masih berlaku
+    await forgetSession(id);
 
     activity.success({
       action: "user.set_active",

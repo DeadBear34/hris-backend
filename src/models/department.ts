@@ -125,7 +125,7 @@ export async function softDeleteDepartment(
 
 // Menyetujui cuti di departemen yang sama dilakukan bergiliran. Tanpa kunci
 // ini dua penyetujuan bersamaan sama-sama membaca jumlah lama dan batasnya
-// terlampaui
+// penanda untuk penguncian approval
 export async function lockForLeaveApproval(
   db: Executor,
   id: string,

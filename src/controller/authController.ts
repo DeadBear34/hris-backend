@@ -3,6 +3,7 @@ import * as userModel from "../models/user.js";
 import * as employeeModel from "../models/employee.js";
 import { hashPassword, verifyPassword } from "../helpers/password.js";
 import { createToken } from "../helpers/jwt.js";
+import { forgetSession, revokeToken } from "../helpers/sessionStore.js";
 import { getUserFeatureCodes } from "../middlewares/feature.js";
 import {
   Unauthorized,
@@ -270,6 +271,38 @@ export async function UpdateMeController(
   }
 }
 
+// Mencabut token yang dipakai request ini sampai waktu kedaluwarsanya.
+// Token lain milik pengguna yang sama, misalnya di perangkat lain, tetap
+// berlaku. Untuk keluar dari semua perangkat sekaligus, ganti password
+export async function LogoutController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const activity = startActivity(req);
+
+  try {
+    if (!req.user)
+      throw Unauthorized("You are not logged in, please log in first");
+
+    const revoked = await revokeToken(req.user);
+
+    activity.success({
+      action: "auth.logout",
+      entity: "user",
+      entity_id: req.user.id,
+      summary: `${req.user.email} logged out`,
+      // token lama tanpa jti tidak dapat dicabut satu per satu, tapi tetap
+      // kedaluwarsa dengan sendirinya
+      metadata: { token_revoked: revoked },
+    });
+
+    res.json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function ChangePasswordController(
   req: Request,
   res: Response,
@@ -302,6 +335,8 @@ export async function ChangePasswordController(
 
     const hashed = await hashPassword(new_password);
     await userModel.updatePassword(user.id, hashed);
+    // token lama langsung ditolak, tanpa menunggu cache sesi kedaluwarsa
+    await forgetSession(user.id);
 
     activity.success({
       action: "auth.change_password",

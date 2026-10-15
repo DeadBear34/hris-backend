@@ -4,6 +4,7 @@ import {
   MeController,
   UpdateMeController,
   ChangePasswordController,
+  LogoutController,
 } from "../controller/authController.js";
 import {
   RegisterController,
@@ -92,5 +93,7 @@ router.patch(
   validate(changePasswordSchema),
   ChangePasswordController,
 );
+
+router.post("/auth/logout", ...loggedIn, LogoutController);
 
 export default router;

@@ -25,6 +25,8 @@ export interface User {
 export interface SessionInfo {
   id: string;
   password_changed_at: Date | null;
+  // akun yang dinonaktifkan admin tidak boleh memakai token lamanya
+  is_active: boolean;
 }
 
 export interface PendingUser {
@@ -112,7 +114,7 @@ export async function setEmailVerified(id: string): Promise<User | null> {
 
 export async function findSessionInfo(id: string): Promise<SessionInfo | null> {
   const result = await pool.query<SessionInfo>(
-    `SELECT id, password_changed_at FROM users
+    `SELECT id, password_changed_at, is_active FROM users
      WHERE id = $1::uuid AND deleted_at IS NULL`,
     [id],
   );

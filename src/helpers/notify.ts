@@ -48,6 +48,28 @@ function clearPending(type: NewNotification["type"], entity_id: string): void {
     });
 }
 
+// Tugas yang sudah ditindak ditandai dibaca untuk semua penerimanya. Tetap
+// tersimpan sebagai riwayat, tetapi lencana tidak lagi menghitungnya dan
+// penyetuju lain tidak mengira tugas itu masih menunggu
+function resolvePending(
+  type: NewNotification["type"],
+  entity_id: string,
+): void {
+  void notificationModel
+    .markPendingRead(type, entity_id)
+    .then((resolved) => {
+      if (resolved.length === 0) return;
+
+      dispatch(
+        resolved.map((row) => row.recipient_user_id),
+        { event: "notification.read", ids: resolved.map((row) => row.id) },
+      );
+    })
+    .catch((err) => {
+      logger.error({ err, type, entity_id }, "Failed to resolve notification");
+    });
+}
+
 function dateRangeLabel(start: string, end: string): string {
   return start === end ? start : `${start} to ${end}`;
 }
@@ -118,10 +140,72 @@ async function userIdOf(employee_id: string): Promise<string | null> {
   return employee?.user_id ?? null;
 }
 
+export interface ApproverReassignedInput {
+  request_id: string;
+  requester_name: string;
+  leave_type_name: string;
+  start_date: string;
+  end_date: string;
+  total_days: number;
+  from_employee_id: string | null;
+  to_employee_id: string | null;
+}
+
+// Penyetuju pengajuan yang masih menunggu berganti karena struktur berubah.
+// Penyetuju baru diberi tugas, tugas di penyetuju lama ditandai dibaca.
+// Bila penyetuju barunya kosong, pengajuan tetap tampil di kotak masuk HR dan
+// admin, jadi tidak ada notifikasi baru yang perlu dibuat
+export async function notifyApproverReassigned(
+  input: ApproverReassignedInput,
+): Promise<void> {
+  try {
+    const [fromUser, toUser] = await Promise.all([
+      input.from_employee_id ? userIdOf(input.from_employee_id) : null,
+      input.to_employee_id ? userIdOf(input.to_employee_id) : null,
+    ]);
+
+    if (fromUser && fromUser !== toUser) {
+      const resolved = await notificationModel.markPendingReadFor(
+        "leave_approval_needed",
+        input.request_id,
+        fromUser,
+      );
+
+      if (resolved.length > 0) {
+        dispatch([fromUser], {
+          event: "notification.read",
+          ids: resolved.map((row) => row.id),
+        });
+      }
+    }
+
+    if (toUser) {
+      persist([
+        {
+          recipient_user_id: toUser,
+          type: "leave_approval_needed",
+          title: "Leave request assigned to you",
+          message: `${input.requester_name} requested ${plural(input.total_days, "day")} of ${input.leave_type_name} for ${dateRangeLabel(input.start_date, input.end_date)}. You are now the approver after an organization change`,
+          link: "/leave-management",
+          entity: "leave_request",
+          entity_id: input.request_id,
+        },
+      ]);
+    }
+  } catch (err) {
+    logger.error(
+      { err, request_id: input.request_id },
+      "Failed to notify approver reassignment",
+    );
+  }
+}
+
 export interface LeaveDecidedInput {
   request_id: string;
   requester_employee_id: string;
   requester_name?: string;
+  // atasan yang ditugaskan, diberi tahu walau yang memutus orang lain
+  approver_employee_id?: string | null;
   decision: "approved" | "rejected";
   leave_type_name: string;
   start_date: string;
@@ -131,17 +215,25 @@ export interface LeaveDecidedInput {
   decider_user_id?: string | null;
 }
 
-// Pemohon dan orang-orang dengan fitur leave.view_all diberi tahu hasilnya.
-// Bila disetujui, pesan memuat informasi siapa yang menyetujuinya.
-// Notifikasi pengajuan untuk manajer tetap disimpan sebagai riwayat.
+// Pemohon, yang memutus, atasan yang ditugaskan, dan pemegang leave.view_all
+// diberi tahu hasilnya. Bila disetujui, pesan memuat siapa yang menyetujui.
+// Notifikasi "perlu disetujui" milik semua penyetuju ditandai dibaca: tetap
+// ada sebagai riwayat, tetapi tidak lagi tampil sebagai tugas yang menunggu
 export async function notifyLeaveDecided(
   input: LeaveDecidedInput,
 ): Promise<void> {
+  resolvePending("leave_approval_needed", input.request_id);
+
   try {
-    const [requesterEmployee, viewAllUsers] = await Promise.all([
-      employeeModel.findById(input.requester_employee_id),
-      featureModel.findUserIdsWithFeature("leave.view_all"),
-    ]);
+    const [requesterEmployee, viewAllUsers, approverUserId] = await Promise.all(
+      [
+        employeeModel.findById(input.requester_employee_id),
+        featureModel.findUserIdsWithFeature("leave.view_all"),
+        input.approver_employee_id
+          ? userIdOf(input.approver_employee_id)
+          : null,
+      ],
+    );
 
     const requesterUserId = requesterEmployee?.user_id ?? null;
     const requesterName =
@@ -173,6 +265,9 @@ export async function notifyLeaveDecided(
     // Notifikasi untuk yang menyetujui/memutus dan pemegang leave.view_all (kecuali pemohon)
     const otherRecipients = new Set(viewAllUsers);
     if (input.decider_user_id) otherRecipients.add(input.decider_user_id);
+    // atasan langsung perlu tahu cuti bawahannya sudah diputus, terutama bila
+    // yang memutus HR atau admin
+    if (approverUserId) otherRecipients.add(approverUserId);
     if (requesterUserId) otherRecipients.delete(requesterUserId);
 
     for (const recipient_user_id of otherRecipients) {
@@ -237,8 +332,8 @@ export function clearAccountApproval(user_id: string): void {
   clearPending("account_approval_needed", user_id);
 }
 
-// Pemohon membatalkan sendiri, tetapi notifikasi untuk manajer tetap disimpan
-// sebagai riwayat dan tidak dihapus
-export function clearLeaveApproval(_request_id: string): void {
-  // sengaja tidak memanggil clearPending agar notifikasi tidak hilang
+// Pemohon membatalkan sendiri. Notifikasi "perlu disetujui" tetap disimpan
+// sebagai riwayat, tetapi ditandai dibaca karena sudah tidak bisa disetujui
+export function clearLeaveApproval(request_id: string): void {
+  resolvePending("leave_approval_needed", request_id);
 }

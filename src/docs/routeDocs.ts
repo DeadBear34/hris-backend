@@ -53,6 +53,11 @@ export const TAGS: { name: string; description: string }[] = [
     name: "Jabatan & Hak Akses",
     description: "Jabatan dan fitur (hak akses) tiap jabatan",
   },
+  {
+    name: "Struktur Organisasi",
+    description:
+      "Bagan organisasi dan atasan langsung yang dihitung dari struktur jabatan",
+  },
   { name: "Hari Libur", description: "Hari libur nasional dan cuti bersama" },
   { name: "Jenis Cuti", description: "Master jenis cuti" },
   {
@@ -139,6 +144,24 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
         status: 429,
         code: "TOO_MANY_REQUESTS",
         description: "Meminta ulang terlalu cepat",
+      },
+    ],
+  },
+  "GET /auth/verification-code": {
+    tag: "Auth",
+    summary: "Ambil kode verifikasi email untuk QA (khusus admin)",
+    description:
+      "Menerbitkan kode verifikasi baru untuk akun yang belum terverifikasi dan mengembalikannya di respons tanpa mengirim email. Kode sebelumnya tidak berlaku lagi. Mati di production kecuali `QA_TOOLS_ENABLED=true`; saat mati dijawab 404 seperti rute yang tidak ada.",
+    errors: [
+      {
+        status: 404,
+        code: "NOT_FOUND",
+        description: "Email tidak terdaftar, atau fitur QA dimatikan",
+      },
+      {
+        status: 409,
+        code: "CONFLICT",
+        description: "Email sudah terverifikasi",
       },
     ],
   },
@@ -275,6 +298,18 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   },
 
   // Jabatan & hak akses
+  "GET /org/tree": {
+    tag: "Struktur Organisasi",
+    summary: "Bagan organisasi",
+    description:
+      "Unit organisasi bertingkat (`children`), jabatan per unit beserta bawahan jabatannya di unit yang sama (`direct_reports`), dan pemegang tiap jabatan (`holders`). Kepala unit tampil di unitnya sendiri dengan `reports_to_position_id` yang menunjuk jabatan di unit induk. Jabatan lama yang belum masuk unit ada di `unassigned_positions`.",
+  },
+  "GET /employees/:id/line-manager": {
+    tag: "Struktur Organisasi",
+    summary: "Atasan langsung karyawan",
+    description:
+      "Atasan yang menjadi penyetuju cuti karyawan ini. `source: override` berarti diisi manual lewat `manager_id`; `structure` berarti dihitung dari atasan jabatan, dengan jabatan kosong dilewati (`levels_up` lebih dari 1). `line_manager: null` berarti tidak ada atasan aktif sampai puncak, sehingga cutinya ditangani HR dan admin.",
+  },
   "GET /positions": { tag: "Jabatan & Hak Akses", summary: "Daftar jabatan" },
   "GET /positions/:id": {
     tag: "Jabatan & Hak Akses",

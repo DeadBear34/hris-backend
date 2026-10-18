@@ -37,6 +37,7 @@ export type ActivityAction =
   | "auth.register"
   | "auth.verify_email"
   | "auth.resend_verification"
+  | "auth.qa_verification_code"
   | "auth.forgot_password"
   | "auth.reset_password"
   | "auth.change_password"

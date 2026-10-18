@@ -4,6 +4,7 @@ import userAccountRoute from "./userAccountRoute.js";
 import employeeRoute from "./employeeRoute.js";
 import departmentRoute from "./departmentRoute.js";
 import positionRoute from "./positionRoute.js";
+import orgRoute from "./orgRoute.js";
 import featureRoute from "./featureRoute.js";
 import holidayRoute from "./holidayRoute.js";
 import leaveTypeRoute from "./leaveTypeRoute.js";
@@ -34,6 +35,7 @@ router.use(userAccountRoute);
 router.use(employeeRoute);
 router.use(departmentRoute);
 router.use(positionRoute);
+router.use(orgRoute);
 router.use(featureRoute);
 
 router.use(holidayRoute);

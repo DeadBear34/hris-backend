@@ -12,6 +12,8 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
 jest.unstable_mockModule("../../src/models/notification.js", () => ({
   insertMany: jest.fn(() => Promise.resolve([])),
   deletePending: jest.fn(() => Promise.resolve([])),
+  markPendingRead: jest.fn(() => Promise.resolve([])),
+  markPendingReadFor: jest.fn(() => Promise.resolve([])),
 }));
 
 jest.unstable_mockModule("../../src/realtime/dispatcher.js", () => ({
@@ -37,6 +39,7 @@ const {
   notifyAccountNeedsApproval,
   clearLeaveApproval,
   clearAccountApproval,
+  notifyApproverReassigned,
 } = await import("../../src/helpers/notify.js");
 
 const MANAGER_EMPLOYEE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -238,7 +241,9 @@ describe("notifikasi keputusan cuti", () => {
     end_date: "2027-07-12",
   };
 
-  it("tidak menghapus antrean persetujuan milik atasan agar riwayat tidak hilang", async () => {
+  // Riwayat tetap ada (tidak dihapus), tetapi tugas yang sudah diputus tidak
+  // boleh terus dihitung sebagai "belum dibaca" di lonceng semua penyetuju
+  it("menandai antrean persetujuan sebagai dibaca, bukan menghapusnya", async () => {
     (employeeModel.findById as jest.Mock).mockResolvedValue({
       user_id: REQUESTER_USER,
     } as never);
@@ -246,14 +251,60 @@ describe("notifikasi keputusan cuti", () => {
     await notifyLeaveDecided(decided);
     await settle();
 
+    expect(notificationModel.markPendingRead).toHaveBeenCalledWith(
+      "leave_approval_needed",
+      REQUEST_ID,
+    );
     expect(notificationModel.deletePending).not.toHaveBeenCalled();
   });
 
-  it("pembatalan oleh pemohon juga tidak menghapus antrean persetujuan atasan", async () => {
+  it("pembatalan oleh pemohon juga menandai antrean persetujuan dibaca", async () => {
     clearLeaveApproval(REQUEST_ID);
     await settle();
 
+    expect(notificationModel.markPendingRead).toHaveBeenCalledWith(
+      "leave_approval_needed",
+      REQUEST_ID,
+    );
     expect(notificationModel.deletePending).not.toHaveBeenCalled();
+  });
+
+  it("memberi tahu penerimanya lewat soket bahwa tugas itu sudah dibaca", async () => {
+    (notificationModel.markPendingRead as jest.Mock).mockResolvedValueOnce([
+      { id: "n1", recipient_user_id: MANAGER_USER },
+      { id: "n2", recipient_user_id: HR_USER },
+    ] as never);
+
+    clearLeaveApproval(REQUEST_ID);
+    await settle();
+
+    expect(dispatcher.dispatch).toHaveBeenCalledWith([MANAGER_USER, HR_USER], {
+      event: "notification.read",
+      ids: ["n1", "n2"],
+    });
+  });
+
+  it("atasan yang ditugaskan diberi tahu walau yang memutus HR", async () => {
+    (employeeModel.findById as jest.Mock).mockImplementation(
+      async (id: unknown) =>
+        ({
+          id,
+          user_id: id === MANAGER_EMPLOYEE ? MANAGER_USER : REQUESTER_USER,
+        }) as never,
+    );
+
+    await notifyLeaveDecided({
+      ...decided,
+      approver_employee_id: MANAGER_EMPLOYEE,
+      decider_user_id: HR_USER,
+    });
+    await settle();
+
+    const recipients = firstBatch()!.map((row) => row.recipient_user_id);
+
+    expect(recipients).toEqual(
+      expect.arrayContaining([REQUESTER_USER, MANAGER_USER, HR_USER]),
+    );
   });
 
   it("memberi tahu pemohon bahwa cutinya disetujui", async () => {
@@ -352,7 +403,9 @@ describe("notifikasi keputusan cuti", () => {
       "Yusuf Ramadhan's Cuti Duka for 2027-07-12 approved by Budi Santoso",
     );
 
-    const approverNotif = rows.find((r) => r.recipient_user_id === "approver-1");
+    const approverNotif = rows.find(
+      (r) => r.recipient_user_id === "approver-1",
+    );
     expect(approverNotif).toBeDefined();
     expect(approverNotif!.link).toBe("/leave-management");
     expect(approverNotif!.message).toBe(
@@ -517,5 +570,88 @@ describe("dorongan realtime", () => {
     await settle();
 
     expect(dispatcher.dispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifikasi pengalihan penyetuju", () => {
+  const NEW_MANAGER_EMPLOYEE = "12121212-1212-4121-8121-121212121212";
+  const NEW_MANAGER_USER = "34343434-3434-4343-8343-343434343434";
+
+  const reassigned = {
+    request_id: REQUEST_ID,
+    requester_name: "Yusuf Ramadhan",
+    leave_type_name: "Cuti Tahunan",
+    start_date: "2027-07-12",
+    end_date: "2027-07-13",
+    total_days: 2,
+    from_employee_id: MANAGER_EMPLOYEE,
+    to_employee_id: NEW_MANAGER_EMPLOYEE,
+  };
+
+  beforeEach(() => {
+    (employeeModel.findById as jest.Mock).mockImplementation(
+      async (id: unknown) =>
+        ({
+          id,
+          user_id:
+            id === MANAGER_EMPLOYEE
+              ? MANAGER_USER
+              : id === NEW_MANAGER_EMPLOYEE
+                ? NEW_MANAGER_USER
+                : null,
+        }) as never,
+    );
+    (notificationModel.markPendingReadFor as jest.Mock).mockResolvedValue([
+      { id: "n-lama", recipient_user_id: MANAGER_USER },
+    ] as never);
+  });
+
+  it("penyetuju baru menerima tugas persetujuan", async () => {
+    await notifyApproverReassigned(reassigned);
+    await settle();
+
+    const batch = firstBatch() ?? [];
+    expect(batch).toHaveLength(1);
+    expect(batch[0]).toMatchObject({
+      recipient_user_id: NEW_MANAGER_USER,
+      type: "leave_approval_needed",
+    });
+  });
+
+  it("tugas di penyetuju lama ditandai dibaca dan didorong lewat realtime", async () => {
+    await notifyApproverReassigned(reassigned);
+
+    expect(notificationModel.markPendingReadFor).toHaveBeenCalledWith(
+      "leave_approval_needed",
+      REQUEST_ID,
+      MANAGER_USER,
+    );
+    expect(dispatcher.dispatch).toHaveBeenCalledWith(
+      [MANAGER_USER],
+      expect.objectContaining({ event: "notification.read", ids: ["n-lama"] }),
+    );
+  });
+
+  it("tanpa penyetuju baru tidak membuat notifikasi baru", async () => {
+    await notifyApproverReassigned({ ...reassigned, to_employee_id: null });
+    await settle();
+
+    expect(notificationModel.insertMany).not.toHaveBeenCalled();
+    expect(notificationModel.markPendingReadFor).toHaveBeenCalled();
+  });
+
+  it("penyetuju lama yang tidak punya akun dilewati", async () => {
+    await notifyApproverReassigned({ ...reassigned, from_employee_id: null });
+
+    expect(notificationModel.markPendingReadFor).not.toHaveBeenCalled();
+  });
+
+  it("kegagalan tidak dilempar ke pemanggil", async () => {
+    (employeeModel.findById as jest.Mock).mockRejectedValue(
+      new Error("db down") as never,
+    );
+
+    await expect(notifyApproverReassigned(reassigned)).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalled();
   });
 });

@@ -1,11 +1,23 @@
 import { pool } from "../config/databaseConnection.js";
 import { updateVersioned } from "./versionedUpdate.js";
 import type { Executor } from "./user.js";
+import {
+  MAX_TREE_DEPTH,
+  UNIT_TYPES,
+  type UnitType,
+} from "../helpers/orgConstants.js";
 
+export { UNIT_TYPES, type UnitType };
+
+// Unit organisasi. Nama tabel tetap departments supaya modul yang sudah ada
+// (batas cuti bersamaan, jadwal kerja) tetap berjalan
 export interface Department {
   id: string;
   code: string;
   name: string;
+  // unit induk: perusahaan -> direktorat -> divisi -> departemen -> tim
+  parent_id: string | null;
+  unit_type: UnitType;
   is_active: boolean;
   // Paling banyak berapa karyawan departemen ini yang boleh cuti pada hari
   // yang sama. Null berarti tanpa batas
@@ -18,6 +30,8 @@ export interface Department {
 export interface DepartmentInput {
   code: string;
   name: string;
+  parent_id?: string | null;
+  unit_type?: UnitType;
   is_active?: boolean;
   max_concurrent_leave?: number | null;
 }
@@ -25,11 +39,14 @@ export interface DepartmentInput {
 const UPDATABLE_COLUMNS = [
   "code",
   "name",
+  "parent_id",
+  "unit_type",
   "is_active",
   "max_concurrent_leave",
 ] as const;
 
 const COLUMN_CAST: Record<string, string> = {
+  parent_id: "::uuid",
   max_concurrent_leave: "::int",
 };
 
@@ -78,10 +95,16 @@ export async function createDepartment(
   data: DepartmentInput,
 ): Promise<Department> {
   const result = await pool.query<Department>(
-    `INSERT INTO departments (code, name, max_concurrent_leave)
-     VALUES ($1, $2, $3::int)
+    `INSERT INTO departments (code, name, max_concurrent_leave, parent_id, unit_type)
+     VALUES ($1, $2, $3::int, $4::uuid, COALESCE($5, 'department'))
      RETURNING *`,
-    [data.code, data.name, data.max_concurrent_leave ?? null],
+    [
+      data.code,
+      data.name,
+      data.max_concurrent_leave ?? null,
+      data.parent_id ?? null,
+      data.unit_type ?? null,
+    ],
   );
 
   const department = result.rows[0];
@@ -138,6 +161,71 @@ export async function lockForLeaveApproval(
 export async function countEmployees(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM employees
+     WHERE department_id = $1::uuid AND deleted_at IS NULL`,
+    [id],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+// true bila candidate adalah unit itu sendiri atau salah satu keturunannya.
+// Dipakai sebelum memindahkan unit, supaya unit tidak menjadi induk dari
+// dirinya sendiri secara tidak langsung (A -> B -> A)
+export async function isUnitInSubtree(
+  unitId: string,
+  candidateId: string,
+): Promise<boolean> {
+  const result = await pool.query<{ found: boolean }>(
+    `WITH RECURSIVE cabang AS (
+       SELECT id, 0 AS kedalaman FROM departments
+       WHERE id = $1::uuid AND deleted_at IS NULL
+
+       UNION ALL
+
+       SELECT d.id, c.kedalaman + 1
+       FROM departments d
+       JOIN cabang c ON d.parent_id = c.id
+       WHERE d.deleted_at IS NULL AND c.kedalaman < $3::int
+     )
+     SELECT EXISTS (SELECT 1 FROM cabang WHERE id = $2::uuid) AS found`,
+    [unitId, candidateId, MAX_TREE_DEPTH],
+  );
+
+  return result.rows[0]?.found === true;
+}
+
+// Unit itu sendiri beserta seluruh induknya sampai puncak, terdekat lebih dulu
+export async function findUnitAncestry(unitId: string): Promise<string[]> {
+  const result = await pool.query<{ id: string }>(
+    `WITH RECURSIVE induk AS (
+       SELECT id, parent_id, 0 AS kedalaman FROM departments
+       WHERE id = $1::uuid AND deleted_at IS NULL
+
+       UNION ALL
+
+       SELECT d.id, d.parent_id, i.kedalaman + 1
+       FROM departments d
+       JOIN induk i ON d.id = i.parent_id
+       WHERE d.deleted_at IS NULL AND i.kedalaman < $2::int
+     )
+     SELECT id FROM induk ORDER BY kedalaman ASC`,
+    [unitId, MAX_TREE_DEPTH],
+  );
+
+  return result.rows.map((row) => row.id);
+}
+
+export async function countChildUnits(id: string): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) FROM departments
+     WHERE parent_id = $1::uuid AND deleted_at IS NULL`,
+    [id],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function countPositions(id: string): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) FROM positions
      WHERE department_id = $1::uuid AND deleted_at IS NULL`,
     [id],
   );

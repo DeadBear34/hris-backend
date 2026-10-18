@@ -171,6 +171,45 @@ export async function deletePending(
   return result.rows;
 }
 
+// Tugas yang sudah selesai ditandai dibaca untuk semua penerimanya, bukan
+// dihapus, supaya tetap tampil sebagai riwayat tetapi tidak lagi dihitung
+// sebagai pekerjaan yang menunggu
+export async function markPendingRead(
+  type: NotificationType,
+  entity_id: string,
+  db: Executor = pool,
+): Promise<{ id: string; recipient_user_id: string }[]> {
+  const result = await db.query<{ id: string; recipient_user_id: string }>(
+    `UPDATE notifications
+     SET is_read = true, read_at = now()
+     WHERE type = $1::notification_type AND entity_id = $2::uuid
+       AND is_read = false
+     RETURNING id, recipient_user_id`,
+    [type, entity_id],
+  );
+
+  return result.rows;
+}
+
+// Sama seperti markPendingRead, tetapi hanya untuk satu penerima. Dipakai
+// saat penyetuju sebuah pengajuan dialihkan ke orang lain
+export async function markPendingReadFor(
+  type: NotificationType,
+  entity_id: string,
+  recipient_user_id: string,
+): Promise<{ id: string; recipient_user_id: string }[]> {
+  const result = await pool.query<{ id: string; recipient_user_id: string }>(
+    `UPDATE notifications
+     SET is_read = true, read_at = now()
+     WHERE type = $1::notification_type AND entity_id = $2::uuid
+       AND recipient_user_id = $3::uuid AND is_read = false
+     RETURNING id, recipient_user_id`,
+    [type, entity_id, recipient_user_id],
+  );
+
+  return result.rows;
+}
+
 // Menghapus notifikasi lama yang sudah dibaca. Yang belum dibaca dibiarkan
 // berapa pun umurnya, karena berarti penerimanya belum sempat melihatnya
 export async function deleteReadOlderThan(

@@ -73,6 +73,13 @@ export const envSchema = z.object({
     z.enum(["true", "false"]).optional(),
   ),
 
+  // Endpoint bantu QA seperti pengambilan kode verifikasi email. Kosong
+  // berarti menyala di luar production dan mati di production
+  QA_TOOLS_ENABLED: z.preprocess(
+    blankToUndefined,
+    z.enum(["true", "false"]).optional(),
+  ),
+
   // Wajib diisi bila server berada di balik reverse proxy atau load balancer.
   // Tanpa ini semua klien terlihat ber-IP sama, yaitu IP proxy-nya
   TRUST_PROXY: z.preprocess(blankToUndefined, z.string().optional()),

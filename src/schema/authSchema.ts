@@ -80,6 +80,10 @@ export const resendVerificationSchema = z.object({
   email: emailField,
 });
 
+export const verificationCodeQuerySchema = z.object({
+  email: emailField,
+});
+
 export const forgotPasswordSchema = z.object({
   email: emailField,
 });

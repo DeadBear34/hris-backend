@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { expectedUpdatedAt } from "./commonSchema.js";
+import { UNIT_TYPES } from "../helpers/orgConstants.js";
 
 export const createDepartmentSchema = z.object({
   code: z
@@ -14,6 +15,15 @@ export const createDepartmentSchema = z.object({
     .trim()
     .min(3, "Department name must be at least 3 characters")
     .max(100, "Department name must be at most 100 characters"),
+
+  // unit induk; null berarti unit puncak (misalnya unit perusahaan)
+  parent_id: z.uuid("Invalid parent unit").nullable().optional(),
+
+  unit_type: z
+    .enum(UNIT_TYPES, {
+      message: `Unit type must be one of: ${UNIT_TYPES.join(", ")}`,
+    })
+    .optional(),
 
   // Paling banyak berapa karyawan departemen ini yang boleh cuti pada hari
   // yang sama. Kirim null untuk menghapus batas

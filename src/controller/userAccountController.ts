@@ -9,6 +9,7 @@ import { Unauthorized, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { clearAccountApproval } from "../helpers/notify.js";
 import { forgetSession } from "../helpers/sessionStore.js";
+import { rerouteSafely } from "../helpers/approvalRouting.js";
 
 export async function ListPendingUserController(
   _req: Request,
@@ -133,12 +134,16 @@ export async function SetUserActiveController(
     // yang masih berlaku
     await forgetSession(id);
 
+    // Akun nonaktif tidak bisa menyetujui apa pun; pengajuan bawahannya yang
+    // menunggu dialihkan ke atasan berikutnya (dan sebaliknya saat diaktifkan)
+    const rerouted = await rerouteSafely();
+
     activity.success({
       action: "user.set_active",
       entity: "user",
       entity_id: id,
       summary: `Account ${existing.email} ${is_active ? "activated" : "deactivated"}`,
-      metadata: { is_active },
+      metadata: { is_active, rerouted_leave_requests: rerouted.length },
     });
 
     res.json({

@@ -187,6 +187,10 @@ export async function FeatureMatrixController(
           code: p.code,
           name: p.name,
           level: p.level,
+          // nama jabatan hanya unik per unit, jadi unitnya ikut ditampilkan
+          department_id: p.department_id,
+          department_name: p.department_name,
+          is_unit_head: p.is_unit_head,
           updated_at: p.updated_at,
         })),
         categories: groupByCategory(features),

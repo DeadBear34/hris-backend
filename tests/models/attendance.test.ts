@@ -178,9 +178,29 @@ describe("penyaringan daftar absensi", () => {
       limit: 10,
     });
 
+    const [sql, values] = calls(0);
+
+    // pengecualian manual tetap berlaku
+    expect(sql).toContain("e.manager_id = $1::uuid");
+    // satu parameter dipakai untuk kedua cara, tidak menambah parameter
+    expect(values[0]).toBe(EMPLOYEE_ID);
+  });
+
+  it("bawahan juga dihitung dari struktur jabatan bila tanpa pengecualian manual", async () => {
+    await attendanceModel.listAttendances({
+      manager_id: EMPLOYEE_ID,
+      page: 1,
+      limit: 10,
+    });
+
     const [sql] = calls(0);
 
-    expect(sql).toContain("e.manager_id = $1::uuid");
+    expect(sql).toContain("e.manager_id IS NULL AND e.position_id IN");
+    expect(sql).toContain("p.reports_to_position_id = (");
+    expect(sql).toContain(
+      "SELECT position_id FROM employees WHERE id = $1::uuid",
+    );
+    expect(sql).toContain("p.deleted_at IS NULL");
   });
 
   it("menyaring departemen, status, dan rentang tanggal sekaligus", async () => {

@@ -27,30 +27,31 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Karyawan](#menambah-karyawan-satu-atau-banyak)
 - [Absensi](#aturan-absensi)
 - [Otorisasi Berbasis Jabatan](#otorisasi-berbasis-jabatan)
+- [Struktur Organisasi](#struktur-organisasi)
 - [Cuti](#alur-persetujuan-cuti)
 - [Alur Akun](#alur-verifikasi-email)
 - [Batasan yang Diketahui](#batasan-yang-diketahui)
 
 ## Tech Stack
 
-| Komponen         | Teknologi                          |
-| ---------------- | ---------------------------------- |
-| Runtime          | Node.js 22                         |
-| Bahasa           | TypeScript (ESM, `NodeNext`)       |
-| Framework        | Express 5                          |
-| Database         | PostgreSQL (Supabase)              |
-| Driver DB        | node-postgres (`pg`), tanpa ORM    |
-| Penyimpanan file | Supabase Storage                   |
-| Real-time        | WebSocket (`ws`)                   |
-| Autentikasi      | JSON Web Token                     |
-| Hashing          | Argon2id                           |
-| Validasi         | Zod                                |
-| Unggah berkas    | Multer                             |
-| Logging          | Pino                               |
-| Pengiriman email | Resend                             |
-| Keamanan HTTP    | Helmet, CORS                       |
-| Unit test        | Jest, Supertest                    |
-| Formatting kode  | Prettier                           |
+| Komponen         | Teknologi                       |
+| ---------------- | ------------------------------- |
+| Runtime          | Node.js 22                      |
+| Bahasa           | TypeScript (ESM, `NodeNext`)    |
+| Framework        | Express 5                       |
+| Database         | PostgreSQL (Supabase)           |
+| Driver DB        | node-postgres (`pg`), tanpa ORM |
+| Penyimpanan file | Supabase Storage                |
+| Real-time        | WebSocket (`ws`)                |
+| Autentikasi      | JSON Web Token                  |
+| Hashing          | Argon2id                        |
+| Validasi         | Zod                             |
+| Unggah berkas    | Multer                          |
+| Logging          | Pino                            |
+| Pengiriman email | Resend                          |
+| Keamanan HTTP    | Helmet, CORS                    |
+| Unit test        | Jest, Supertest                 |
+| Formatting kode  | Prettier                        |
 
 ## Struktur Proyek
 
@@ -82,21 +83,21 @@ Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model ti
 
 ## Konvensi Kode
 
-| Aturan | Alasan |
-| ------ | ------ |
-| Pesan untuk pengguna dan log ditulis dalam bahasa Inggris, komentar kode dalam bahasa Indonesia | Pesan dibaca aplikasi dan pengguna, komentar dibaca tim |
-| Nama variabel, fungsi, dan tipe dalam bahasa Inggris | Konsisten dengan pustaka dan kolom database |
-| Import lokal selalu diakhiri `.js` | Diwajibkan resolusi modul `NodeNext` |
-| Query selalu memakai parameter (`$1`) beserta cast eksplisit (`$1::uuid`) | Mencegah SQL injection dan salah tebak tipe oleh PostgreSQL |
-| Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`), lewat `updateVersioned` di `src/models/versionedUpdate.ts` | Field yang tidak diizinkan tidak mungkin ikut tersimpan, dan pemeriksaan versi `updated_at` sama di semua tabel |
+| Aturan                                                                                                                          | Alasan                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pesan untuk pengguna dan log ditulis dalam bahasa Inggris, komentar kode dalam bahasa Indonesia                                 | Pesan dibaca aplikasi dan pengguna, komentar dibaca tim                                                                                                           |
+| Nama variabel, fungsi, dan tipe dalam bahasa Inggris                                                                            | Konsisten dengan pustaka dan kolom database                                                                                                                       |
+| Import lokal selalu diakhiri `.js`                                                                                              | Diwajibkan resolusi modul `NodeNext`                                                                                                                              |
+| Query selalu memakai parameter (`$1`) beserta cast eksplisit (`$1::uuid`)                                                       | Mencegah SQL injection dan salah tebak tipe oleh PostgreSQL                                                                                                       |
+| Update hanya menerima kolom dari daftar putih (`UPDATABLE_COLUMNS`), lewat `updateVersioned` di `src/models/versionedUpdate.ts` | Field yang tidak diizinkan tidak mungkin ikut tersimpan, dan pemeriksaan versi `updated_at` sama di semua tabel                                                   |
 | Penulisan ke lebih dari satu tabel dibungkus `withTransaction` dari `src/helpers/transaction.ts`, bukan `BEGIN`/`COMMIT` manual | Tidak ada data setengah jadi bila salah satu langkah gagal. Koneksi baru diambil setelah validasi selesai, dan koneksi yang gagal di-`ROLLBACK` dibuang dari pool |
-| Pekerjaan lambat (hash password, unggah berkas, kirim email) dikerjakan di luar transaksi | Koneksi database tidak tertahan dan kunci baris tidak dipegang lama |
-| Tanggal "hari ini" selalu menurut `TIMEZONE` kantor (`todayInOfficeZone`), bukan `new Date().toISOString()` | Antara pukul 00.00 dan 07.00 WIB tanggal UTC masih tertinggal sehari |
-| Respons create dan update berbentuk `{ success, message, data }` | Seragam dengan endpoint lain, sehingga frontend bisa langsung menampilkan `message` |
-| Error dilempar lewat `src/helpers/appError.ts` | Satu bentuk respons error untuk seluruh aplikasi |
-| Pengambilan karyawan pemilik request lewat `src/helpers/requestEmployee.ts` | Diambil sekali per request dan dipakai bersama middleware dan controller |
-| Metadata daftar memakai `paginationMeta` dari `src/helpers/pagination.ts` | Rumus `total_pages` sama di semua endpoint; data kosong berarti `0` |
-| Query yang tidak saling bergantung dijalankan bersamaan dengan `Promise.all` | Waktu tunggu permintaan mengikuti query terlama, bukan jumlah semuanya |
+| Pekerjaan lambat (hash password, unggah berkas, kirim email) dikerjakan di luar transaksi                                       | Koneksi database tidak tertahan dan kunci baris tidak dipegang lama                                                                                               |
+| Tanggal "hari ini" selalu menurut `TIMEZONE` kantor (`todayInOfficeZone`), bukan `new Date().toISOString()`                     | Antara pukul 00.00 dan 07.00 WIB tanggal UTC masih tertinggal sehari                                                                                              |
+| Respons create dan update berbentuk `{ success, message, data }`                                                                | Seragam dengan endpoint lain, sehingga frontend bisa langsung menampilkan `message`                                                                               |
+| Error dilempar lewat `src/helpers/appError.ts`                                                                                  | Satu bentuk respons error untuk seluruh aplikasi                                                                                                                  |
+| Pengambilan karyawan pemilik request lewat `src/helpers/requestEmployee.ts`                                                     | Diambil sekali per request dan dipakai bersama middleware dan controller                                                                                          |
+| Metadata daftar memakai `paginationMeta` dari `src/helpers/pagination.ts`                                                       | Rumus `total_pages` sama di semua endpoint; data kosong berarti `0`                                                                                               |
+| Query yang tidak saling bergantung dijalankan bersamaan dengan `Promise.all`                                                    | Waktu tunggu permintaan mengikuti query terlama, bukan jumlah semuanya                                                                                            |
 
 ## Instalasi dan Menjalankan
 
@@ -124,16 +125,16 @@ curl http://localhost:8080/health
 
 HTTP dan WebSocket berbagi port yang sama. WebSocket tersedia di `ws://localhost:8080/ws`.
 
-| Perintah             | Kegunaan                                     |
-| -------------------- | -------------------------------------------- |
-| `npm run dev`        | Menjalankan server dengan `tsx watch`        |
-| `npm run build`      | Mengompilasi TypeScript ke JavaScript        |
-| `npm start`          | Menjalankan hasil build                      |
-| `npm test`           | Menjalankan seluruh pengujian                |
-| `npm run test:watch` | Menjalankan pengujian setiap berkas berubah  |
-| `npm run format`     | Merapikan kode `src` dan `tests` dengan Prettier |
+| Perintah             | Kegunaan                                                    |
+| -------------------- | ----------------------------------------------------------- |
+| `npm run dev`        | Menjalankan server dengan `tsx watch`                       |
+| `npm run build`      | Mengompilasi TypeScript ke JavaScript                       |
+| `npm start`          | Menjalankan hasil build                                     |
+| `npm test`           | Menjalankan seluruh pengujian                               |
+| `npm run test:watch` | Menjalankan pengujian setiap berkas berubah                 |
+| `npm run format`     | Merapikan kode `src` dan `tests` dengan Prettier            |
 | `npm run typecheck`  | Memeriksa tipe serta impor dan variabel yang tidak terpakai |
-| `npm run seed`       | Mengisi database dengan data contoh          |
+| `npm run seed`       | Mengisi database dengan data contoh                         |
 
 Kode mati dicegah oleh compiler: `tsconfig.json` mengaktifkan `noUnusedLocals` dan `noUnusedParameters`, sehingga impor, variabel, atau parameter yang tidak terpakai membuat `tsc` dan CI gagal. Parameter yang memang wajib ada tapi tidak dipakai, misalnya `_req` di handler Express, diberi awalan garis bawah.
 
@@ -147,11 +148,11 @@ Internet ──HTTPS──▶ Nginx/Caddy di VM ──▶ 127.0.0.1:8080 ──�
                                                                   └──▶ PostgreSQL (DATABASE_URL)
 ```
 
-| Berkas | Isi |
-| ------ | --- |
-| `Dockerfile` | Build tiga tahap: kompilasi TypeScript, dependensi production, lalu image akhir `node:22-bookworm-slim` yang berjalan sebagai user `node` |
-| `.dockerignore` | Menjaga `.env`, `seed.ts`, `tests`, dan `.git` tidak ikut masuk image |
-| `docker-compose.yml` | Backend dan Redis, rotasi log, healthcheck, restart otomatis |
+| Berkas               | Isi                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Dockerfile`         | Build tiga tahap: kompilasi TypeScript, dependensi production, lalu image akhir `node:22-bookworm-slim` yang berjalan sebagai user `node` |
+| `.dockerignore`      | Menjaga `.env`, `seed.ts`, `tests`, dan `.git` tidak ikut masuk image                                                                     |
+| `docker-compose.yml` | Backend dan Redis, rotasi log, healthcheck, restart otomatis                                                                              |
 
 ### Pertama kali
 
@@ -168,14 +169,14 @@ curl http://127.0.0.1:8080/health
 
 Isi `.env.production` sama dengan `.env`, dengan catatan berikut:
 
-| Variabel | Nilai di VM |
-| -------- | ----------- |
-| `NODE_ENV`, `PORT`, `REDIS_URL` | Tidak perlu diisi, sudah ditetapkan `docker-compose.yml` |
-| `TRUST_PROXY` | `1`, karena ada satu reverse proxy di depan backend |
-| `APP_URL` | Alamat frontend tanpa garis miring di akhir, dipakai di tautan email |
-| `CORS_ORIGIN` | Alamat frontend, boleh lebih dari satu dipisah koma |
-| `CRON_SECRET` | String acak minimal 16 karakter, dipakai job penutup hari |
-| `LOG_LEVEL` | `info` |
+| Variabel                        | Nilai di VM                                                          |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `NODE_ENV`, `PORT`, `REDIS_URL` | Tidak perlu diisi, sudah ditetapkan `docker-compose.yml`             |
+| `TRUST_PROXY`                   | `1`, karena ada satu reverse proxy di depan backend                  |
+| `APP_URL`                       | Alamat frontend tanpa garis miring di akhir, dipakai di tautan email |
+| `CORS_ORIGIN`                   | Alamat frontend, boleh lebih dari satu dipisah koma                  |
+| `CRON_SECRET`                   | String acak minimal 16 karakter, dipakai job penutup hari            |
+| `LOG_LEVEL`                     | `info`                                                               |
 
 `.env.production` tidak ikut git (`.env.*` ada di `.gitignore`) dan tidak ikut image (`.dockerignore`). Rahasia hanya ada di VM.
 
@@ -183,13 +184,13 @@ Isi `.env.production` sama dengan `.env`, dengan catatan berikut:
 
 Container `cloudflared` di `docker-compose.yml` membuka koneksi **keluar** ke Cloudflare, sehingga backend dapat diakses lewat HTTPS di domain publik tanpa membuka port apa pun di VM. Sertifikat HTTPS dan proteksi DDoS diurus Cloudflare, dan WebSocket `/ws` didukung tanpa pengaturan tambahan.
 
-| Pengaturan | Tempat |
-| ---------- | ------ |
-| `TUNNEL_TOKEN` | `.env.production` di VM, diambil dari dashboard Zero Trust saat membuat tunnel |
-| Rute domain | Dashboard Zero Trust → tunnel → *Public Hostname*: service `HTTP`, URL `backend:8080` |
-| `TRUST_PROXY` | `1`, karena `cloudflared` satu-satunya proxy yang langsung berhadapan dengan backend |
+| Pengaturan     | Tempat                                                                                |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `TUNNEL_TOKEN` | `.env.production` di VM, diambil dari dashboard Zero Trust saat membuat tunnel        |
+| Rute domain    | Dashboard Zero Trust → tunnel → _Public Hostname_: service `HTTP`, URL `backend:8080` |
+| `TRUST_PROXY`  | `1`, karena `cloudflared` satu-satunya proxy yang langsung berhadapan dengan backend  |
 
-Jangan pasang *Access application* (halaman login Zero Trust) pada hostname API. Panggilan dari frontend akan tertahan di halaman login itu.
+Jangan pasang _Access application_ (halaman login Zero Trust) pada hostname API. Panggilan dari frontend akan tertahan di halaman login itu.
 
 ### Reverse proxy (alternatif tanpa Cloudflare)
 
@@ -241,20 +242,20 @@ Saat diganti, container lama menerima SIGTERM dan menutup koneksi dengan rapi. `
 
 ### CI/CD dengan GitHub Actions
 
-| Workflow | Kapan | Isi |
-| -------- | ----- | --- |
-| `.github/workflows/ci.yml` | Push ke `develop`, setiap pull request | `tsc --noEmit`, `npm test`, build image Docker tanpa dikirim |
+| Workflow                       | Kapan                                        | Isi                                                                                                                     |
+| ------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`     | Push ke `develop`, setiap pull request       | `tsc --noEmit`, `npm test`, build image Docker tanpa dikirim                                                            |
 | `.github/workflows/deploy.yml` | Push ke `main`, atau manual dari tab Actions | CI, lalu image dikirim ke `ghcr.io/deadbear34/hris-backend:<sha>`, lalu SSH ke VM menjalankan `scripts/deploy.sh <sha>` |
 
 `scripts/deploy.sh` di VM memperbarui `docker-compose.yml` dari `main`, menarik image dengan tag commit tersebut, menyalakannya, lalu menunggu `/health` hingga 60 detik. Bila tidak sehat, workflow gagal dan 50 baris log terakhir ikut tampil.
 
 Secret di environment `production` (Settings → Environments):
 
-| Secret | Isi |
-| ------ | --- |
-| `VM_HOST` | Alamat IP VM |
-| `VM_USER` | User SSH di VM |
-| `VM_SSH_KEY` | Kunci privat khusus deploy, bukan kunci pribadi |
+| Secret           | Isi                                                    |
+| ---------------- | ------------------------------------------------------ |
+| `VM_HOST`        | Alamat IP VM                                           |
+| `VM_USER`        | User SSH di VM                                         |
+| `VM_SSH_KEY`     | Kunci privat khusus deploy, bukan kunci pribadi        |
 | `VM_KNOWN_HOSTS` | Baris kunci publik VM dari `ssh-keygen -F <alamat-vm>` |
 
 Kunci deploy didaftarkan di `~/.ssh/authorized_keys` VM dengan batasan, sehingga hanya bisa menjalankan skrip deploy:
@@ -267,43 +268,44 @@ command="bash /home/awanio/hris-backend/scripts/deploy.sh",no-port-forwarding,no
 
 ### Log dan pemantauan
 
-| Perintah | Kegunaan |
-| -------- | -------- |
-| `docker compose logs -f backend` | Mengikuti log backend |
-| `docker compose logs --since 1h backend` | Log satu jam terakhir |
-| `docker compose ps` | Status dan health tiap container |
-| `docker compose restart backend` | Menyalakan ulang backend saja |
+| Perintah                                 | Kegunaan                         |
+| ---------------------------------------- | -------------------------------- |
+| `docker compose logs -f backend`         | Mengikuti log backend            |
+| `docker compose logs --since 1h backend` | Log satu jam terakhir            |
+| `docker compose ps`                      | Status dan health tiap container |
+| `docker compose restart backend`         | Menyalakan ulang backend saja    |
 
 Log berformat JSON, satu baris per kejadian. Docker menyimpannya di disk VM dengan batas 5 berkas × 20 MB per container, dan berkas tertua dibuang otomatis. Riwayat aktivitas pengguna tetap permanen di tabel `activity_logs`.
 
 ## Konfigurasi Environment
 
-| Variabel                    | Wajib | Default                        | Keterangan                                                           |
-| --------------------------- | ----- | ------------------------------ | -------------------------------------------------------------------- |
-| `NODE_ENV`                  | tidak | `development`                  | `development`, `test`, atau `production`                             |
-| `PORT`                      | tidak | `8080`                         | Port HTTP sekaligus WebSocket, harus di antara 1 dan 65535           |
-| `CORS_ORIGIN`               | tidak | `http://localhost:5173`        | Origin frontend yang diizinkan, boleh lebih dari satu dipisah koma   |
-| `LOG_LEVEL`                 | tidak | `info`                         | `debug`, `info`, `warn`, `error`, atau `silent`. Lihat Log Terminal  |
-| `DATABASE_URL`              | ya    | —                              | Connection string PostgreSQL, lihat catatan di bawah                 |
-| `JWT_SECRET`                | ya    | —                              | Kunci penandatangan token, minimal 32 karakter                       |
-| `JWT_EXPIRES_IN`            | tidak | `24h`                          | Masa berlaku access token                                            |
-| `RESEND_API_KEY`            | tidak | —                              | Kunci API Resend, wajib kalau email benar-benar dikirim              |
-| `MAIL_DRIVER`               | tidak | mengikuti `NODE_ENV`           | `log` untuk mencetak email ke log, `resend` untuk mengirim sungguhan |
-| `MAIL_FROM`                 | tidak | `HRIS <onboarding@resend.dev>` | Alamat pengirim email                                                |
-| `APP_URL`                   | tidak | `http://localhost:5173`        | Alamat frontend, dipakai menyusun tautan di dalam email              |
-| `SUPABASE_URL`              | tidak | —                              | Alamat proyek Supabase, wajib untuk lampiran cuti dan foto profil    |
-| `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                              | Service role key Supabase, wajib untuk lampiran cuti dan foto profil |
-| `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`            | Nama bucket privat penyimpan lampiran cuti                           |
-| `SUPABASE_PHOTO_BUCKET`     | tidak | `employee-photos`              | Nama bucket publik penyimpan foto profil karyawan                    |
-| `TIMEZONE`                  | tidak | `Asia/Jakarta`                 | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja            |
-| `CRON_SECRET`               | tidak | —                              | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi   |
-| `RATE_LIMIT_ENABLED`        | tidak | menyala, kecuali saat test     | `true` atau `false`, lihat [Rate Limit](#rate-limit)                 |
-| `TRUST_PROXY`               | tidak | mati                           | Jumlah proxy di depan server, wajib bila memakai reverse proxy       |
+| Variabel                    | Wajib | Default                        | Keterangan                                                                             |
+| --------------------------- | ----- | ------------------------------ | -------------------------------------------------------------------------------------- |
+| `NODE_ENV`                  | tidak | `development`                  | `development`, `test`, atau `production`                                               |
+| `PORT`                      | tidak | `8080`                         | Port HTTP sekaligus WebSocket, harus di antara 1 dan 65535                             |
+| `CORS_ORIGIN`               | tidak | `http://localhost:5173`        | Origin frontend yang diizinkan, boleh lebih dari satu dipisah koma                     |
+| `LOG_LEVEL`                 | tidak | `info`                         | `debug`, `info`, `warn`, `error`, atau `silent`. Lihat Log Terminal                    |
+| `DATABASE_URL`              | ya    | —                              | Connection string PostgreSQL, lihat catatan di bawah                                   |
+| `JWT_SECRET`                | ya    | —                              | Kunci penandatangan token, minimal 32 karakter                                         |
+| `JWT_EXPIRES_IN`            | tidak | `24h`                          | Masa berlaku access token                                                              |
+| `RESEND_API_KEY`            | tidak | —                              | Kunci API Resend, wajib kalau email benar-benar dikirim                                |
+| `MAIL_DRIVER`               | tidak | mengikuti `NODE_ENV`           | `log` untuk mencetak email ke log, `resend` untuk mengirim sungguhan                   |
+| `MAIL_FROM`                 | tidak | `HRIS <onboarding@resend.dev>` | Alamat pengirim email                                                                  |
+| `APP_URL`                   | tidak | `http://localhost:5173`        | Alamat frontend, dipakai menyusun tautan di dalam email                                |
+| `SUPABASE_URL`              | tidak | —                              | Alamat proyek Supabase, wajib untuk lampiran cuti dan foto profil                      |
+| `SUPABASE_SERVICE_ROLE_KEY` | tidak | —                              | Service role key Supabase, wajib untuk lampiran cuti dan foto profil                   |
+| `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`            | Nama bucket privat penyimpan lampiran cuti                                             |
+| `SUPABASE_PHOTO_BUCKET`     | tidak | `employee-photos`              | Nama bucket publik penyimpan foto profil karyawan                                      |
+| `TIMEZONE`                  | tidak | `Asia/Jakarta`                 | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja                              |
+| `CRON_SECRET`               | tidak | —                              | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi                     |
+| `RATE_LIMIT_ENABLED`        | tidak | menyala, kecuali saat test     | `true` atau `false`, lihat [Rate Limit](#rate-limit)                                   |
+| `QA_TOOLS_ENABLED`          | tidak | menyala, kecuali di production | `true` atau `false`, lihat [Kode verifikasi untuk QA](#kode-verifikasi-untuk-qa)       |
+| `TRUST_PROXY`               | tidak | mati                           | Jumlah proxy di depan server, wajib bila memakai reverse proxy                         |
 | `REDIS_URL`                 | tidak | —                              | `redis://` atau `rediss://`, kosong berarti Redis tidak dipakai; lihat [Redis](#redis) |
 
 Variabel yang ditulis tanpa nilai di `.env` diperlakukan sebagai belum diisi, sehingga nilai bawaannya tetap dipakai. Nilai yang tidak valid menghentikan server saat mulai, beserta daftar variabel yang bermasalah.
 
-**Tentang `DATABASE_URL`.** Pakai *Direct connection* atau *Session pooler* (port `5432`) dari dashboard Supabase, **bukan** *Transaction pooler* (port `6543`). Notifikasi antar-instance memakai `LISTEN`, dan perintah itu hanya bekerja pada koneksi yang tetap dipegang satu klien.
+**Tentang `DATABASE_URL`.** Pakai _Direct connection_ atau _Session pooler_ (port `5432`) dari dashboard Supabase, **bukan** _Transaction pooler_ (port `6543`). Notifikasi antar-instance memakai `LISTEN`, dan perintah itu hanya bekerja pada koneksi yang tetap dipegang satu klien.
 
 Pool menunggu koneksi baru paling lama 10 detik, memakai TCP keep-alive, dan memasang pendengar `error`. Koneksi diam yang diputus database (misalnya `ECONNRESET` dari Supabase) hanya dicatat sebagai peringatan lalu dibuang pool, tidak lagi mematikan proses server.
 
@@ -350,19 +352,19 @@ Respons gagal selalu berbentuk sama:
 }
 ```
 
-| Status | `code`              | Kapan                                                                 |
-| ------ | ------------------- | --------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR`  | Body, query, atau parameter tidak lolos skema Zod, disertai `errors`  |
-| 400    | `INVALID_JSON`      | Body bukan JSON yang valid                                            |
-| 400    | `BAD_REQUEST`       | Aturan bisnis dilanggar, misalnya saldo tidak cukup                   |
-| 401    | `UNAUTHORIZED`      | Belum login, token tidak valid, atau sesi dibatalkan                  |
-| 403    | `FORBIDDEN`         | Tidak memiliki fitur yang dibutuhkan, disertai `required_feature`     |
-| 404    | `NOT_FOUND`         | Data atau rute tidak ditemukan                                        |
-| 409    | `CONFLICT`          | Data bentrok atau berubah di tengah jalan                             |
-| 409    | `STALE_DATA`        | Data sudah diubah orang lain sejak dibuka, lihat [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan) |
-| 429    | `TOO_MANY_REQUESTS` | Meminta kode verifikasi baru sebelum jeda berakhir                    |
-| 429    | `RATE_LIMIT_EXCEEDED` | Klien memanggil API melebihi batas per menit, lihat [Rate Limit](#rate-limit) |
-| 500    | —                   | Kesalahan tak terduga, rinciannya hanya dicatat di log server         |
+| Status | `code`                | Kapan                                                                                              |
+| ------ | --------------------- | -------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`    | Body, query, atau parameter tidak lolos skema Zod, disertai `errors`                               |
+| 400    | `INVALID_JSON`        | Body bukan JSON yang valid                                                                         |
+| 400    | `BAD_REQUEST`         | Aturan bisnis dilanggar, misalnya saldo tidak cukup                                                |
+| 401    | `UNAUTHORIZED`        | Belum login, token tidak valid, atau sesi dibatalkan                                               |
+| 403    | `FORBIDDEN`           | Tidak memiliki fitur yang dibutuhkan, disertai `required_feature`                                  |
+| 404    | `NOT_FOUND`           | Data atau rute tidak ditemukan                                                                     |
+| 409    | `CONFLICT`            | Data bentrok atau berubah di tengah jalan                                                          |
+| 409    | `STALE_DATA`          | Data sudah diubah orang lain sejak dibuka, lihat [Deteksi Edit Bersamaan](#deteksi-edit-bersamaan) |
+| 429    | `TOO_MANY_REQUESTS`   | Meminta kode verifikasi baru sebelum jeda berakhir                                                 |
+| 429    | `RATE_LIMIT_EXCEEDED` | Klien memanggil API melebihi batas per menit, lihat [Rate Limit](#rate-limit)                      |
+| 500    | —                     | Kesalahan tak terduga, rinciannya hanya dicatat di log server                                      |
 
 Error validasi merinci setiap field:
 
@@ -388,6 +390,7 @@ Seluruh endpoint berada di bawah prefiks `/api/v1`, kecuali `GET /health`.
 | `POST`   | `/auth/register`            | Publik | Mendaftar akun dan menerbitkan kode verifikasi |
 | `POST`   | `/auth/verify-email`        | Publik | Memverifikasi email memakai kode enam digit    |
 | `POST`   | `/auth/resend-verification` | Publik | Mengirim ulang kode verifikasi                 |
+| `GET`    | `/auth/verification-code`   | Admin  | Kode verifikasi baru untuk QA otomatis         |
 | `POST`   | `/auth/login`               | Publik | Menukar kredensial dengan JWT                  |
 | `POST`   | `/auth/forgot-password`     | Publik | Meminta tautan atur ulang password             |
 | `POST`   | `/auth/reset-password`      | Publik | Mengatur ulang password memakai token          |
@@ -447,17 +450,17 @@ Hari libur dapat dibaca semua pengguna karena dipakai frontend untuk menghitung 
 
 ### Pengajuan Cuti
 
-| Metode  | Endpoint                      | Akses                              | Keterangan                                  |
-| ------- | ----------------------------- | ---------------------------------- | ------------------------------------------- |
-| `GET`   | `/leave-requests/me`          | Login                              | Pengajuan milik sendiri                     |
-| `GET`   | `/leave-requests/approvals`   | Login                              | Pengajuan yang perlu disetujui pengguna ini |
+| Metode  | Endpoint                              | Akses                                     | Keterangan                                                                                                                                   |
+| ------- | ------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/leave-requests/me`                  | Login                                     | Pengajuan milik sendiri                                                                                                                      |
+| `GET`   | `/leave-requests/approvals`           | Login                                     | Pengajuan yang perlu disetujui pengguna ini                                                                                                  |
 | `GET`   | `/leave-requests/department-calendar` | Login (departemen lain: `leave.view_all`) | Jumlah rekan yang cuti per tanggal dan tanggal yang penuh. Lihat [Batas cuti bersamaan per departemen](#batas-cuti-bersamaan-per-departemen) |
-| `GET`   | `/leave-requests`             | `leave.view_all`                   | Seluruh pengajuan dengan filter lengkap     |
-| `GET`   | `/leave-requests/:id`         | Pihak terkait                      | Detail pengajuan beserta lampirannya        |
-| `POST`  | `/leave-requests`             | Login                              | Membuat pengajuan baru                      |
-| `PATCH` | `/leave-requests/:id/approve` | Penyetuju atau `leave.approve_all` | Menyetujui pengajuan                        |
-| `PATCH` | `/leave-requests/:id/reject`  | Penyetuju atau `leave.approve_all` | Menolak pengajuan                           |
-| `PATCH` | `/leave-requests/:id/cancel`  | Pemohon                            | Membatalkan pengajuan sendiri               |
+| `GET`   | `/leave-requests`                     | `leave.view_all`                          | Seluruh pengajuan dengan filter lengkap                                                                                                      |
+| `GET`   | `/leave-requests/:id`                 | Pihak terkait                             | Detail pengajuan beserta lampirannya                                                                                                         |
+| `POST`  | `/leave-requests`                     | Login                                     | Membuat pengajuan baru                                                                                                                       |
+| `PATCH` | `/leave-requests/:id/approve`         | Penyetuju atau `leave.approve_all`        | Menyetujui pengajuan                                                                                                                         |
+| `PATCH` | `/leave-requests/:id/reject`          | Penyetuju atau `leave.approve_all`        | Menolak pengajuan                                                                                                                            |
+| `PATCH` | `/leave-requests/:id/cancel`          | Pemohon                                   | Membatalkan pengajuan sendiri                                                                                                                |
 
 Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `start_date`, `end_date`, `page`, dan `limit` (maksimal 100). Rentang tanggal dicocokkan sebagai irisan, sehingga pengajuan yang sebagian saja masuk rentang tetap muncul.
 
@@ -508,11 +511,11 @@ Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan ke
 
 ### Notifikasi
 
-| Metode  | Endpoint                  | Akses | Keterangan                                        |
-| ------- | ------------------------- | ----- | ------------------------------------------------- |
-| `GET`   | `/notifications`          | Login | Notifikasi sendiri, terbaru lebih dulu            |
-| `PATCH` | `/notifications/:id/read` | Login | Menandai satu notifikasi sudah dibaca             |
-| `PATCH` | `/notifications/read-all` | Login | Menandai seluruh notifikasi sendiri sudah dibaca  |
+| Metode  | Endpoint                  | Akses | Keterangan                                       |
+| ------- | ------------------------- | ----- | ------------------------------------------------ |
+| `GET`   | `/notifications`          | Login | Notifikasi sendiri, terbaru lebih dulu           |
+| `PATCH` | `/notifications/:id/read` | Login | Menandai satu notifikasi sudah dibaca            |
+| `PATCH` | `/notifications/read-all` | Login | Menandai seluruh notifikasi sendiri sudah dibaca |
 
 `GET /notifications` menerima `only_unread`, `page`, dan `limit` (bawaan 20, maksimal 50). Ketiga endpoint menyertakan jumlah belum dibaca pada `meta.unread`, sehingga lencana di frontend dapat langsung diperbarui dari respons.
 
@@ -528,9 +531,9 @@ Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan ke
 
 ### Log Aktivitas
 
-| Metode | Endpoint          | Akses               | Keterangan                           |
-| ------ | ----------------- | ------------------- | ------------------------------------ |
-| `GET`  | `/activity-logs`  | `system.view_log`   | Riwayat tindakan, terbaru lebih dulu |
+| Metode | Endpoint         | Akses             | Keterangan                           |
+| ------ | ---------------- | ----------------- | ------------------------------------ |
+| `GET`  | `/activity-logs` | `system.view_log` | Riwayat tindakan, terbaru lebih dulu |
 
 Penyaring yang tersedia: `action`, `status`, `entity`, `entity_id`, `actor_user_id`, `start_date`, `end_date`, `page`, dan `limit` (bawaan 20, maksimal 100).
 
@@ -540,13 +543,13 @@ Notifikasi dikirim lewat WebSocket milik server ini sendiri di jalur `/ws`, pada
 
 ### Jenis notifikasi
 
-| Tipe                      | Dibuat saat                  | Penerima                                                                   | Dihapus saat                                     |
-| ------------------------- | ---------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| `leave_approval_needed`   | Pengajuan cuti dibuat        | Semua yang boleh memutusnya: atasan langsung (bila memegang `leave.approve_team`), semua admin, dan semua pemegang `leave.approve_all`. Pemohon tidak pernah menerima notifikasi cutinya sendiri | Tidak dihapus, tetap ada sebagai riwayat bagi manajer/penyetuju |
-| `leave_status_changed`    | Pengajuan disetujui/ditolak  | Pemohon, orang yang menyetujui, dan semua pemegang `leave.view_all` (memuat nama penyetuju bila disetujui) | Tidak dihapus, hanya ditandai dibaca             |
-| `account_approval_needed` | Seseorang mendaftar akun     | Semua pemegang `employee.approve_user`                                     | Akun disetujui                                   |
+| Tipe                      | Dibuat saat                 | Penerima                                                                                                                                                                                         | Dihapus saat                                                                                                                                                                       |
+| ------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `leave_approval_needed`   | Pengajuan cuti dibuat       | Semua yang boleh memutusnya: atasan langsung (bila memegang `leave.approve_team`), semua admin, dan semua pemegang `leave.approve_all`. Pemohon tidak pernah menerima notifikasi cutinya sendiri | Tidak dihapus. Ditandai dibaca untuk semua penerima begitu pengajuan disetujui, ditolak, atau dibatalkan, sehingga tetap ada sebagai riwayat tetapi tidak lagi dihitung di lencana |
+| `leave_status_changed`    | Pengajuan disetujui/ditolak | Pemohon, orang yang memutus, atasan yang ditugaskan, dan semua pemegang `leave.view_all` (memuat nama penyetuju bila disetujui)                                                                  | Tidak dihapus, hanya ditandai dibaca                                                                                                                                               |
+| `account_approval_needed` | Seseorang mendaftar akun    | Semua pemegang `employee.approve_user`                                                                                                                                                           | Akun disetujui                                                                                                                                                                     |
 
-Notifikasi persetujuan cuti (`leave_approval_needed`) tetap disimpan agar manajer memiliki riwayat pengajuan cuti yang pernah masuk. Sedangkan notifikasi pendaftaran akun (`account_approval_needed`) dihapus begitu ditindak, supaya penyetuju lain tidak melihat akun yang sudah disetujui. Indeks unik `(recipient_user_id, type, entity_id)` menjamin satu penerima hanya mendapat satu notifikasi per pengajuan atau per akun.
+Notifikasi persetujuan cuti (`leave_approval_needed`) tetap disimpan agar penyetuju memiliki riwayat pengajuan cuti yang pernah masuk, tetapi langsung ditandai dibaca untuk semua penerimanya begitu pengajuan diputus atau dibatalkan, lalu server mengirim event `notification.read` berisi `ids` notifikasi tersebut. Tanpa ini, tugas yang sudah diputus satu orang tetap tampil belum dibaca di lonceng penyetuju lain, dan karena pembersihan otomatis hanya menghapus notifikasi yang sudah dibaca, tugas itu menumpuk selamanya. Sedangkan notifikasi pendaftaran akun (`account_approval_needed`) dihapus begitu ditindak, supaya penyetuju lain tidak melihat akun yang sudah disetujui. Indeks unik `(recipient_user_id, type, entity_id)` menjamin satu penerima hanya mendapat satu notifikasi per pengajuan atau per akun.
 
 Notifikasi yang sudah dibaca dan berumur lebih dari 30 hari dibersihkan otomatis sekali sehari.
 
@@ -580,32 +583,44 @@ socket.onopen = () => {
 
 Pesan dari server:
 
-| `event`                | Isi                          | Kapan                                       |
-| ---------------------- | ---------------------------- | ------------------------------------------- |
-| `ready`                | `unread`                     | Segera setelah autentikasi berhasil         |
-| `notification.created` | `data` berisi satu notifikasi | Notifikasi baru untuk pengguna ini          |
-| `notification.cleared` | `ids` berisi daftar id        | Notifikasi dihapus karena tugasnya selesai  |
+| `event`                | Isi                           | Kapan                                      |
+| ---------------------- | ----------------------------- | ------------------------------------------ |
+| `ready`                | `unread`                      | Segera setelah autentikasi berhasil        |
+| `notification.created` | `data` berisi satu notifikasi | Notifikasi baru untuk pengguna ini         |
+| `notification.cleared` | `ids` berisi daftar id        | Notifikasi dihapus karena tugasnya selesai |
 
 ```json
-{ "event": "notification.created", "data": { "id": "uuid", "type": "leave_approval_needed", "title": "New leave request", "message": "Andi Saputra requested 3 days of Annual Leave for 2026-03-10 to 2026-03-12", "link": "/leave-management", "is_read": false, "read_at": null, "created_at": "..." } }
+{
+  "event": "notification.created",
+  "data": {
+    "id": "uuid",
+    "type": "leave_approval_needed",
+    "title": "New leave request",
+    "message": "Andi Saputra requested 3 days of Annual Leave for 2026-03-10 to 2026-03-12",
+    "link": "/leave-management",
+    "is_read": false,
+    "read_at": null,
+    "created_at": "..."
+  }
+}
 ```
 
 Setelah terautentikasi, server tidak menerima perintah apa pun lewat soket. Menandai dibaca tetap lewat REST, supaya hanya ada satu jalur yang menulis ke database.
 
-| Kode penutupan | Arti                                          | Sebaiknya klien                     |
-| -------------- | --------------------------------------------- | ----------------------------------- |
-| `4001`         | Token tidak valid atau sesi sudah dibatalkan  | Tidak menyambung ulang, minta login |
-| `4002`         | Token tidak dikirim dalam 10 detik            | Tidak menyambung ulang              |
-| `4003`         | Lebih dari 5 koneksi untuk akun yang sama     | Tidak menyambung ulang              |
-| lainnya        | Jaringan terputus atau server dimulai ulang   | Menyambung ulang dengan jeda bertahap |
+| Kode penutupan | Arti                                         | Sebaiknya klien                       |
+| -------------- | -------------------------------------------- | ------------------------------------- |
+| `4001`         | Token tidak valid atau sesi sudah dibatalkan | Tidak menyambung ulang, minta login   |
+| `4002`         | Token tidak dikirim dalam 10 detik           | Tidak menyambung ulang                |
+| `4003`         | Lebih dari 5 koneksi untuk akun yang sama    | Tidak menyambung ulang                |
+| lainnya        | Jaringan terputus atau server dimulai ulang  | Menyambung ulang dengan jeda bertahap |
 
 Batas lain yang diterapkan server:
 
-| Batas             | Nilai    | Tujuan                                                  |
-| ----------------- | -------- | ------------------------------------------------------- |
-| Ukuran pesan      | 4 KB     | Pesan auth kecil, kiriman besar ditolak                 |
-| Heartbeat         | 30 detik | Mendeteksi soket mati dan menjaga koneksi di balik proxy |
-| Origin            | `CORS_ORIGIN` | Menolak koneksi dari situs lain dengan 403         |
+| Batas        | Nilai         | Tujuan                                                   |
+| ------------ | ------------- | -------------------------------------------------------- |
+| Ukuran pesan | 4 KB          | Pesan auth kecil, kiriman besar ditolak                  |
+| Heartbeat    | 30 detik      | Mendeteksi soket mati dan menjaga koneksi di balik proxy |
+| Origin       | `CORS_ORIGIN` | Menolak koneksi dari situs lain dengan 403               |
 
 ### Beberapa instance server
 
@@ -617,21 +632,21 @@ Tidak ada Redis atau layanan tambahan yang diperlukan.
 
 ## Keamanan
 
-| Ancaman | Penanganan |
-| ------- | ---------- |
-| SQL injection | Seluruh query memakai parameter, tidak ada penggabungan string berisi input |
-| Kebocoran password | Argon2id, tidak pernah dicatat ke log maupun dikirim lewat email |
-| Sesi lama setelah ganti password | JWT yang `iat`-nya lebih awal dari `password_changed_at` ditolak, termasuk di WebSocket |
-| Token yang bocor atau perangkat yang tertinggal | `POST /auth/logout` mencabut token itu sampai kedaluwarsa, lihat [Sesi dan logout](#sesi-dan-logout) |
-| Akun dihapus atau dinonaktifkan | Token yang masih berlaku langsung ditolak di request berikutnya, termasuk di WebSocket |
-| Cross-Site WebSocket Hijacking | Jabat tangan WebSocket tidak tunduk pada CORS, sehingga header `Origin` diperiksa sendiri terhadap `CORS_ORIGIN` |
-| CSRF | Tidak berlaku karena autentikasi memakai header `Authorization: Bearer`, bukan cookie yang dikirim peramban secara otomatis |
-| Unggahan berbahaya | Jenis berkas dibaca dari magic bytes isinya, bukan dari nama atau `Content-Type`, maksimal 5 MB |
-| Menebak password | Login dibatasi 5 percobaan per menit untuk setiap pasangan IP dan email, lihat [Rate Limit](#rate-limit) |
-| Password lemah | Setiap password yang dibuat atau diganti (daftar, ganti password, reset password, tambah karyawan) wajib 8–72 karakter, berisi huruf besar, huruf kecil, angka, dan simbol, tanpa spasi di awal atau akhir. Aturannya di `strongPassword()` pada `src/schema/commonSchema.ts`. Login tidak menerapkannya, sehingga akun lama tetap bisa masuk |
-| Menebak kode verifikasi | Maksimal 5 percobaan per kode, dihitung secara atomik sehingga tidak dapat ditembus dengan permintaan bersamaan |
-| Memetakan email terdaftar | `forgot-password` dan `resend-verification` selalu menjawab pesan yang sama |
-| Header HTTP | Helmet |
+| Ancaman                                         | Penanganan                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQL injection                                   | Seluruh query memakai parameter, tidak ada penggabungan string berisi input                                                                                                                                                                                                                                                                   |
+| Kebocoran password                              | Argon2id, tidak pernah dicatat ke log maupun dikirim lewat email                                                                                                                                                                                                                                                                              |
+| Sesi lama setelah ganti password                | JWT yang `iat`-nya lebih awal dari `password_changed_at` ditolak, termasuk di WebSocket                                                                                                                                                                                                                                                       |
+| Token yang bocor atau perangkat yang tertinggal | `POST /auth/logout` mencabut token itu sampai kedaluwarsa, lihat [Sesi dan logout](#sesi-dan-logout)                                                                                                                                                                                                                                          |
+| Akun dihapus atau dinonaktifkan                 | Token yang masih berlaku langsung ditolak di request berikutnya, termasuk di WebSocket                                                                                                                                                                                                                                                        |
+| Cross-Site WebSocket Hijacking                  | Jabat tangan WebSocket tidak tunduk pada CORS, sehingga header `Origin` diperiksa sendiri terhadap `CORS_ORIGIN`                                                                                                                                                                                                                              |
+| CSRF                                            | Tidak berlaku karena autentikasi memakai header `Authorization: Bearer`, bukan cookie yang dikirim peramban secara otomatis                                                                                                                                                                                                                   |
+| Unggahan berbahaya                              | Jenis berkas dibaca dari magic bytes isinya, bukan dari nama atau `Content-Type`, maksimal 5 MB                                                                                                                                                                                                                                               |
+| Menebak password                                | Login dibatasi 5 percobaan per menit untuk setiap pasangan IP dan email, lihat [Rate Limit](#rate-limit)                                                                                                                                                                                                                                      |
+| Password lemah                                  | Setiap password yang dibuat atau diganti (daftar, ganti password, reset password, tambah karyawan) wajib 8–72 karakter, berisi huruf besar, huruf kecil, angka, dan simbol, tanpa spasi di awal atau akhir. Aturannya di `strongPassword()` pada `src/schema/commonSchema.ts`. Login tidak menerapkannya, sehingga akun lama tetap bisa masuk |
+| Menebak kode verifikasi                         | Maksimal 5 percobaan per kode, dihitung secara atomik sehingga tidak dapat ditembus dengan permintaan bersamaan                                                                                                                                                                                                                               |
+| Memetakan email terdaftar                       | `forgot-password` dan `resend-verification` selalu menjawab pesan yang sama                                                                                                                                                                                                                                                                   |
+| Header HTTP                                     | Helmet                                                                                                                                                                                                                                                                                                                                        |
 
 Origin yang tidak dikirim sama sekali tetap diterima, karena hanya peramban yang dapat disuruh menyambung oleh situs lain. `curl`, aplikasi mobile, dan pengujian tidak mengirim `Origin`.
 
@@ -669,31 +684,31 @@ Di production, Redis berjalan sebagai container `redis` di `docker-compose.yml`,
 { "success": true, "message": "Server running", "redis": "ready" }
 ```
 
-| `redis` | Arti |
-| ------- | ---- |
-| `disabled` | `REDIS_URL` kosong |
-| `connecting` | Sedang menyambung saat server baru menyala |
-| `ready` | Tersambung dan siap dipakai |
+| `redis`       | Arti                                            |
+| ------------- | ----------------------------------------------- |
+| `disabled`    | `REDIS_URL` kosong                              |
+| `connecting`  | Sedang menyambung saat server baru menyala      |
+| `ready`       | Tersambung dan siap dipakai                     |
 | `unavailable` | Terputus, sedang dicoba ulang di latar belakang |
 
 ### Cara kerja koneksinya
 
 Koneksi disiapkan di [src/config/redis.ts](src/config/redis.ts) saat server menyala, tetapi **tidak ditunggu**, berbeda dengan database yang wajib tersambung sebelum server menerima permintaan.
 
-| Pengaturan | Alasan |
-| ---------- | ------ |
+| Pengaturan                                             | Alasan                                                                                                             |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `maxRetriesPerRequest: 1`, `enableOfflineQueue: false` | Perintah gagal cepat alih-alih menunggu Redis kembali atau menumpuk di memori. Pemanggil memakai jalur cadangannya |
-| `retryStrategy` | Menyambung ulang terus dengan jeda 0,5 detik yang makin panjang hingga paling lama 10 detik |
-| Pendengar `error` | Tanpanya, putusnya Redis dianggap galat tak tertangani. Peringatan hanya dicatat sekali per putusnya koneksi |
+| `retryStrategy`                                        | Menyambung ulang terus dengan jeda 0,5 detik yang makin panjang hingga paling lama 10 detik                        |
+| Pendengar `error`                                      | Tanpanya, putusnya Redis dianggap galat tak tertangani. Peringatan hanya dicatat sekali per putusnya koneksi       |
 
 Kode lain mengambil klien lewat `getRedis()`, yang hanya mengembalikan klien bila statusnya benar-benar siap. `null` berarti pemanggil harus memakai jalur cadangannya.
 
 Pemakaian saat ini:
 
-| Kunci | Isi | Umur | Tanpa Redis |
-| ----- | --- | ---- | ----------- |
-| `session:<userId>` | Cache sesi: `password_changed_at`, `is_active` | 60 detik | Dibaca dari database setiap request |
-| `revoked:<jti>` | Token yang sudah logout | Sampai token kedaluwarsa | Disimpan di memori proses saja |
+| Kunci              | Isi                                            | Umur                     | Tanpa Redis                         |
+| ------------------ | ---------------------------------------------- | ------------------------ | ----------------------------------- |
+| `session:<userId>` | Cache sesi: `password_changed_at`, `is_active` | 60 detik                 | Dibaca dari database setiap request |
+| `revoked:<jti>`    | Token yang sudah logout                        | Sampai token kedaluwarsa | Disimpan di memori proses saja      |
 
 Lihat [Sesi dan logout](#sesi-dan-logout).
 
@@ -703,11 +718,11 @@ Rate limiting membatasi berapa kali satu klien boleh memanggil API dalam satu pe
 
 ### Batas yang berlaku
 
-| Endpoint | Batas | Dihitung per |
-| -------- | ----- | ------------ |
-| `POST /auth/login` | 5 per menit | Pasangan IP dan email |
-| `GET /employees` | 100 per menit | Pengguna |
-| `POST /employees` | 20 per menit | Pengguna |
+| Endpoint                  | Batas         | Dihitung per                       |
+| ------------------------- | ------------- | ---------------------------------- |
+| `POST /auth/login`        | 5 per menit   | Pasangan IP dan email              |
+| `GET /employees`          | 100 per menit | Pengguna                           |
+| `POST /employees`         | 20 per menit  | Pengguna                           |
 | Seluruh `/api/v1` lainnya | 300 per menit | Pengguna, atau IP bila belum login |
 
 Batas khusus endpoint berlaku **di samping** batas umum, bukan menggantikannya. `GET /employees` jadi ikut memakan jatah 300 per menit, tapi jatah POST tidak mengurangi jatah GET. `/health` sengaja tidak dibatasi supaya pemeriksa kesehatan server tidak pernah tertolak.
@@ -741,11 +756,11 @@ Kode `RATE_LIMIT_EXCEEDED` sengaja dibedakan dari `TOO_MANY_REQUESTS`. Yang tera
 
 ### Kenapa login dihitung per IP dan email
 
-| Kunci | Masalahnya |
-| ----- | ---------- |
-| Per IP saja | Seluruh karyawan di satu kantor biasanya keluar lewat satu IP publik. Lima salah ketik gabungan saat jam masuk sudah mengunci semua orang |
-| Per email saja | Siapa pun dari mana pun dapat mengunci akun orang lain hanya dengan sengaja salah login lima kali |
-| **IP dan email** | Penebak dari satu tempat tertahan pada satu akun, tanpa mengganggu rekan satu kantor atau pemilik akun di tempat lain |
+| Kunci            | Masalahnya                                                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Per IP saja      | Seluruh karyawan di satu kantor biasanya keluar lewat satu IP publik. Lima salah ketik gabungan saat jam masuk sudah mengunci semua orang |
+| Per email saja   | Siapa pun dari mana pun dapat mengunci akun orang lain hanya dengan sengaja salah login lima kali                                         |
+| **IP dan email** | Penebak dari satu tempat tertahan pada satu akun, tanpa mengganggu rekan satu kantor atau pemilik akun di tempat lain                     |
 
 Email disamakan huruf kecilnya dan dibuang spasinya lebih dulu, jadi `Ismail@Awan.IO` dan `ismail@awan.io` berbagi jatah yang sama. Pembatas dipasang sebelum validasi, sehingga body yang asal-asalan pun tetap terhitung.
 
@@ -765,7 +780,7 @@ Pengaturan ini juga menentukan `ip_address` yang tercatat di [Log Aktivitas](#lo
 
 ### Cara kerja pembatas
 
-Algoritmanya *fixed window*: setiap klien punya satu hitungan per jendela satu menit, dan hitungan itu kembali ke nol saat jendelanya berakhir. Hitungan disimpan di memori proses, dan jendela yang sudah lewat dibuang berkala supaya memori tidak terus membesar.
+Algoritmanya _fixed window_: setiap klien punya satu hitungan per jendela satu menit, dan hitungan itu kembali ke nol saat jendelanya berakhir. Hitungan disimpan di memori proses, dan jendela yang sudah lewat dibuang berkala supaya memori tidak terus membesar.
 
 Rate limit otomatis mati saat `NODE_ENV=test`, karena test lain memanggil login berkali-kali dengan email yang sama. Test khususnya menyalakan kembali lewat `RATE_LIMIT_ENABLED=true`.
 
@@ -773,23 +788,23 @@ Rate limit otomatis mati saat `NODE_ENV=test`, karena test lain memanggil login 
 
 Pemeriksaan yang dijalankan sebelum menulis ke database dapat dilewati bila dua permintaan datang di waktu yang sama, karena keduanya membaca keadaan lama sebelum salah satunya menulis. Setiap kasus di bawah sudah dibuktikan dan dijaga test.
 
-| Kasus | Penjagaan |
-| ----- | --------- |
-| Beberapa pengajuan cuti bersamaan melebihi saldo | Baris karyawan dikunci dengan `SELECT ... FOR UPDATE`, lalu saldo dibaca ulang di dalam transaksi yang sama |
-| Penyesuaian saldo manual bersamaan dengan pengajuan | Kunci baris karyawan yang sama |
-| Pengajuan dengan tanggal bertabrakan | Constraint `EXCLUDE` pada rentang tanggal pengajuan `pending` dan `approved` |
-| Disetujui, ditolak, atau dibatalkan dua kali | `UPDATE ... WHERE status = 'pending'`, yang kalah menerima 409 |
-| Dibatalkan pemohon tepat saat disetujui atasan | Pembatalan mensyaratkan status masih sama dengan yang sudah diperiksa |
-| Tebakan kode verifikasi bersamaan | Jatah percobaan diambil dalam satu `UPDATE ... WHERE attempts < 5` sebelum kode dicocokkan |
-| Satu token dipakai dua kali | Token ditandai terpakai lebih dulu dan hasilnya diperiksa, baru password diganti |
-| Akun disetujui dua kali | `UPDATE ... WHERE approved_at IS NULL`, email persetujuan hanya terkirim sekali |
-| Absen masuk dua kali atau email kembar | Constraint `UNIQUE`, dijawab 409 |
+| Kasus                                               | Penjagaan                                                                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Beberapa pengajuan cuti bersamaan melebihi saldo    | Baris karyawan dikunci dengan `SELECT ... FOR UPDATE`, lalu saldo dibaca ulang di dalam transaksi yang sama |
+| Penyesuaian saldo manual bersamaan dengan pengajuan | Kunci baris karyawan yang sama                                                                              |
+| Pengajuan dengan tanggal bertabrakan                | Constraint `EXCLUDE` pada rentang tanggal pengajuan `pending` dan `approved`                                |
+| Disetujui, ditolak, atau dibatalkan dua kali        | `UPDATE ... WHERE status = 'pending'`, yang kalah menerima 409                                              |
+| Dibatalkan pemohon tepat saat disetujui atasan      | Pembatalan mensyaratkan status masih sama dengan yang sudah diperiksa                                       |
+| Tebakan kode verifikasi bersamaan                   | Jatah percobaan diambil dalam satu `UPDATE ... WHERE attempts < 5` sebelum kode dicocokkan                  |
+| Satu token dipakai dua kali                         | Token ditandai terpakai lebih dulu dan hasilnya diperiksa, baru password diganti                            |
+| Akun disetujui dua kali                             | `UPDATE ... WHERE approved_at IS NULL`, email persetujuan hanya terkirim sekali                             |
+| Absen masuk dua kali atau email kembar              | Constraint `UNIQUE`, dijawab 409                                                                            |
 
 Kunci baris karyawan dipakai, bukan kunci tabel, sehingga hanya permintaan milik karyawan yang sama yang saling menunggu. Kunci dan pembacaan saldo wajib memakai **klien transaksi yang sama**. Pembacaan lewat `pool` akan memakai koneksi lain yang tidak ikut antre di belakang kunci tersebut.
 
 ## Deteksi Edit Bersamaan
 
-Dua orang bisa membuka form edit untuk data yang sama. Tanpa pemeriksaan, siapa pun yang menyimpan belakangan menimpa perubahan orang pertama tanpa ada yang tahu (*lost update*). Backend mencegahnya dengan **optimistic locking** berbasis kolom `updated_at`.
+Dua orang bisa membuka form edit untuk data yang sama. Tanpa pemeriksaan, siapa pun yang menyimpan belakangan menimpa perubahan orang pertama tanpa ada yang tahu (_lost update_). Backend mencegahnya dengan **optimistic locking** berbasis kolom `updated_at`.
 
 ### Cara pakai di frontend
 
@@ -810,7 +825,11 @@ Dua orang bisa membuka form edit untuk data yang sama. Tanpa pemeriksaan, siapa 
   "message": "This data was changed by someone else after you opened it. Review the latest data, then save again.",
   "code": "STALE_DATA",
   "details": {
-    "current": { "id": "uuid", "name": "Keuangan & Akuntansi", "updated_at": "2026-09-14T08:05:10.120Z" },
+    "current": {
+      "id": "uuid",
+      "name": "Keuangan & Akuntansi",
+      "updated_at": "2026-09-14T08:05:10.120Z"
+    },
     "last_changed_by": {
       "name": "Bagus Pratama",
       "email": "bagus@awan.io",
@@ -825,17 +844,17 @@ Dua orang bisa membuka form edit untuk data yang sama. Tanpa pemeriksaan, siapa 
 
 ### Endpoint yang dijaga
 
-| Endpoint | `updated_at` diambil dari |
-| -------- | ------------------------- |
-| `PATCH /employees/:id` | `GET /employees/:id` |
-| `PATCH /auth/me` | `GET /auth/me`, pada `employee.updated_at` |
-| `PATCH /departments/:id` | `GET /departments/:id` |
-| `PATCH /positions/:id` | `GET /positions/:id` |
-| `PUT /positions/:id/features` | `position.updated_at` pada `GET /positions/:id/features`, atau `GET /features/matrix` |
-| `PATCH /holidays/:id` | `GET /holidays/:id` |
-| `PATCH /leave-types/:id` | `GET /leave-types/:id` |
-| `PATCH /work-schedules/:id` | `GET /work-schedules/:id` |
-| `PATCH /attendances/:id/correct` | baris absensi pada `GET /attendances` |
+| Endpoint                         | `updated_at` diambil dari                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `PATCH /employees/:id`           | `GET /employees/:id`                                                                  |
+| `PATCH /auth/me`                 | `GET /auth/me`, pada `employee.updated_at`                                            |
+| `PATCH /departments/:id`         | `GET /departments/:id`                                                                |
+| `PATCH /positions/:id`           | `GET /positions/:id`                                                                  |
+| `PUT /positions/:id/features`    | `position.updated_at` pada `GET /positions/:id/features`, atau `GET /features/matrix` |
+| `PATCH /holidays/:id`            | `GET /holidays/:id`                                                                   |
+| `PATCH /leave-types/:id`         | `GET /leave-types/:id`                                                                |
+| `PATCH /work-schedules/:id`      | `GET /work-schedules/:id`                                                             |
+| `PATCH /attendances/:id/correct` | baris absensi pada `GET /attendances`                                                 |
 
 Edit oleh admin (`PATCH /employees/:id`) dan edit profil sendiri (`PATCH /auth/me`) mengubah baris yang sama, jadi keduanya saling terdeteksi. Mengganti fitur jabatan juga memperbarui `updated_at` jabatannya, sehingga dua admin yang mengubah centang jabatan yang sama saling terdeteksi.
 
@@ -906,18 +925,33 @@ Kolom `photo_path` menyimpan jalur di bucket, sedangkan `photo_url` berisi tauta
 Satu karyawan dikirim sebagai objek:
 
 ```json
-{ "email": "andi@awan.io", "password": "12345678", "full_name": "Andi Saputra",
-  "phone": "+628110000101", "gender": "male" }
+{
+  "email": "andi@awan.io",
+  "password": "12345678",
+  "full_name": "Andi Saputra",
+  "phone": "+628110000101",
+  "gender": "male"
+}
 ```
 
 Banyak karyawan dikirim sebagai array, **maksimal 20 per permintaan**:
 
 ```json
 [
-  { "email": "andi@awan.io", "password": "12345678", "full_name": "Andi Saputra",
-    "phone": "+628110000101", "gender": "male" },
-  { "email": "citra@awan.io", "password": "12345678", "full_name": "Citra Dewi",
-    "phone": "+628110000102", "gender": "female" }
+  {
+    "email": "andi@awan.io",
+    "password": "12345678",
+    "full_name": "Andi Saputra",
+    "phone": "+628110000101",
+    "gender": "male"
+  },
+  {
+    "email": "citra@awan.io",
+    "password": "12345678",
+    "full_name": "Citra Dewi",
+    "phone": "+628110000102",
+    "gender": "female"
+  }
 ]
 ```
 
@@ -927,15 +961,15 @@ Akun yang dibuat admin **langsung terverifikasi, disetujui, dan aktif**, karena 
 
 ### Kolom mana yang wajib
 
-| Kolom | Wajib | Keterangan |
-| ----- | ----- | ---------- |
-| `email`, `password` | Ya | Untuk akun loginnya |
-| `full_name`, `phone`, `gender` | Ya | Kolom `not null` tanpa bawaan |
-| `birth_date`, `address` | Tidak | Sering belum lengkap saat karyawan didaftarkan |
-| `department_id`, `position_id`, `manager_id` | Tidak | Struktur organisasi bisa menyusul |
-| `employment_status` | Tidak | Bawaannya `probation` |
-| `join_date` | Tidak | Bawaannya tanggal hari ini |
-| `role` | Tidak | Bawaannya `employee` |
+| Kolom                                        | Wajib | Keterangan                                     |
+| -------------------------------------------- | ----- | ---------------------------------------------- |
+| `email`, `password`                          | Ya    | Untuk akun loginnya                            |
+| `full_name`, `phone`, `gender`               | Ya    | Kolom `not null` tanpa bawaan                  |
+| `birth_date`, `address`                      | Tidak | Sering belum lengkap saat karyawan didaftarkan |
+| `department_id`, `position_id`, `manager_id` | Tidak | Struktur organisasi bisa menyusul              |
+| `employment_status`                          | Tidak | Bawaannya `probation`                          |
+| `join_date`                                  | Tidak | Bawaannya tanggal hari ini                     |
+| `role`                                       | Tidak | Bawaannya `employee`                           |
 
 **Karyawan tanpa `position_id` tidak memiliki fitur apa pun**, karena hak akses diberikan lewat jabatan. Karyawannya tetap dapat login dan absen, tetapi tidak akan melihat menu apa pun.
 
@@ -943,12 +977,12 @@ Sel kosong pada CSV terbaca sebagai string kosong. Kolom opsional memperlakukan 
 
 ### Kewajaran tanggal
 
-| Aturan | Batas |
-| ------ | ----- |
-| Usia minimal | 15 tahun, mengikuti UU Ketenagakerjaan |
-| Usia maksimal | 100 tahun |
-| Tanggal bergabung ke depan | maksimal 365 hari |
-| Tanggal bergabung terhadap tanggal lahir | tidak boleh mendahului |
+| Aturan                                   | Batas                                  |
+| ---------------------------------------- | -------------------------------------- |
+| Usia minimal                             | 15 tahun, mengikuti UU Ketenagakerjaan |
+| Usia maksimal                            | 100 tahun                              |
+| Tanggal bergabung ke depan               | maksimal 365 hari                      |
+| Tanggal bergabung terhadap tanggal lahir | tidak boleh mendahului                 |
 
 Aturan yang sama berlaku saat mengubah data karyawan.
 
@@ -983,7 +1017,10 @@ Yang diperiksa: bentuk data setiap baris, email kembar di dalam permintaan itu s
         "email": "",
         "message": "Full name must be at least 3 characters; Gender is required",
         "errors": [
-          { "field": "full_name", "message": "Full name must be at least 3 characters" },
+          {
+            "field": "full_name",
+            "message": "Full name must be at least 3 characters"
+          },
           { "field": "gender", "message": "Gender is required" }
         ]
       },
@@ -991,7 +1028,9 @@ Yang diperiksa: bentuk data setiap baris, email kembar di dalam permintaan itu s
         "index": 3,
         "email": "andi@awan.io",
         "message": "Email is already registered",
-        "errors": [{ "field": "email", "message": "Email is already registered" }]
+        "errors": [
+          { "field": "email", "message": "Email is already registered" }
+        ]
       }
     ]
   }
@@ -1017,11 +1056,11 @@ Urutan ditentukan backend, bukan urutan kunci, karena JavaScript hanya mengurutk
 
 Tiga hal membuat impor tetap cepat walaupun setiap baris diperiksa ke database:
 
-| Teknik | Tanpa teknik ini |
-| ------ | ---------------- |
+| Teknik                                  | Tanpa teknik ini              |
+| --------------------------------------- | ----------------------------- |
 | Password yang sama cukup di-hash sekali | Satu hashing argon2 per baris |
-| Semua email diperiksa dalam satu query | Satu query per baris |
-| Penyimpanan diborongkan jadi dua query | Dua query per baris |
+| Semua email diperiksa dalam satu query  | Satu query per baris          |
+| Penyimpanan diborongkan jadi dua query  | Dua query per baris           |
 
 Pemeriksaan departemen, jabatan, dan manajer dipakai ulang antar baris. Hashing dikerjakan sebelum transaksi dibuka, sehingga transaksi database tetap pendek.
 
@@ -1033,11 +1072,11 @@ Pemeriksaan departemen, jabatan, dan manajer dipakai ulang antar baris. Hashing 
 { "manager_id": null, "resign_date": null }
 ```
 
-| Nilai yang dikirim | Hasil |
-| ------------------ | ----- |
-| Tidak dikirim | Nilai lama dipertahankan |
-| `null` | Kolom dikosongkan |
-| `""` | Diperlakukan sama dengan tidak dikirim |
+| Nilai yang dikirim | Hasil                                  |
+| ------------------ | -------------------------------------- |
+| Tidak dikirim      | Nilai lama dipertahankan               |
+| `null`             | Kolom dikosongkan                      |
+| `""`               | Diperlakukan sama dengan tidak dikirim |
 
 Kolom yang dapat dikosongkan: `address`, `department_id`, `position_id`, `manager_id`, dan `resign_date`. Kolom wajib seperti `full_name` tetap menolak `null`.
 
@@ -1051,30 +1090,30 @@ Atasan dan karyawan tidak boleh membentuk struktur melingkar. Menunjuk diri send
 
 `PATCH /auth/me` hanya menerima `full_name`, `phone`, `birth_date`, dan `address`. Field lain dibuang, bukan ditolak. Pembatasannya berlapis dua: `updateOwnProfileSchema` dibangun dengan `pick`, lalu model menyaring ulang lewat `OWN_PROFILE_COLUMNS`.
 
-| Field yang tidak boleh diubah sendiri | Alasan |
-| ------------------------------------- | ------ |
-| `manager_id` | Penyetuju cuti ditentukan dari kolom ini, karyawan dapat menunjuk dirinya sebagai penyetuju sendiri |
-| `department_id`, `position_id` | Struktur organisasi dan hak akses |
-| `gender` | Memengaruhi kelayakan jenis cuti |
-| `employment_status`, `join_date`, `resign_date`, `is_active` | Menentukan hak kepegawaian |
-| `email`, `role` | Memerlukan verifikasi ulang dan kewenangan admin |
+| Field yang tidak boleh diubah sendiri                        | Alasan                                                                                              |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `manager_id`                                                 | Penyetuju cuti ditentukan dari kolom ini, karyawan dapat menunjuk dirinya sebagai penyetuju sendiri |
+| `department_id`, `position_id`                               | Struktur organisasi dan hak akses                                                                   |
+| `gender`                                                     | Memengaruhi kelayakan jenis cuti                                                                    |
+| `employment_status`, `join_date`, `resign_date`, `is_active` | Menentukan hak kepegawaian                                                                          |
+| `email`, `role`                                              | Memerlukan verifikasi ulang dan kewenangan admin                                                    |
 
 ## Log Aktivitas
 
 **Setiap permintaan yang mengubah data dicatat di tabel `activity_logs`.** Aturannya sederhana: seluruh endpoint selain `GET` punya catatannya, termasuk tindakan atas diri sendiri seperti absen, ganti password, dan menandai notifikasi terbaca.
 
-| Entitas | Aksi yang dicatat |
-| ------- | ----------------- |
-| Autentikasi | `auth.login`, `auth.register`, `auth.verify_email`, `auth.resend_verification`, `auth.forgot_password`, `auth.reset_password`, `auth.change_password` |
-| Profil sendiri | `profile.update`, `profile.photo_upload`, `profile.photo_delete` |
-| Karyawan | `employee.create`, `employee.create_bulk`, `employee.update`, `employee.delete`, `employee.photo_upload`, `employee.photo_delete` |
-| Akun | `user.approve`, `user.set_active` |
-| Organisasi | `department.*`, `position.*`, `schedule.*` masing-masing create, update, delete |
-| Hak akses | `position.features_replace` |
-| Hari libur dan jenis cuti | `holiday.*`, `leave_type.*` |
-| Cuti | `leave.create`, `leave.approve`, `leave.reject`, `leave.cancel`, `leave.attachment_upload`, `leave.balance_adjust` |
-| Absensi | `attendance.check_in`, `attendance.check_out`, `attendance.correct`, `attendance.close_day` |
-| Notifikasi | `notification.read`, `notification.read_all` |
+| Entitas                   | Aksi yang dicatat                                                                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Autentikasi               | `auth.login`, `auth.register`, `auth.verify_email`, `auth.resend_verification`, `auth.forgot_password`, `auth.reset_password`, `auth.change_password` |
+| Profil sendiri            | `profile.update`, `profile.photo_upload`, `profile.photo_delete`                                                                                      |
+| Karyawan                  | `employee.create`, `employee.create_bulk`, `employee.update`, `employee.delete`, `employee.photo_upload`, `employee.photo_delete`                     |
+| Akun                      | `user.approve`, `user.set_active`                                                                                                                     |
+| Organisasi                | `department.*`, `position.*`, `schedule.*` masing-masing create, update, delete                                                                       |
+| Hak akses                 | `position.features_replace`                                                                                                                           |
+| Hari libur dan jenis cuti | `holiday.*`, `leave_type.*`                                                                                                                           |
+| Cuti                      | `leave.create`, `leave.approve`, `leave.reject`, `leave.cancel`, `leave.attachment_upload`, `leave.balance_adjust`                                    |
+| Absensi                   | `attendance.check_in`, `attendance.check_out`, `attendance.correct`, `attendance.close_day`                                                           |
+| Notifikasi                | `notification.read`, `notification.read_all`                                                                                                          |
 
 Yang dicatat: pelaku beserta email dan namanya, kapan peristiwanya terjadi dan kapan catatannya ditulis, lama proses, alamat IP, perangkat, dan rincian per aksi pada kolom `metadata`. Password tidak pernah ikut dicatat.
 
@@ -1098,13 +1137,13 @@ GET /api/v1/docs/openapi.json      →  dokumen OpenAPI 3.1
 
 Pembangkit (`src/docs/openapi.ts`) menelusuri router Express yang sebenarnya, jadi dokumen tidak mungkin berbeda dari perilaku server:
 
-| Bagian dokumen | Sumber |
-| --- | --- |
-| Path dan method | Route yang terdaftar |
+| Bagian dokumen                                | Sumber                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| Path dan method                               | Route yang terdaftar                                             |
 | Body, query, parameter path beserta aturannya | Skema Zod di `validate()`, `validateQuery()`, `validateParams()` |
-| Butuh login atau tidak | Ada tidaknya `authenticate` |
-| Fitur atau role yang dibutuhkan | `requireFeature()` dan `authorize()` |
-| Unggah berkas | `uploadSingleImage()` → `multipart/form-data` |
+| Butuh login atau tidak                        | Ada tidaknya `authenticate`                                      |
+| Fitur atau role yang dibutuhkan               | `requireFeature()` dan `authorize()`                             |
+| Unggah berkas                                 | `uploadSingleImage()` → `multipart/form-data`                    |
 
 Middleware tersebut hanya **ditandai** lewat `src/docs/routeMeta.ts` (sebuah `WeakMap`). Perilakunya tidak berubah sama sekali.
 
@@ -1112,13 +1151,13 @@ Yang ditulis manual hanya teks untuk dibaca manusia di `src/docs/routeDocs.ts`: 
 
 ### Keamanan
 
-| Lapisan | Penjelasan |
-| --- | --- |
-| Hak akses | Butuh login dan fitur `system.view_api_docs`. Admin otomatis punya. Fitur ini bisa diberikan ke jabatan lain, misalnya QA, tanpa menjadikannya admin |
-| Tidak tersimpan di cache | Respons memakai `Cache-Control: no-store`, sehingga tidak tertinggal di peramban, proxy, maupun Cloudflare |
-| Tanpa rahasia | Dokumen hanya berisi struktur API, tanpa nilai environment, token, atau data |
+| Lapisan                  | Penjelasan                                                                                                                                                                                                                                                                                |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hak akses                | Butuh login dan fitur `system.view_api_docs`. Admin otomatis punya. Fitur ini bisa diberikan ke jabatan lain, misalnya QA, tanpa menjadikannya admin                                                                                                                                      |
+| Tidak tersimpan di cache | Respons memakai `Cache-Control: no-store`, sehingga tidak tertinggal di peramban, proxy, maupun Cloudflare                                                                                                                                                                                |
+| Tanpa rahasia            | Dokumen hanya berisi struktur API, tanpa nilai environment, token, atau data                                                                                                                                                                                                              |
 | Try it out di production | Dokumen menyatakan `x-try-it-out-methods: ["get"]` untuk production. Frontend mengirim header `x-api-docs-try-it-out` pada setiap percobaan, dan server **menolak (403)** percobaan selain GET/HEAD/OPTIONS yang membawa header itu di production, walaupun halaman frontend salah diatur |
-| Hak akses tetap berlaku | Percobaan memakai token pengguna sendiri, jadi seseorang tidak bisa melakukan lebih dari yang memang boleh dilakukannya di aplikasi |
+| Hak akses tetap berlaku  | Percobaan memakai token pengguna sendiri, jadi seseorang tidak bisa melakukan lebih dari yang memang boleh dilakukannya di aplikasi                                                                                                                                                       |
 
 Pengaman Try it out adalah lapisan kedua untuk mencegah klik yang tidak disengaja. Batas keamanan yang sebenarnya tetap token dan fitur: pengguna yang memegang token memang bisa memanggil API dengan alat lain sesuai haknya.
 
@@ -1130,11 +1169,11 @@ Dokumen bisa divalidasi dengan validator OpenAPI, misalnya `npx @redocly/cli lin
 
 Log dibagi tiga, masing-masing punya tempatnya sendiri:
 
-| Jenis | Isi | Tempat |
-| ----- | --- | ------ |
-| Log aktivitas | Siapa melakukan apa | Tabel `activity_logs`, dibaca lewat `GET /activity-logs` |
-| Log aplikasi | Server menyala, peringatan, error beserta stack | stdout |
-| Log request | `GET /api/v1/employees 200 12ms`, satu baris per request | stdout |
+| Jenis         | Isi                                                      | Tempat                                                   |
+| ------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| Log aktivitas | Siapa melakukan apa                                      | Tabel `activity_logs`, dibaca lewat `GET /activity-logs` |
+| Log aplikasi  | Server menyala, peringatan, error beserta stack          | stdout                                                   |
+| Log request   | `GET /api/v1/employees 200 12ms`, satu baris per request | stdout                                                   |
 
 Aplikasi hanya menulis ke stdout. Di VM, Docker menangkap stdout container dan menyimpannya dengan rotasi otomatis, dibaca lewat `docker compose logs`. Lihat [Deploy ke VM dengan Docker](#deploy-ke-vm-dengan-docker). Di production log berbentuk JSON utuh, di development tampil satu baris berwarna:
 
@@ -1148,12 +1187,12 @@ Hanya labelnya yang berwarna: `[DEBUG]` biru, `[INFO]` hijau, `[WARNING]` kuning
 
 ### Tingkat yang dipakai
 
-| Tingkat | Dipakai untuk |
-| ------- | ------------- |
-| `debug` | Aktivitas yang berhasil, request sukses di development, detail startup internal |
-| `info` | Server menyala, aktivitas yang ditolak (login gagal, kode salah), request 4xx, request lambat (≥ 1 detik), semua request di production |
-| `warn` | Hal yang perlu dilihat: Redis atau koneksi database putus, gagal menghapus berkas, request 5xx |
-| `error` | Kerusakan server beserta stack |
+| Tingkat | Dipakai untuk                                                                                                                          |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `debug` | Aktivitas yang berhasil, request sukses di development, detail startup internal                                                        |
+| `info`  | Server menyala, aktivitas yang ditolak (login gagal, kode salah), request 4xx, request lambat (≥ 1 detik), semua request di production |
+| `warn`  | Hal yang perlu dilihat: Redis atau koneksi database putus, gagal menghapus berkas, request 5xx                                         |
+| `error` | Kerusakan server beserta stack                                                                                                         |
 
 `LOG_LEVEL=info` (bawaan) membuat terminal hanya berisi startup, request yang gagal, dan peringatan. Pakai `LOG_LEVEL=debug` saat menelusuri masalah. Selama `npm test` log selalu senyap apa pun isi `LOG_LEVEL`.
 
@@ -1163,14 +1202,14 @@ Yang sengaja tidak dicatat: `/health` (dipanggil terus oleh healthcheck Docker) 
 
 Setiap penekanan tombol absen ditulis ke `attendance_events` **sebelum satu pun perhitungan berjalan**, terpisah dari hasil olahannya pada `attendances`.
 
-| Kolom | Arti |
-| ----- | ---- |
-| `occurred_at` | Kapan tombol ditekan, presisi penuh |
-| `received_at` | Kapan server menerima |
-| `kind` | `check_in` atau `check_out` |
-| `source` | `online` atau `offline_sync` |
-| `attendance_id` | Baris absensi yang dihasilkan, kosong bila ditolak |
-| `rejection_reason` | Alasan penolakan, bila ada |
+| Kolom              | Arti                                               |
+| ------------------ | -------------------------------------------------- |
+| `occurred_at`      | Kapan tombol ditekan, presisi penuh                |
+| `received_at`      | Kapan server menerima                              |
+| `kind`             | `check_in` atau `check_out`                        |
+| `source`           | `online` atau `offline_sync`                       |
+| `attendance_id`    | Baris absensi yang dihasilkan, kosong bila ditolak |
+| `rejection_reason` | Alasan penolakan, bila ada                         |
 
 Penulisannya berdiri sendiri di luar transaksi absensi, sehingga percobaan yang ditolak pun meninggalkan jejak. Jejak ini menjawab pertanyaan "apakah dia benar-benar menekan tombol" ketika hasil akhirnya tidak sesuai harapan karyawan.
 
@@ -1262,22 +1301,22 @@ Berlaku pada `POST /attendances/check-in` dan `POST /attendances/check-out`. Tan
 
 `offline_time` berasal dari perangkat yang jamnya dikendalikan penggunanya sendiri, sehingga nilainya diterima dengan pembatasan dan selalu ditandai:
 
-| Pemeriksaan | Batas | Yang dicegah |
-| ----------- | ----- | ------------ |
-| Tidak berada di masa depan | toleransi 2 menit | Absen untuk waktu yang belum tiba |
-| Jeda sinkronisasi | maksimal 6 jam | Mengantre seharian lalu dikirim malam hari |
-| Tanggal kantor sama dengan tanggal server | wajib sama | Menambal hari sebelumnya |
-| Tidak terlalu jauh sebelum jam masuk | maksimal 2 jam sebelumnya | Mengaku hadir dini hari |
+| Pemeriksaan                               | Batas                     | Yang dicegah                               |
+| ----------------------------------------- | ------------------------- | ------------------------------------------ |
+| Tidak berada di masa depan                | toleransi 2 menit         | Absen untuk waktu yang belum tiba          |
+| Jeda sinkronisasi                         | maksimal 6 jam            | Mengantre seharian lalu dikirim malam hari |
+| Tanggal kantor sama dengan tanggal server | wajib sama                | Menambal hari sebelumnya                   |
+| Tidak terlalu jauh sebelum jam masuk      | maksimal 2 jam sebelumnya | Mengaku hadir dini hari                    |
 
 Seluruh aturan absensi tetap berlaku penuh terhadap `offline_time`. Absensi yang sudah tercatat tidak pernah ditimpa, sehingga sinkronisasi yang datang terlambat dijawab 409 dan penyelesaiannya lewat koreksi absensi.
 
 ### Jejak yang tidak dapat dipalsukan
 
-| Kolom | Arti | Diisi oleh |
-| ----- | ---- | ---------- |
-| `check_in_at` | Kapan tombol ditekan | Klaim dari perangkat |
-| `check_in_recorded_at` | Kapan server menerima | Server |
-| `check_in_source` | `online`, `offline_sync`, `system`, atau `correction` | Server |
+| Kolom                  | Arti                                                  | Diisi oleh           |
+| ---------------------- | ----------------------------------------------------- | -------------------- |
+| `check_in_at`          | Kapan tombol ditekan                                  | Klaim dari perangkat |
+| `check_in_recorded_at` | Kapan server menerima                                 | Server               |
+| `check_in_source`      | `online`, `offline_sync`, `system`, atau `correction` | Server               |
 
 Pasangan yang sama berlaku untuk absen pulang. Ketiganya wajib terisi bersama atau kosong bersama, dijaga constraint database. Absensi offline juga ditandai pada `note`:
 
@@ -1337,26 +1376,26 @@ Penolakan memakai 403 beserta kode fitur yang dibutuhkan:
 
 ### Daftar kode fitur
 
-| Kode                    | Arti                                             |
-| ----------------------- | ------------------------------------------------ |
-| `employee.view_all`     | Melihat daftar dan detail seluruh karyawan       |
-| `employee.create`       | Menambah karyawan beserta akunnya                |
-| `employee.update`       | Mengubah data karyawan                           |
-| `employee.delete`       | Menghapus data karyawan                          |
-| `employee.approve_user` | Menyetujui pendaftaran dan mengubah status akun  |
-| `organization.manage`   | Mengelola departemen dan jabatan                 |
-| `organization.schedule` | Mengatur jam kerja dan hari kerja                |
-| `organization.holiday`  | Mengelola hari libur nasional dan cuti bersama   |
-| `leave.approve_team`    | Menyetujui pengajuan cuti bawahan langsung       |
-| `leave.approve_all`     | Menyetujui pengajuan cuti siapa pun              |
-| `leave.view_all`        | Melihat seluruh pengajuan cuti dan lampirannya   |
-| `leave.manage_type`     | Mengelola jenis cuti dan aturannya               |
-| `leave.adjust_balance`  | Koreksi manual saldo cuti                        |
-| `attendance.view_team`  | Melihat absensi bawahan langsung                 |
-| `attendance.view_all`   | Melihat absensi seluruh karyawan                 |
-| `attendance.correct`    | Mengoreksi data absensi                          |
-| `attendance.report`     | Mengakses dan mengekspor laporan absensi         |
-| `system.view_log`       | Membaca log aktivitas lewat `GET /activity-logs`  |
+| Kode                    | Arti                                                   |
+| ----------------------- | ------------------------------------------------------ |
+| `employee.view_all`     | Melihat daftar dan detail seluruh karyawan             |
+| `employee.create`       | Menambah karyawan beserta akunnya                      |
+| `employee.update`       | Mengubah data karyawan                                 |
+| `employee.delete`       | Menghapus data karyawan                                |
+| `employee.approve_user` | Menyetujui pendaftaran dan mengubah status akun        |
+| `organization.manage`   | Mengelola departemen dan jabatan                       |
+| `organization.schedule` | Mengatur jam kerja dan hari kerja                      |
+| `organization.holiday`  | Mengelola hari libur nasional dan cuti bersama         |
+| `leave.approve_team`    | Menyetujui pengajuan cuti bawahan langsung             |
+| `leave.approve_all`     | Menyetujui pengajuan cuti siapa pun                    |
+| `leave.view_all`        | Melihat seluruh pengajuan cuti dan lampirannya         |
+| `leave.manage_type`     | Mengelola jenis cuti dan aturannya                     |
+| `leave.adjust_balance`  | Koreksi manual saldo cuti                              |
+| `attendance.view_team`  | Melihat absensi bawahan langsung                       |
+| `attendance.view_all`   | Melihat absensi seluruh karyawan                       |
+| `attendance.correct`    | Mengoreksi data absensi                                |
+| `attendance.report`     | Mengakses dan mengekspor laporan absensi               |
+| `system.view_log`       | Membaca log aktivitas lewat `GET /activity-logs`       |
 | `system.manage_feature` | **Tidak dipakai**, pengelolaan fitur dijaga role admin |
 
 Penambahan fitur baru dilakukan lewat migrasi SQL, karena setiap kode harus punya pasangan pemeriksaan di kode program. Kode tanpa pemeriksaan tidak boleh dibiarkan ada di katalog: admin akan mencentangnya, lalu heran karena tidak terjadi apa-apa.
@@ -1383,23 +1422,109 @@ Data karyawan pemilik request disimpan di `res.locals` oleh `src/helpers/request
 
 Kode fitur jabatan juga disimpan di `res.locals` dalam bentuk janji (promise). Beberapa pemeriksaan fitur yang berjalan bersamaan, misalnya tiga `hasFeature` di controller cuti, tetap hanya memicu satu query walaupun cache sedang kosong.
 
-## Alur Persetujuan Cuti
+## Struktur Organisasi
 
-Penyetuju ditentukan satu aturan: **atasan langsung pemohon** berdasarkan `manager_id`.
+Hierarki mengikuti pola _Position Management_ (SAP OM, Oracle HCM, Workday): **unit organisasi bertingkat → jabatan per unit → pemegang jabatan**. Hierarki disimpan di struktur jabatan, bukan di data orang, sehingga pemegang yang keluar tidak memutus rantai atasan dan penggantinya langsung mewarisi posisinya.
 
 ```
-Pemohon punya manager_id?
-├── ya    → approver_id diisi id atasan
-└── tidak → approver_id dibiarkan NULL, ditangani pemegang leave.approve_all
+PT Awan (unit company)                      CEO
+├── Direktorat Teknologi (directorate)      └── CTO
+│   └── Engineering (department)                └── Head of Engineering (kepala unit)
+│                                                   └── Senior Engineer
+│                                                       ├── Software Engineer
+│                                                       └── Intern
+└── ...
+```
+
+| Objek           | Tabel         | Kolom kunci                                                                                                            |
+| --------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Unit organisasi | `departments` | `parent_id` (unit induk), `unit_type`: `company`, `directorate`, `division`, `department`, `team`                      |
+| Jabatan         | `positions`   | `department_id` (unit pemilik), `reports_to_position_id` (atasan jabatan), `is_unit_head`, `max_holders` (kuota kursi) |
+| Pemegang        | `employees`   | `position_id`; `department_id` diisi otomatis dari unit jabatan; `manager_id` hanya pengecualian manual                |
+
+Tabel `departments` dipakai sebagai unit organisasi supaya batas cuti bersamaan dan jadwal kerja per departemen tetap berjalan. Kode dan nama jabatan unik **per unit**, jadi "Staff" boleh ada di Finance dan Operations sekaligus. Kolom `positions.level` tidak lagi dipakai untuk hierarki.
+
+### Aturan struktur
+
+Diperiksa di `src/helpers/orgValidation.ts` sebelum unit atau jabatan disimpan:
+
+| #      | Aturan                                                                                                                                                                                                                                                                                                                                                           |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V1     | Unit tidak boleh menjadi induk dari dirinya atau sub-unitnya                                                                                                                                                                                                                                                                                                     |
+| V2     | Jabatan tidak boleh melapor ke dirinya atau bawahannya                                                                                                                                                                                                                                                                                                           |
+| V3, V4 | Kepala unit melapor ke jabatan di unit induknya; jabatan lain melapor ke jabatan di unit yang sama. Karena itu unit tidak boleh dipindah ke induk yang memutus kepala unitnya dari atasannya, jabatan yang masih punya bawahan tidak boleh dipindah ke unit lain, dan jabatan lama tanpa unit harus diberi unit sebelum diberi atasan atau dijadikan kepala unit |
+| V5     | Hanya satu jabatan puncak tanpa atasan (misalnya CEO)                                                                                                                                                                                                                                                                                                            |
+| V6     | Unit yang masih punya sub-unit, jabatan, atau karyawan, dan jabatan yang masih punya pemegang atau bawahan, tidak boleh dihapus                                                                                                                                                                                                                                  |
+| V7     | Jumlah pemegang tidak melebihi `max_holders`                                                                                                                                                                                                                                                                                                                     |
+| V8     | Kedalaman maksimal 15 tingkat                                                                                                                                                                                                                                                                                                                                    |
+
+Database ikut menjaga: satu kepala per unit (`uq_position_unit_head`), kode jabatan unik per unit (`uq_position_code_per_unit`), jabatan tidak melapor ke dirinya sendiri, dan kepala unit wajib punya unit.
+
+### Atasan langsung
+
+`findLineManager()` di `src/models/orgStructure.ts`:
+
+1. `manager_id` diisi dan atasannya aktif → itulah atasannya (`source: override`).
+2. Naik dari jabatan karyawan ke atasan jabatannya; jabatan kosong dilewati sampai ditemukan pemegang aktif (`source: structure`, `levels_up` = jumlah tingkat yang dinaiki). Rekan sejabatan tidak pernah dianggap atasan; bila satu jabatan dipegang beberapa orang, yang paling lama menjabat yang dipilih.
+3. Sampai puncak tetap kosong → `null`, ditangani pemegang `leave.approve_all` dan admin.
+
+Hanya karyawan aktif yang tidak resign dan akunnya aktif yang dihitung, sehingga atasan yang tidak bisa login otomatis dilewati.
+
+Absensi tim (`attendance.view_team`) memakai aturan bawahan langsung yang sama: karyawan yang `manager_id`-nya pengguna itu, atau yang tanpa pengecualian manual dan jabatannya melapor ke jabatan pengguna itu.
+
+### Pengalihan persetujuan yang menunggu
+
+Penyetuju dibekukan di `approver_id` saat pengajuan dibuat. Bila sesudahnya struktur berubah, `rerouteSafely()` di `src/helpers/approvalRouting.ts` menghitung ulang atasan untuk semua pengajuan yang masih `pending`:
+
+| Pemicu                                                       | Endpoint                  |
+| ------------------------------------------------------------ | ------------------------- |
+| Unit, atasan, atau status kepala unit sebuah jabatan berubah | `PATCH /positions/:id`    |
+| Jabatan, `manager_id`, atau status aktif karyawan berubah    | `PATCH /employees/:id`    |
+| Karyawan dihapus                                             | `DELETE /employees/:id`   |
+| Akun diaktifkan atau dinonaktifkan                           | `PATCH /users/:id/status` |
+
+Untuk tiap pengajuan yang atasannya berubah:
+
+1. `approver_id` diganti, hanya bila pengajuannya masih menunggu dan penyetujunya belum diubah proses lain.
+2. Penyetuju baru menerima notifikasi `leave_approval_needed`; tugas di penyetuju lama ditandai dibaca dan didorong lewat event `notification.read`.
+3. Bila tidak ada atasan lagi, `approver_id` menjadi `NULL` dan pengajuan ditangani pemegang `leave.approve_all`.
+
+Jumlah pengajuan yang dialihkan dicatat di metadata log aktivitas (`rerouted_leave_requests`). Kegagalan pengalihan hanya dicatat di log dan tidak menggagalkan perubahan strukturnya.
+
+### Endpoint
+
+| Metode | Endpoint                      | Akses                 | Keterangan                                                                                   |
+| ------ | ----------------------------- | --------------------- | -------------------------------------------------------------------------------------------- |
+| `GET`  | `/org/tree`                   | `organization.manage` | Bagan organisasi: unit (`children`), jabatan (`direct_reports`), dan pemegangnya (`holders`) |
+| `GET`  | `/employees/:id/line-manager` | `employee.view_all`   | Atasan langsung beserta asal hitungannya                                                     |
+
+Unit dan jabatan tetap dikelola lewat `/departments` dan `/positions`, dengan kolom tambahan di atas. Jabatan baru wajib menyertakan `department_id`. Memindahkan jabatan ke unit lain ikut memindahkan departemen para pemegangnya dalam satu transaksi.
+
+### Migrasi
+
+`database/migrations/2026-10-18_hierarki_organisasi.sql` menambah kolom, constraint, dan indeks di atas. Migrasi ini aman untuk database yang sudah berisi data (semua kolom baru boleh kosong) dan aman dijalankan ulang. Struktur contoh lengkap dibuat oleh skrip seed.
+
+## Alur Persetujuan Cuti
+
+Persetujuan cuti satu tingkat: penyetujunya **atasan langsung pemohon**, dihitung dari struktur jabatan oleh `findLineManager()` (lihat [Struktur Organisasi](#struktur-organisasi)) dan dibekukan di `approver_id` saat pengajuan dibuat.
+
+```
+manager_id (pengecualian manual) diisi dan atasannya aktif?
+├── ya    → approver_id = atasan itu
+└── tidak → naik dari jabatan pemohon ke atasan jabatannya
+            ├── ada pemegang aktif → approver_id = pemegang itu
+            ├── kosong            → naik lagi satu tingkat
+            └── sampai puncak tetap kosong → approver_id NULL,
+                                             ditangani pemegang leave.approve_all
 ```
 
 Direktur tanpa atasan, staf HR yang mengajukan cuti, maupun manajer yang mengajukan ke atasannya sendiri mengikuti aturan yang sama. Pemegang `leave.approve_all` dapat menyetujui pengajuan mana pun sebagai jalur darurat, misalnya ketika atasan berhalangan, dan pemegang `leave.view_all` dapat melihat seluruh pengajuan.
 
 **Isi kotak masuk `GET /leave-requests/approvals`:**
 
-| Pemegang | Isi |
-| -------- | --- |
-| `leave.approve_team` saja | Pengajuan yang `approver_id`-nya dirinya, yaitu bawahan langsung |
+| Pemegang                       | Isi                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `leave.approve_team` saja      | Pengajuan yang `approver_id`-nya dirinya, yaitu bawahan langsung                |
 | `leave.approve_all` atau admin | Semua pengajuan kecuali miliknya sendiri, termasuk yang penyetujunya orang lain |
 
 Penyetuju dicatat saat pengajuan dibuat dan tidak ikut berubah bila atasan pemohon diganti kemudian. Karena itu pemegang `leave.approve_all` melihat seluruh pengajuan: pengajuan yang menunjuk atasan yang tidak aktif, atau atasan yang sudah diganti, tetap dapat diputus HR atau admin dan tidak tertahan selamanya.
@@ -1429,16 +1554,16 @@ Durasi dihitung dalam hari kerja: Sabtu, Minggu, dan tanggal di tabel `holidays`
 
 ### Validasi saat pengajuan dibuat
 
-| Aturan                     | Sumber                                                        |
-| -------------------------- | ------------------------------------------------------------- |
-| Rentang tanggal masuk akal | Skema Zod dan constraint database                             |
-| Tidak untuk tanggal lampau | Dikecualikan untuk jenis cuti kode `SICK`                     |
-| Batas hari per pengajuan   | `max_days_per_request`                                        |
-| Minimal pemberitahuan      | `min_notice_days`                                             |
-| Saldo mencukupi            | Penjumlahan ledger di dalam transaksi terkunci, bila `deducts_balance` |
-| Kesesuaian gender          | `gender_restriction`                                          |
+| Aturan                     | Sumber                                                                      |
+| -------------------------- | --------------------------------------------------------------------------- |
+| Rentang tanggal masuk akal | Skema Zod dan constraint database                                           |
+| Tidak untuk tanggal lampau | Dikecualikan untuk jenis cuti kode `SICK`                                   |
+| Batas hari per pengajuan   | `max_days_per_request`                                                      |
+| Minimal pemberitahuan      | `min_notice_days`                                                           |
+| Saldo mencukupi            | Penjumlahan ledger di dalam transaksi terkunci, bila `deducts_balance`      |
+| Kesesuaian gender          | `gender_restriction`                                                        |
 | Tidak tumpang tindih       | Constraint `leave_requests_employee_id_daterange_excl` dan pemeriksaan awal |
-| Batas cuti departemen      | `departments.max_concurrent_leave`, lihat di bawah            |
+| Batas cuti departemen      | `departments.max_concurrent_leave`, lihat di bawah                          |
 
 Kewajiban lampiran diperiksa saat **persetujuan**, karena lampiran hanya dapat diunggah setelah pengajuannya ada. Respons pembuatan pengajuan menyertakan `attachment_required` agar frontend tahu perlu meminta unggahan.
 
@@ -1457,14 +1582,14 @@ Citra minta   ■    ■    ■          ← Rabu sudah 2 orang, pengajuan Citra
 
 Aturannya:
 
-| Hal | Perilaku |
-| --- | --- |
-| Yang dihitung | Rekan satu departemen yang pengajuannya sudah **disetujui** dan rentangnya mencakup tanggal itu. Pemohon sendiri tidak dihitung. Pengajuan yang masih pending tidak dihitung, supaya pengajuan tidak saling memblokir sebelum ada keputusan |
-| Tanggal yang diperiksa | Hari kerja pemohon menurut jadwal kerjanya, tanpa hari libur. Karyawan tanpa jadwal dianggap bekerja Senin–Jumat |
-| Saat mengajukan | Ditolak bila ada hari yang sudah penuh, supaya karyawan tidak menunggu keputusan yang pasti gagal |
-| Saat menyetujui | Diperiksa ulang dan **inilah yang menentukan**. Baris departemen dikunci (`FOR UPDATE`) selama transaksi, jadi dua penyetujuan bersamaan tidak sama-sama lolos |
-| Jenis cuti dikecualikan | `leave_types.exempt_from_staffing_limit = true` (bawaan: `SICK`, `BEREAVE`, `MATERNITY`) tidak pernah ditolak karena batas ini, tetapi tetap dihitung sebagai orang yang sedang cuti |
-| Karyawan tanpa departemen | Tidak terkena aturan |
+| Hal                       | Perilaku                                                                                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Yang dihitung             | Rekan satu departemen yang pengajuannya sudah **disetujui** dan rentangnya mencakup tanggal itu. Pemohon sendiri tidak dihitung. Pengajuan yang masih pending tidak dihitung, supaya pengajuan tidak saling memblokir sebelum ada keputusan |
+| Tanggal yang diperiksa    | Hari kerja pemohon menurut jadwal kerjanya, tanpa hari libur. Karyawan tanpa jadwal dianggap bekerja Senin–Jumat                                                                                                                            |
+| Saat mengajukan           | Ditolak bila ada hari yang sudah penuh, supaya karyawan tidak menunggu keputusan yang pasti gagal                                                                                                                                           |
+| Saat menyetujui           | Diperiksa ulang dan **inilah yang menentukan**. Baris departemen dikunci (`FOR UPDATE`) selama transaksi, jadi dua penyetujuan bersamaan tidak sama-sama lolos                                                                              |
+| Jenis cuti dikecualikan   | `leave_types.exempt_from_staffing_limit = true` (bawaan: `SICK`, `BEREAVE`, `MATERNITY`) tidak pernah ditolak karena batas ini, tetapi tetap dihitung sebagai orang yang sedang cuti                                                        |
+| Karyawan tanpa departemen | Tidak terkena aturan                                                                                                                                                                                                                        |
 
 Bila penuh, jawabannya **409** dengan kode `STAFFING_LIMIT_REACHED`:
 
@@ -1474,7 +1599,9 @@ Bila penuh, jawabannya **409** dengan kode `STAFFING_LIMIT_REACHED`:
   "message": "Engineering already has the maximum of 2 employees on leave on 2026-11-04",
   "code": "STAFFING_LIMIT_REACHED",
   "details": {
-    "department_id": "...", "department_name": "Engineering", "max_concurrent_leave": 2,
+    "department_id": "...",
+    "department_name": "Engineering",
+    "max_concurrent_leave": 2,
     "full_dates": [{ "date": "2026-11-04", "on_leave": 2 }],
     "can_override": false
   }
@@ -1514,14 +1641,15 @@ hold       -3  → saldo  9   pengajuan dibuat, saldo tertahan
 
 Setiap jenis cuti yang aktif, memotong saldo, dan punya `default_quota` (misalnya Cuti Tahunan 12 hari) mendapat transaksi `accrual` sebesar kuota itu untuk setiap karyawan aktif, sekali per tahun. Tidak perlu cron. Jatah dibuat saat pertama kali dibutuhkan:
 
-| Saat | Periode yang dipastikan |
-| ---- | ----------------------- |
-| Melihat saldo sendiri, atau admin melihat saldo karyawan | Periode yang diminta, bawaannya tahun berjalan |
-| Melihat riwayat ledger | Tahun berjalan, atau periode yang disaring |
-| Mengajukan cuti yang memotong saldo | Tahun dari tanggal mulai cuti |
-| Admin melakukan penyesuaian saldo | Periode penyesuaian, di dalam transaksi yang sama |
+| Saat                                                     | Periode yang dipastikan                           |
+| -------------------------------------------------------- | ------------------------------------------------- |
+| Melihat saldo sendiri, atau admin melihat saldo karyawan | Periode yang diminta, bawaannya tahun berjalan    |
+| Melihat riwayat ledger                                   | Tahun berjalan, atau periode yang disaring        |
+| Mengajukan cuti yang memotong saldo                      | Tahun dari tanggal mulai cuti                     |
+| Admin melakukan penyesuaian saldo                        | Periode penyesuaian, di dalam transaksi yang sama |
 
 Aturannya:
+
 - Hanya tahun berjalan dan tahun depan. Membuka riwayat tahun lampau tidak menciptakan jatah untuk tahun yang sudah lewat.
 - Karyawan yang `join_date`-nya setelah tahun itu belum berhak.
 - Jatah penuh, tidak proporsional terhadap tanggal bergabung.
@@ -1546,7 +1674,11 @@ Responsnya menyertakan angka yang dibutuhkan frontend untuk menjelaskan penolaka
   "success": false,
   "message": "Adjustment rejected because it would make the balance negative. The remaining balance is 9 days",
   "code": "BAD_REQUEST",
-  "details": { "current_balance": 9, "requested_amount": -10, "max_deduction": 9 }
+  "details": {
+    "current_balance": 9,
+    "requested_amount": -10,
+    "max_deduction": 9
+  }
 }
 ```
 
@@ -1574,13 +1706,13 @@ Folder bulan berisi seluruh berkas yang diunggah pada bulan itu, dari karyawan s
 
 **Nama asli dibersihkan**, karena berasal dari pengguna:
 
-| Nama kiriman | Nama tersimpan |
-| ------------ | -------------- |
-| `surat-dokter.jpg` | `surat-dokter_28-09-2026_10-33-29.jpg` |
+| Nama kiriman            | Nama tersimpan                              |
+| ----------------------- | ------------------------------------------- |
+| `surat-dokter.jpg`      | `surat-dokter_28-09-2026_10-33-29.jpg`      |
 | `Surat Dokter Budi.png` | `Surat-Dokter-Budi_28-09-2026_10-33-29.png` |
-| `fotó José.jpg` | `foto-Jose_28-09-2026_10-33-29.jpg` |
-| `../../rahasia.jpg` | `rahasia_28-09-2026_10-33-29.jpg` |
-| `@#$%.jpg` | `lampiran_...` atau `foto_...` |
+| `fotó José.jpg`         | `foto-Jose_28-09-2026_10-33-29.jpg`         |
+| `../../rahasia.jpg`     | `rahasia_28-09-2026_10-33-29.jpg`           |
+| `@#$%.jpg`              | `lampiran_...` atau `foto_...`              |
 
 - Folder dan ekstensi asli dibuang. Ekstensi diganti sesuai isi berkas yang dibaca dari magic bytes, jadi berkas yang namanya diubah menjadi `.jpg` tidak menipu.
 - Huruf beraksen diubah ke huruf dasarnya dan spasi menjadi tanda hubung. Karakter selain huruf, angka, titik, tanda hubung, dan garis bawah dibuang, supaya `../` tidak dapat keluar dari folder dan URL publik foto tetap bersih.
@@ -1638,6 +1770,35 @@ Akun baru bisa login setelah email terverifikasi **dan** akun disetujui pemegang
 | Terverifikasi, belum disetujui | Akun masih menunggu persetujuan admin                 |
 | Akun dinonaktifkan             | Akun dinonaktifkan, diminta menghubungi admin         |
 
+### Kode verifikasi untuk QA
+
+QA otomatis perlu menyelesaikan pendaftaran tanpa membuka kotak masuk email. `GET /auth/verification-code?email=<email>` menerbitkan kode baru dan mengembalikannya di respons:
+
+```json
+{
+  "success": true,
+  "data": {
+    "email": "qa@contoh.id",
+    "code": "482913",
+    "expires_in_minutes": 10
+  }
+}
+```
+
+Pengamannya berlapis:
+
+| Lapisan                               | Perilaku                                                                                                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `QA_TOOLS_ENABLED`                    | Kosong berarti menyala di luar production. Di production harus `true`. Saat mati, rute dijawab 404 seperti rute yang tidak ada, sebelum token diperiksa |
+| `authenticate` + `authorize("admin")` | Hanya role `admin`; jabatan dengan fitur apa pun tidak cukup                                                                                            |
+| Hanya akun belum terverifikasi        | Email tidak terdaftar dijawab 404, email terverifikasi 409                                                                                              |
+| Log aktivitas                         | Setiap panggilan dicatat sebagai `auth.qa_verification_code` atas nama admin pemanggil. Kodenya tidak ikut dicatat                                      |
+| `Cache-Control: no-store`             | Kode tidak tersimpan di cache                                                                                                                           |
+
+Kode lama tidak bisa diambil ulang karena yang disimpan hanya hash argon2-nya. Karena itu setiap panggilan **menerbitkan kode baru** dan membatalkan kode sebelumnya, termasuk kode yang sudah dikirim lewat email. Email tidak dikirim.
+
+Alur QA: `POST /auth/register` → login admin → `GET /auth/verification-code?email=...` → `POST /auth/verify-email` dengan kode itu → `PATCH /users/:id/approve`.
+
 ## Alur Reset Password
 
 1. `POST /auth/forgot-password` selalu mengembalikan pesan yang sama, terlepas dari apakah email terdaftar, mengikuti anjuran OWASP.
@@ -1651,48 +1812,63 @@ Akun baru bisa login setelah email terverifikasi **dan** akun disetujui pemegang
 
 Middleware `authenticate` dan server WebSocket memakai satu aturan yang sama, `sessionRejection()` di `src/helpers/sessionStore.ts`. Token yang tanda tangannya sah tetap ditolak (401) bila:
 
-| Keadaan | Pesan |
-| ------- | ----- |
+| Keadaan                                       | Pesan                                      |
+| --------------------------------------------- | ------------------------------------------ |
 | Token sudah dicabut lewat `POST /auth/logout` | `You have logged out from this session...` |
-| Akunnya sudah dihapus | `Your account no longer exists...` |
-| Akunnya dinonaktifkan admin | `Your account has been deactivated...` |
-| Token terbit sebelum `password_changed_at` | `...because the password was changed...` |
+| Akunnya sudah dihapus                         | `Your account no longer exists...`         |
+| Akunnya dinonaktifkan admin                   | `Your account has been deactivated...`     |
+| Token terbit sebelum `password_changed_at`    | `...because the password was changed...`   |
 
 **Logout.** Setiap token membawa klaim `jti` yang unik. `POST /auth/logout` mencatat `revoked:<jti>` di Redis sampai token itu kedaluwarsa, sehingga semua instance backend ikut menolaknya. Salinannya juga disimpan di memori proses, jadi logout tetap berlaku walau Redis sedang mati; salinan memori itu hilang bila server dinyalakan ulang. Hanya token yang dipakai saat logout yang dicabut; login di perangkat lain tetap berlaku. Untuk keluar dari semua perangkat sekaligus, ganti password. Token lama yang terbit sebelum ada `jti` tidak dapat dicabut satu per satu, tetapi tetap kedaluwarsa sendiri dalam 24 jam.
 
 **Cache sesi.** Data sesi (`password_changed_at` dan `is_active`) dibaca di setiap request yang butuh login. Database berada di Supabase, terpisah dari VM, jadi hasilnya disimpan di Redis sebagai `session:<userId>` selama 60 detik. Cache dibuang segera setelah perubahan ini tersimpan, sehingga akibatnya langsung terasa tanpa menunggu 60 detik:
 
-| Perubahan | Tempat |
-| --------- | ------ |
-| Ganti password sendiri | `ChangePasswordController` |
-| Reset password | `ResetPasswordController` |
-| Akun disetujui | `ApproveUserController` |
-| Akun diaktifkan atau dinonaktifkan | `SetUserActiveController` |
-| Karyawan beserta akunnya dihapus | `DeleteEmployeeController` |
+| Perubahan                          | Tempat                     |
+| ---------------------------------- | -------------------------- |
+| Ganti password sendiri             | `ChangePasswordController` |
+| Reset password                     | `ResetPasswordController`  |
+| Akun disetujui                     | `ApproveUserController`    |
+| Akun diaktifkan atau dinonaktifkan | `SetUserActiveController`  |
+| Karyawan beserta akunnya dihapus   | `DeleteEmployeeController` |
 
 Fitur baru yang mengubah salah satu kolom itu wajib memanggil `forgetSession(userId)` setelah perubahannya tersimpan. Bila Redis tidak tersedia, sesi dibaca langsung dari database seperti sebelumnya, dan kegagalan Redis hanya dicatat sebagai `warn`.
 
 ## Data Contoh
 
+### Membuat ulang database dari nol
+
+1. Jalankan seluruh isi `database/schema.sql` di SQL Editor Supabase sekaligus. File ini **menghapus semua tabel dan data**, membuat ulang skema lengkap (termasuk hierarki organisasi), lalu mengisi katalog fitur dan jenis cuti. File ini aman dijalankan berulang kali.
+2. Jalankan seed:
+
 ```bash
 npm run seed
 ```
 
-Seed mengisi akun contoh, jadwal kerja bawaan, hari libur nasional tahun berjalan, jatah dan contoh pengajuan cuti, serta absensi sepanjang bulan berjalan dengan status beragam. Polanya ditentukan dari sisa bagi, bukan acak, sehingga hasilnya sama setiap kali dijalankan.
+Untuk database yang datanya harus dipertahankan, jangan pakai `schema.sql`; jalankan migrasi di `database/migrations/` sesuai urutan tanggalnya.
 
-Seluruh akun hasil seed langsung dapat login dan ditandai `must_change_password`. Password bawaannya tercetak di log saat seed selesai.
+### Isi seed
 
-Seed aman dijalankan berulang kali: email yang sudah ada dilewati, dan absensi yang sudah tercatat tidak ditimpa. Berkas seed tidak ikut di repositori.
+| Data                | Isi                                                                                                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Struktur organisasi | 10 unit (PT Awan → 3 direktorat → 6 departemen), 18 jabatan beserta atasan jabatan, kuota kursi, dan paket hak akses per jabatan                                                                                          |
+| Akun                | 3 admin yang menduduki CEO, CTO, dan COO; 6 kepala departemen; 15 karyawan. Jabatan CPO sengaja kosong untuk memperlihatkan jabatan kosong yang dilewati                                                                  |
+| Lainnya             | Jadwal kerja bawaan, hari libur nasional tahun berjalan, jatah cuti tahunan tahun ini dan tahun depan, 5 contoh pengajuan cuti yang penyetujunya dihitung dari struktur, dan absensi bulan berjalan dengan status beragam |
+
+Atasan setiap karyawan dihitung dari struktur jabatan, jadi seed tidak mengisi `manager_id`. Pola absensi ditentukan dari sisa bagi, bukan acak, sehingga hasilnya sama setiap kali dijalankan.
+
+Seluruh akun hasil seed langsung dapat login tanpa wajib mengganti password. Password bawaannya tercetak di log saat seed selesai.
+
+Seed aman dijalankan berulang kali: unit dan jabatan disesuaikan berdasarkan kodenya, email yang sudah ada dilewati, dan absensi yang sudah tercatat tidak ditimpa. Berkas seed tidak ikut di repositori.
 
 ## Batasan yang Diketahui
 
 Hal-hal berikut disadari dan belum dikerjakan:
 
-| Batasan | Dampak | Arah perbaikan |
-| ------- | ------ | -------------- |
-| Hitungan rate limit per proses | Pada penyebaran multi-instance setiap instance menghitung sendiri, sehingga batas efektifnya dikali jumlah instance | Ganti `MemoryRateLimitStore` dengan penyimpanan bersama seperti Redis |
-| Endpoint publik lain belum punya batas khusus | `register`, `forgot-password`, dan `reset-password` hanya tertahan batas umum 300 per menit per IP | Pasang pembatas ketat seperti login bila mulai disalahgunakan |
-| `offline_time` tetap berupa klaim perangkat | Keterlambatan dapat disamarkan dalam batas yang diizinkan | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini) |
-| `updated_at` masih opsional | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain | Wajibkan setelah seluruh form frontend mengirimnya |
-| `system.manage_feature` tidak diberlakukan | Mencentangnya di matriks tidak memberi akses apa pun | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |
-| Cache fitur per proses | Instance lain tertinggal paling lama satu menit setelah fitur jabatan diubah | Siarkan pembatalan cache lewat `LISTEN`/`NOTIFY` yang sama dengan notifikasi |
+| Batasan                                       | Dampak                                                                                                              | Arah perbaikan                                                                                                         |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Hitungan rate limit per proses                | Pada penyebaran multi-instance setiap instance menghitung sendiri, sehingga batas efektifnya dikali jumlah instance | Ganti `MemoryRateLimitStore` dengan penyimpanan bersama seperti Redis                                                  |
+| Endpoint publik lain belum punya batas khusus | `register`, `forgot-password`, dan `reset-password` hanya tertahan batas umum 300 per menit per IP                  | Pasang pembatas ketat seperti login bila mulai disalahgunakan                                                          |
+| `offline_time` tetap berupa klaim perangkat   | Keterlambatan dapat disamarkan dalam batas yang diizinkan                                                           | Lihat [Yang tidak dijamin fitur ini](#yang-tidak-dijamin-fitur-ini)                                                    |
+| `updated_at` masih opsional                   | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain                                       | Wajibkan setelah seluruh form frontend mengirimnya                                                                     |
+| `system.manage_feature` tidak diberlakukan    | Mencentangnya di matriks tidak memberi akses apa pun                                                                | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |
+| Cache fitur per proses                        | Instance lain tertinggal paling lama satu menit setelah fitur jabatan diubah                                        | Siarkan pembatalan cache lewat `LISTEN`/`NOTIFY` yang sama dengan notifikasi                                           |

@@ -28,8 +28,7 @@ async function assertMayAccess(
   const employee = await requireRequestEmployee(req, res);
 
   const involved =
-    request.employee_id === employee.id ||
-    request.approver_id === employee.id;
+    request.employee_id === employee.id || request.approver_id === employee.id;
 
   if (involved) return employee.id;
 
@@ -45,7 +44,13 @@ async function assertMayAccess(
     );
   }
 
-  if (await hasFeature(req, res, "leave.view_all")) return employee.id;
+  // approve_all ikut boleh melihat: pengajuan yang wajib berlampiran tidak
+  // bisa disetujui sebelum penyetujunya memeriksa berkasnya
+  const [canViewAll, canApproveAll] = await Promise.all([
+    hasFeature(req, res, "leave.view_all"),
+    hasFeature(req, res, "leave.approve_all"),
+  ]);
+  if (canViewAll || canApproveAll) return employee.id;
 
   throw Forbidden("You don't have access to this leave request's attachments");
 }

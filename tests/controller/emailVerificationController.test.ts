@@ -85,6 +85,7 @@ jest.unstable_mockModule("../../src/config/logger.js", () => ({
 const mockNotifyAccount = jest.fn(() => Promise.resolve());
 
 jest.unstable_mockModule("../../src/helpers/notify.js", () => ({
+  notifyApproverReassigned: jest.fn(() => Promise.resolve()),
   notifyAccountNeedsApproval: mockNotifyAccount,
   clearAccountApproval: jest.fn(),
   clearLeaveApproval: jest.fn(),

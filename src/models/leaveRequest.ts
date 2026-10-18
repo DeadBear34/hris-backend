@@ -388,3 +388,50 @@ export async function findApprovedCovering(
 
   return result.rows[0] ?? null;
 }
+
+export interface PendingRoute {
+  id: string;
+  employee_id: string;
+  approver_id: string | null;
+  employee_name: string;
+  leave_type_name: string;
+  start_date: string;
+  end_date: string;
+  total_days: number;
+}
+
+// Pengajuan yang masih menunggu keputusan, untuk dihitung ulang penyetujunya
+// setelah struktur organisasi berubah
+export async function findPendingForRouting(): Promise<PendingRoute[]> {
+  const result = await pool.query<PendingRoute>(
+    `SELECT lr.id, lr.employee_id, lr.approver_id,
+            e.full_name AS employee_name, lt.name AS leave_type_name,
+            lr.start_date::text AS start_date, lr.end_date::text AS end_date,
+            lr.total_days::float8 AS total_days
+     FROM leave_requests lr
+     JOIN employees e    ON e.id = lr.employee_id
+     JOIN leave_types lt ON lt.id = lr.leave_type_id
+     WHERE lr.status = 'pending'::leave_status AND e.deleted_at IS NULL
+     ORDER BY lr.created_at ASC`,
+  );
+
+  return result.rows;
+}
+
+// Mengganti penyetuju hanya bila pengajuannya masih menunggu dan penyetujunya
+// masih sama dengan yang dibaca sebelumnya. Bila sudah diputus atau dialihkan
+// oleh proses lain di tengah jalan, tidak ada yang diubah
+export async function reassignApprover(
+  id: string,
+  from: string | null,
+  to: string | null,
+): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE leave_requests SET approver_id = $3::uuid, updated_at = now()
+     WHERE id = $1::uuid AND status = 'pending'::leave_status
+       AND approver_id IS NOT DISTINCT FROM $2::uuid`,
+    [id, from, to],
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}

@@ -626,3 +626,42 @@ describe("model leaveAttachment", () => {
     expect(paths).toEqual([]);
   });
 });
+
+describe("model leaveRequest: pengalihan penyetuju", () => {
+  const FROM = "66666666-6666-4666-8666-666666666666";
+  const TO = "77777777-7777-4777-8777-777777777777";
+
+  it("hanya membaca pengajuan yang masih menunggu", async () => {
+    await leaveRequestModel.findPendingForRouting();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("lr.status = 'pending'::leave_status");
+    expect(sql).toContain("e.deleted_at IS NULL");
+  });
+
+  it("mengganti penyetuju hanya bila masih menunggu dan penyetujunya belum berubah", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 } as never);
+
+    const moved = await leaveRequestModel.reassignApprover(
+      REQUEST_ID,
+      FROM,
+      TO,
+    );
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(moved).toBe(true);
+    expect(sql).toContain("status = 'pending'::leave_status");
+    expect(sql).toContain("approver_id IS NOT DISTINCT FROM $2::uuid");
+    expect(values).toEqual([REQUEST_ID, FROM, TO]);
+  });
+
+  it("melaporkan gagal bila tidak ada baris yang berubah", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 } as never);
+
+    expect(await leaveRequestModel.reassignApprover(REQUEST_ID, null, TO)).toBe(
+      false,
+    );
+  });
+});

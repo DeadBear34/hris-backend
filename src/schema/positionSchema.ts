@@ -21,6 +21,26 @@ export const createPositionSchema = z.object({
     .min(1, "Level must be at least 1")
     .max(10, "Level must be at most 10")
     .optional(),
+
+  // unit pemilik jabatan: departemen, direktorat, atau unit perusahaan
+  department_id: z.uuid("Unit is required"),
+
+  // atasan jabatan. Kosong hanya untuk satu jabatan puncak (misalnya CEO)
+  reports_to_position_id: z
+    .uuid("Invalid superior position")
+    .nullable()
+    .optional(),
+
+  is_unit_head: z.boolean().optional(),
+
+  // kuota kursi; null berarti tanpa batas
+  max_holders: z.coerce
+    .number()
+    .int("Maximum holders must be a whole number")
+    .min(1, "Maximum holders must be at least 1")
+    .max(1000, "Maximum holders must be at most 1000")
+    .nullable()
+    .optional(),
 });
 
 export const updatePositionSchema = createPositionSchema.partial().extend({

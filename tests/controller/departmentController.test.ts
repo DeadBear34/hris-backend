@@ -1,12 +1,27 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 
-// middleware authenticate memeriksa password_changed_at lewat model user,
-// jadi pool harus mengembalikan hasil kosong alih-alih undefined
+// middleware authenticate memeriksa sesi lewat model user, jadi pool harus
+// mengembalikan akun aktif untuk query itu dan hasil kosong untuk yang lain
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
   pool: {
     connect: jest.fn(),
-    query: jest.fn(() => Promise.resolve({ rows: [] })),
+    // query sesi di middleware authenticate dijawab akun aktif, sisanya kosong
+    query: jest.fn((sql: unknown) =>
+      Promise.resolve(
+        String(sql).includes("is_active FROM users")
+          ? {
+              rows: [
+                {
+                  id: "session-user",
+                  password_changed_at: null,
+                  is_active: true,
+                },
+              ],
+            }
+          : { rows: [] },
+      ),
+    ),
   },
 }));
 
@@ -19,9 +34,20 @@ jest.unstable_mockModule("../../src/models/department.js", () => ({
   updateDepartment: jest.fn(),
   softDeleteDepartment: jest.fn(),
   countEmployees: jest.fn(),
+  countChildUnits: jest.fn(() => Promise.resolve(0)),
+  countPositions: jest.fn(() => Promise.resolve(0)),
+}));
+
+// Aturan induk unit diuji tersendiri di tests/helpers/orgValidation.test.ts
+jest.unstable_mockModule("../../src/helpers/orgValidation.js", () => ({
+  assertUnitParent: jest.fn(() => Promise.resolve()),
+  assertUnitMove: jest.fn(() => Promise.resolve()),
+  assertPositionPlacement: jest.fn(() => Promise.resolve()),
+  assertPositionCapacity: jest.fn(() => Promise.resolve()),
 }));
 
 const departmentModel = await import("../../src/models/department.js");
+const orgValidation = await import("../../src/helpers/orgValidation.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
@@ -562,5 +588,95 @@ describe("nama departemen tidak boleh kembar", () => {
 
     expect(res.status).toBe(409);
     expect(departmentModel.updateDepartment).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------
+// Unit organisasi bertingkat
+// ---------------------------------------------------------------
+describe("unit organisasi bertingkat", () => {
+  const PARENT_ID = "77777777-7777-4777-8777-777777777777";
+
+  beforeEach(() => {
+    (departmentModel.findById as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.findByCode as jest.Mock).mockResolvedValue(null as never);
+    (departmentModel.findByName as jest.Mock).mockResolvedValue(null as never);
+    (departmentModel.createDepartment as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.updateDepartment as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (departmentModel.countEmployees as jest.Mock).mockResolvedValue(0 as never);
+    (departmentModel.countChildUnits as jest.Mock).mockResolvedValue(
+      0 as never,
+    );
+    (departmentModel.countPositions as jest.Mock).mockResolvedValue(0 as never);
+  });
+
+  it("membuat unit memeriksa induknya", async () => {
+    const res = await request(app)
+      .post("/api/v1/departments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        code: "TECH",
+        name: "Direktorat Teknologi",
+        parent_id: PARENT_ID,
+        unit_type: "directorate",
+      });
+
+    expect(res.status).toBe(201);
+    expect(orgValidation.assertUnitParent).toHaveBeenCalledWith(
+      null,
+      PARENT_ID,
+    );
+  });
+
+  it("menolak jenis unit yang tidak dikenal", async () => {
+    const res = await request(app)
+      .post("/api/v1/departments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ code: "TECH", name: "Teknologi", unit_type: "kementerian" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("memindahkan unit memeriksa lingkaran induknya", async () => {
+    await request(app)
+      .patch(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ parent_id: PARENT_ID });
+
+    expect(orgValidation.assertUnitParent).toHaveBeenCalledWith(
+      DEPARTMENT_ID,
+      PARENT_ID,
+    );
+  });
+
+  it("menolak menghapus unit yang masih punya sub-unit", async () => {
+    (departmentModel.countChildUnits as jest.Mock).mockResolvedValue(
+      2 as never,
+    );
+
+    const res = await request(app)
+      .delete(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.child_unit_count).toBe(2);
+    expect(departmentModel.softDeleteDepartment).not.toHaveBeenCalled();
+  });
+
+  it("menolak menghapus unit yang masih punya jabatan", async () => {
+    (departmentModel.countPositions as jest.Mock).mockResolvedValue(3 as never);
+
+    const res = await request(app)
+      .delete(`/api/v1/departments/${DEPARTMENT_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.position_count).toBe(3);
   });
 });

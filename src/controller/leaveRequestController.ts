@@ -38,6 +38,7 @@ import { hasFeature } from "../middlewares/feature.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { withTransaction } from "../helpers/transaction.js";
 import { ensureAccruals } from "../helpers/leaveAccrual.js";
+import { findLineManager } from "../models/orgStructure.js";
 import {
   notifyLeaveSubmitted,
   notifyLeaveDecided,
@@ -94,13 +95,13 @@ async function getRequester(req: Request, res: Response): Promise<Requester> {
   return { employee, canApproveTeam, canApproveAll, canViewAll };
 }
 
-function resolveApprover(employee: Employee): string | null {
-  return employee.manager_id ?? null;
-}
-
+// Pemegang leave.approve_all ikut boleh melihat, karena kotak masuknya berisi
+// semua pengajuan dan ia perlu membuka detail serta lampirannya sebelum memutus
 function canView(request: LeaveRequest, requester: Requester): boolean {
   return (
     requester.canViewAll ||
+    // ubah: approve_all boleh buka detail pengajuan
+    requester.canApproveAll ||
     request.employee_id === requester.employee.id ||
     request.approver_id === requester.employee.id
   );
@@ -109,7 +110,10 @@ function canView(request: LeaveRequest, requester: Requester): boolean {
 // Atasan langsung tetap membutuhkan fitur menyetujui cuti bawahannya, supaya
 // kotak centang leave.approve_team benar-benar menentukan sesuatu.
 // Tidak seorang pun boleh memutus cutinya sendiri, termasuk pemegang
-// leave.approve_all, supaya setiap cuti tetap diperiksa orang lain
+// leave.approve_all, supaya setiap cuti tetap diperiksa orang lain.
+// leave.view_all sengaja tidak ikut di sini: fitur itu hanya untuk melihat
+// seluruh pengajuan, bukan wewenang memutus. Pemegang view_all yang ingin
+// menyetujui tetap butuh approve_all, atau approve_team sebagai penyetujunya
 function canDecide(request: LeaveRequest, requester: Requester): boolean {
   if (request.employee_id === requester.employee.id) return false;
   if (requester.canApproveAll) return true;
@@ -519,6 +523,12 @@ export async function CreateLeaveRequestController(
       }
     }
 
+    // ubah: penyetuju diambil dari struktur jabatan, bukan manager_id doang
+    // Penyetuju satu tingkat: atasan langsung hasil hitungan struktur jabatan
+    // (atau pengecualian manual), dibekukan saat pengajuan dibuat. Null berarti
+    // tidak ada atasan aktif sampai puncak, sehingga ditangani HR dan admin
+    const lineManager = await findLineManager(requester.employee.id);
+
     const request = await withTransaction(async (client) => {
       // Kunci dulu, baru baca saldo. Tanpa ini dua pengajuan bersamaan
       // sama-sama membaca saldo lama dan keduanya lolos
@@ -538,7 +548,8 @@ export async function CreateLeaveRequestController(
         end_date,
         total_days: totalDays,
         reason: reason ?? null,
-        approver_id: resolveApprover(requester.employee),
+        // ubah: pakai hasil findLineManager
+        approver_id: lineManager?.employee_id ?? null,
       });
 
       if (leaveType.deducts_balance) {
@@ -560,6 +571,7 @@ export async function CreateLeaveRequestController(
     // setelah COMMIT, supaya atasan tidak diberi tahu pengajuan yang batal
     await notifyLeaveSubmitted({
       request_id: request.id,
+      requester_employee_id: requester.employee.id,
       requester_name: requester.employee.full_name,
       approver_employee_id: request.approver_id,
       leave_type_name: leaveType.name,
@@ -806,6 +818,7 @@ export async function ApproveLeaveRequestController(
       if (limitedDepartment) {
         // Penyetujuan di departemen yang sama dibuat bergiliran, supaya dua
         // penyetujuan bersamaan tidak sama-sama lolos dari batas
+        // penanda untuk limit
         await departmentModel.lockForLeaveApproval(
           client,
           limitedDepartment.id,
@@ -878,11 +891,15 @@ export async function ApproveLeaveRequestController(
     await notifyLeaveDecided({
       request_id: id,
       requester_employee_id: existing.employee_id,
+      requester_name: owner?.full_name,
+      approver_employee_id: existing.approver_id,
       decision: "approved",
       leave_type_name: leaveType.name,
       start_date: existing.start_date,
       end_date: existing.end_date,
       decision_note: decision_note ?? null,
+      decided_by_name: requester.employee.full_name,
+      decider_user_id: req.user?.id ?? null,
     });
 
     res.json({
@@ -951,12 +968,15 @@ export async function RejectLeaveRequestController(
     await notifyLeaveDecided({
       request_id: id,
       requester_employee_id: existing.employee_id,
+      approver_employee_id: existing.approver_id,
       decision: "rejected",
       // jenis cuti boleh saja sudah dihapus, judulnya tetap harus terbaca
       leave_type_name: leaveType?.name ?? "Leave",
       start_date: existing.start_date,
       end_date: existing.end_date,
       decision_note: decision_note ?? null,
+      decided_by_name: requester.employee.full_name,
+      decider_user_id: req.user?.id ?? null,
     });
 
     res.json({

@@ -1,6 +1,7 @@
 import type { QueryResultRow } from "pg";
 import { pool } from "../config/databaseConnection.js";
 import { sameVersion } from "../helpers/concurrency.js";
+import type { Executor } from "./user.js";
 
 interface VersionedUpdate<T> {
   // nama tabel dan kolom selalu konstanta dari model, tidak pernah dari input
@@ -15,6 +16,9 @@ interface VersionedUpdate<T> {
   expectedUpdatedAt?: string;
   // dipakai bila tidak ada kolom yang berubah, supaya tidak menulis apa pun
   current: () => Promise<T | null>;
+  // baru: bisa ikut transaksi
+  // klien transaksi bila UPDATE harus satu transaksi dengan perubahan lain
+  db?: Executor;
 }
 
 // UPDATE sebagian kolom dengan pemeriksaan versi updated_at. Kolom di luar
@@ -30,6 +34,7 @@ export async function updateVersioned<T extends QueryResultRow>({
   softDelete = true,
   expectedUpdatedAt,
   current,
+  db = pool,
 }: VersionedUpdate<T>): Promise<T | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -48,7 +53,8 @@ export async function updateVersioned<T extends QueryResultRow>({
   const idParam = values.length;
   values.push(expectedUpdatedAt ?? null);
 
-  const result = await pool.query<T>(
+  // ubah: pakai db (bisa transaksi), bukan pool langsung
+  const result = await db.query<T>(
     `UPDATE ${table}
      SET ${fields.join(", ")}
      WHERE id = $${idParam}::uuid${softDelete ? " AND deleted_at IS NULL" : ""}

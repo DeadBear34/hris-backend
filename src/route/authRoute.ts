@@ -4,11 +4,13 @@ import {
   MeController,
   UpdateMeController,
   ChangePasswordController,
+  LogoutController,
 } from "../controller/authController.js";
 import {
   RegisterController,
   VerifyEmailController,
   ResendVerificationController,
+  QaVerificationCodeController,
   ForgotPasswordController,
   ResetPasswordController,
 } from "../controller/accountVerificationController.js";
@@ -16,16 +18,18 @@ import {
   UploadOwnPhotoController,
   DeleteOwnPhotoController,
 } from "../controller/employeePhotoController.js";
-import { authenticate } from "../middlewares/auth.js";
+import { authenticate, authorize } from "../middlewares/auth.js";
+import { requireQaTools } from "../middlewares/qaTools.js";
 import { loginRateLimit } from "../middlewares/rateLimit.js";
 import { uploadSingleImage } from "../middlewares/upload.js";
-import { validate } from "../middlewares/validate.js";
+import { validate, validateQuery } from "../middlewares/validate.js";
 import {
   loginSchema,
   registerSchema,
   changePasswordSchema,
   verifyEmailSchema,
   resendVerificationSchema,
+  verificationCodeQuerySchema,
   forgotPasswordSchema,
   resetPasswordSchema,
 } from "../schema/authSchema.js";
@@ -54,6 +58,18 @@ router.post(
   "/auth/resend-verification",
   validate(resendVerificationSchema),
   ResendVerificationController,
+);
+
+// Khusus admin, untuk QA otomatis. requireQaTools paling depan supaya rute
+// yang dimatikan terlihat tidak ada, bahkan sebelum token diperiksa
+router.get(
+  // baru: endpoint kode verifikasi buat QA
+  "/auth/verification-code",
+  requireQaTools,
+  authenticate,
+  authorize("admin"),
+  validateQuery(verificationCodeQuerySchema),
+  QaVerificationCodeController,
 );
 
 router.post(
@@ -92,5 +108,7 @@ router.patch(
   validate(changePasswordSchema),
   ChangePasswordController,
 );
+
+router.post("/auth/logout", ...loggedIn, LogoutController);
 
 export default router;

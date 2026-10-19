@@ -1,12 +1,32 @@
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
 import request from "supertest";
 
-// middleware authenticate memeriksa password_changed_at lewat model user,
-// jadi pool harus mengembalikan hasil kosong alih-alih undefined
+// middleware authenticate memeriksa sesi lewat model user, jadi pool harus
+// mengembalikan akun aktif untuk query itu dan hasil kosong untuk yang lain
+const mockClient = {
+  query: jest.fn(() => Promise.resolve({ rows: [] })),
+  release: jest.fn(),
+};
+
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
   pool: {
-    connect: jest.fn(),
-    query: jest.fn(() => Promise.resolve({ rows: [] })),
+    connect: jest.fn(() => Promise.resolve(mockClient)),
+    // query sesi di middleware authenticate dijawab akun aktif, sisanya kosong
+    query: jest.fn((sql: unknown) =>
+      Promise.resolve(
+        String(sql).includes("is_active FROM users")
+          ? {
+              rows: [
+                {
+                  id: "session-user",
+                  password_changed_at: null,
+                  is_active: true,
+                },
+              ],
+            }
+          : { rows: [] },
+      ),
+    ),
   },
 }));
 
@@ -19,9 +39,36 @@ jest.unstable_mockModule("../../src/models/position.js", () => ({
   updatePosition: jest.fn(),
   softDeletePosition: jest.fn(),
   countEmployees: jest.fn(),
+  countDirectReports: jest.fn(() => Promise.resolve(0)),
+  syncHolderDepartments: jest.fn(() => Promise.resolve(0)),
+}));
+
+// Aturan struktur diuji tersendiri di tests/helpers/orgValidation.test.ts.
+// Di sini cukup dipastikan controller memanggilnya
+jest.unstable_mockModule("../../src/helpers/orgValidation.js", () => ({
+  assertPositionPlacement: jest.fn(() => Promise.resolve()),
+  assertPositionCapacity: jest.fn(() => Promise.resolve()),
+  assertUnitParent: jest.fn(() => Promise.resolve()),
+  assertUnitMove: jest.fn(() => Promise.resolve()),
+}));
+
+jest.unstable_mockModule("../../src/models/orgStructure.js", () => ({
+  findLineManagerForPosition: jest.fn(() => Promise.resolve(null)),
+  countHolders: jest.fn(() => Promise.resolve(0)),
+  findLineManager: jest.fn(() => Promise.resolve(null)),
+  loadOrgChart: jest.fn(),
+}));
+
+// Pengalihan persetujuan diuji tersendiri di tests/helpers/approvalRouting.test.ts
+jest.unstable_mockModule("../../src/helpers/approvalRouting.js", () => ({
+  rerouteSafely: jest.fn(() => Promise.resolve([])),
+  reroutePendingApprovals: jest.fn(() => Promise.resolve([])),
 }));
 
 const positionModel = await import("../../src/models/position.js");
+const approvalRouting = await import("../../src/helpers/approvalRouting.js");
+const orgValidation = await import("../../src/helpers/orgValidation.js");
+const orgStructure = await import("../../src/models/orgStructure.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
@@ -140,7 +187,12 @@ describe("GET /api/v1/positions/:id", () => {
 });
 
 describe("POST /api/v1/positions", () => {
-  const validBody = { code: "SWE", name: "Software Engineer", level: 3 };
+  const validBody = {
+    code: "SWE",
+    name: "Software Engineer",
+    level: 3,
+    department_id: "99999999-9999-4999-8999-999999999999",
+  };
 
   it("menolak request tanpa token", async () => {
     const res = await request(app).post("/api/v1/positions").send(validBody);
@@ -230,7 +282,11 @@ describe("POST /api/v1/positions", () => {
     await request(app)
       .post("/api/v1/positions")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ code: "swe", name: "Software Engineer" });
+      .send({
+        code: "swe",
+        name: "Software Engineer",
+        department_id: "99999999-9999-4999-8999-999999999999",
+      });
 
     const [data] = (positionModel.createPosition as jest.Mock).mock
       .calls[0] as [Record<string, unknown>];
@@ -247,7 +303,11 @@ describe("POST /api/v1/positions", () => {
     await request(app)
       .post("/api/v1/positions")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ code: "SWE", name: "Software Engineer" });
+      .send({
+        code: "SWE",
+        name: "Software Engineer",
+        department_id: "99999999-9999-4999-8999-999999999999",
+      });
 
     const [data] = (positionModel.createPosition as jest.Mock).mock
       .calls[0] as [Record<string, unknown>];
@@ -464,7 +524,12 @@ describe("nama jabatan tidak boleh kembar", () => {
     const res = await request(app)
       .post("/api/v1/positions")
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ code: "SWE2", name: "software engineer", level: 3 });
+      .send({
+        code: "SWE2",
+        name: "software engineer",
+        level: 3,
+        department_id: "99999999-9999-4999-8999-999999999999",
+      });
 
     expect(res.status).toBe(409);
     expect(res.body.message).toContain("name is already in use");
@@ -482,8 +547,9 @@ describe("nama jabatan tidak boleh kembar", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ name: "Senior Engineer" });
 
-    const [, exceptId] = (positionModel.findByName as jest.Mock).mock
-      .calls[0] as [string, string];
+    // argumen kedua unit jabatan, ketiga id yang dikecualikan
+    const [, , exceptId] = (positionModel.findByName as jest.Mock).mock
+      .calls[0] as [string, string | null, string];
 
     expect(exceptId).toBe(POSITION_ID);
   });
@@ -504,5 +570,219 @@ describe("nama jabatan tidak boleh kembar", () => {
 
     expect(res.status).toBe(409);
     expect(positionModel.updatePosition).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------
+// Struktur jabatan
+// ---------------------------------------------------------------
+describe("struktur jabatan", () => {
+  const UNIT_A = "99999999-9999-4999-8999-999999999999";
+  const UNIT_B = "88888888-8888-4888-8888-888888888888";
+  const SUPERIOR_ID = "55555555-5555-4555-8555-555555555555";
+
+  const structured = {
+    ...fakePosition,
+    department_id: UNIT_A,
+    reports_to_position_id: SUPERIOR_ID,
+    is_unit_head: false,
+    max_holders: null,
+  };
+
+  beforeEach(() => {
+    (positionModel.findById as jest.Mock).mockResolvedValue(
+      structured as never,
+    );
+    (positionModel.findByCode as jest.Mock).mockResolvedValue(null as never);
+    (positionModel.findByName as jest.Mock).mockResolvedValue(null as never);
+    (positionModel.updatePosition as jest.Mock).mockResolvedValue(
+      structured as never,
+    );
+    (positionModel.createPosition as jest.Mock).mockResolvedValue(
+      structured as never,
+    );
+    (positionModel.countEmployees as jest.Mock).mockResolvedValue(0 as never);
+    (positionModel.countDirectReports as jest.Mock).mockResolvedValue(
+      0 as never,
+    );
+    (orgStructure.countHolders as jest.Mock).mockResolvedValue(0 as never);
+    (orgValidation.assertPositionPlacement as jest.Mock).mockResolvedValue(
+      undefined as never,
+    );
+  });
+
+  it("membuat jabatan memeriksa letaknya di struktur", async () => {
+    await request(app)
+      .post("/api/v1/positions")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        code: "SENIOR",
+        name: "Senior Engineer",
+        department_id: UNIT_A,
+        reports_to_position_id: SUPERIOR_ID,
+      });
+
+    expect(orgValidation.assertPositionPlacement).toHaveBeenCalledWith({
+      positionId: null,
+      department_id: UNIT_A,
+      reports_to_position_id: SUPERIOR_ID,
+      is_unit_head: false,
+    });
+  });
+
+  it("menolak jabatan tanpa unit", async () => {
+    const res = await request(app)
+      .post("/api/v1/positions")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ code: "SENIOR", name: "Senior Engineer" });
+
+    expect(res.status).toBe(400);
+    expect(positionModel.createPosition).not.toHaveBeenCalled();
+  });
+
+  it("kode yang sama boleh dipakai di unit lain", async () => {
+    await request(app)
+      .post("/api/v1/positions")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ code: "STAFF", name: "Staff", department_id: UNIT_B });
+
+    expect(positionModel.findByCode).toHaveBeenCalledWith("STAFF", UNIT_B);
+  });
+
+  it("menolak letak yang melanggar aturan struktur", async () => {
+    const { BadRequest } = await import("../../src/helpers/appError.js");
+    (orgValidation.assertPositionPlacement as jest.Mock).mockRejectedValue(
+      BadRequest("A position cannot report to itself") as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ reports_to_position_id: SUPERIOR_ID });
+
+    expect(res.status).toBe(400);
+    expect(positionModel.updatePosition).not.toHaveBeenCalled();
+  });
+
+  it("perubahan yang tidak menyentuh struktur tidak memeriksa letaknya", async () => {
+    await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Staff Senior" });
+
+    expect(orgValidation.assertPositionPlacement).not.toHaveBeenCalled();
+  });
+
+  it("pindah unit menyesuaikan departemen pemegangnya dalam satu transaksi", async () => {
+    (positionModel.updatePosition as jest.Mock).mockResolvedValue({
+      ...structured,
+      department_id: UNIT_B,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ department_id: UNIT_B, reports_to_position_id: SUPERIOR_ID });
+
+    expect(res.status).toBe(200);
+    expect(mockClient.query).toHaveBeenCalledWith("BEGIN");
+    expect(positionModel.syncHolderDepartments).toHaveBeenCalledWith(
+      mockClient,
+      POSITION_ID,
+      UNIT_B,
+    );
+    expect(mockClient.query).toHaveBeenCalledWith("COMMIT");
+  });
+
+  it("menolak melepas jabatan dari unitnya", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ department_id: null });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("kuota kursi tidak boleh di bawah jumlah pemegang sekarang", async () => {
+    (orgStructure.countHolders as jest.Mock).mockResolvedValue(3 as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ max_holders: 2 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("3 holders");
+  });
+
+  it("jabatan lama tanpa unit tidak boleh diberi atasan sebelum unitnya diisi", async () => {
+    (positionModel.findById as jest.Mock).mockResolvedValue({
+      ...structured,
+      department_id: null,
+      reports_to_position_id: null,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ reports_to_position_id: SUPERIOR_ID });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.field).toBe("department_id");
+    expect(orgValidation.assertPositionPlacement).not.toHaveBeenCalled();
+    expect(positionModel.updatePosition).not.toHaveBeenCalled();
+  });
+
+  it("menolak memindah jabatan ke unit lain selama masih punya bawahan", async () => {
+    (positionModel.countDirectReports as jest.Mock).mockResolvedValue(
+      2 as never,
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ department_id: UNIT_B });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.direct_report_count).toBe(2);
+    expect(positionModel.updatePosition).not.toHaveBeenCalled();
+  });
+
+  it("mengubah atasan jabatan mengalihkan pengajuan cuti yang menunggu", async () => {
+    (approvalRouting.rerouteSafely as jest.Mock).mockResolvedValue([
+      { request_id: "r1" },
+    ] as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ reports_to_position_id: "77777777-7777-4777-8777-777777777777" });
+
+    expect(res.status).toBe(200);
+    expect(approvalRouting.rerouteSafely).toHaveBeenCalledTimes(1);
+  });
+
+  it("mengubah nama jabatan tidak memicu pengalihan", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Senior Software Engineer" });
+
+    expect(res.status).toBe(200);
+    expect(approvalRouting.rerouteSafely).not.toHaveBeenCalled();
+  });
+
+  it("menolak menghapus jabatan yang masih punya bawahan", async () => {
+    (positionModel.countDirectReports as jest.Mock).mockResolvedValue(
+      2 as never,
+    );
+
+    const res = await request(app)
+      .delete(`/api/v1/positions/${POSITION_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.direct_report_count).toBe(2);
+    expect(positionModel.softDeletePosition).not.toHaveBeenCalled();
   });
 });

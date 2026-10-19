@@ -33,7 +33,10 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { assertPositionCapacity } from "../helpers/orgValidation.js";
+import { forgetSession } from "../helpers/sessionStore.js";
 import { paginationMeta } from "../helpers/pagination.js";
+import { rerouteSafely } from "../helpers/approvalRouting.js";
 
 // Satu masalah pada satu kolom
 interface FieldError {
@@ -94,18 +97,65 @@ async function checkRelations(
           )
       : null,
     data.position_id
-      ? positionModel
-          .findById(data.position_id)
-          .then((pos) =>
-            pos
-              ? null
-              : { field: "position_id", message: "Position not found" },
-          )
+      ? positionModel.findById(data.position_id).then((pos) => {
+          if (!pos) {
+            return { field: "position_id", message: "Position not found" };
+          }
+
+          // Departemen karyawan diturunkan dari unit jabatannya, jadi
+          // keduanya tidak boleh menunjuk unit yang berbeda
+          if (
+            data.department_id &&
+            pos.department_id &&
+            pos.department_id !== data.department_id
+          ) {
+            return {
+              field: "position_id",
+              message: `Position ${pos.name} belongs to a different unit than the selected department`,
+            };
+          }
+
+          return null;
+        })
       : null,
     data.manager_id ? checkManager(data.manager_id, currentId) : null,
   ]);
 
   return results.filter((error): error is FieldError => error !== null);
+}
+
+// baru: isi departemen dari unit jabatan + cek kuota kursi
+// Menempatkan karyawan di jabatannya: departemen diisi dari unit jabatan,
+// dan kuota kursi jabatan diperiksa (V7). rows boleh berisi beberapa karyawan
+// sekaligus, jadi kuota dihitung dari jumlah yang masuk ke jabatan yang sama.
+// exceptEmployeeId dipakai saat mengubah, supaya karyawan itu sendiri tidak
+// ikut terhitung sebagai pemegang lama
+async function placeInPositions(
+  rows: RelationFields[],
+  exceptEmployeeId?: string,
+): Promise<void> {
+  const incoming = new Map<string, number>();
+
+  for (const row of rows) {
+    if (row.position_id) {
+      incoming.set(row.position_id, (incoming.get(row.position_id) ?? 0) + 1);
+    }
+  }
+
+  for (const [positionId, count] of incoming) {
+    const position = await positionModel.findById(positionId);
+    if (!position) continue;
+
+    await assertPositionCapacity(position, exceptEmployeeId, count);
+
+    if (!position.department_id) continue;
+
+    for (const row of rows) {
+      if (row.position_id === positionId) {
+        row.department_id = position.department_id;
+      }
+    }
+  }
 }
 
 // Pembungkus untuk jalur yang cukup berhenti di masalah pertama
@@ -583,6 +633,9 @@ export async function CreateEmployeeController(
       rejectFailedRows(failed, rawRows, isMany, context, occurredAt);
     }
 
+    // baru: cek kuota & departemen pas tambah karyawan
+    await placeInPositions(rows);
+
     // Hash dibuat sebelum transaksi dimulai. Argon2 sengaja lambat, jadi
     // koneksi database tidak ikut ditahan selama puluhan password dihitung
     const hashed = await hashPasswords(rows);
@@ -666,6 +719,15 @@ export async function UpdateEmployeeController(
 
     await assertRelationsExist(data, id);
 
+    // baru: cek kuota & departemen kalau jabatan ganti
+    // Kuota dan departemen hanya diperiksa bila jabatannya benar-benar berganti
+    if (data.position_id && data.position_id !== existing.position_id) {
+      await placeInPositions([data], id);
+    } else if (data.position_id) {
+      const position = await positionModel.findById(data.position_id);
+      if (position?.department_id) data.department_id = position.department_id;
+    }
+
     if (data.phone) {
       const usedPhone = await employeeModel.findByPhone(data.phone, id);
       if (usedPhone) throw Conflict("Phone number is already registered");
@@ -685,12 +747,24 @@ export async function UpdateEmployeeController(
       );
     }
 
+    // baru: jabatan/atasan/status berubah -> pindahin penyetuju cuti pending
+    // Jabatan, pengecualian atasan, atau status aktif menentukan siapa atasan
+    // siapa. Pengajuan cuti yang masih menunggu dialihkan bila atasannya berubah
+    const structural =
+      data.position_id !== undefined ||
+      data.manager_id !== undefined ||
+      data.is_active !== undefined;
+    const rerouted = structural ? await rerouteSafely() : [];
+
     activity.success({
       action: "employee.update",
       entity: "employee",
       entity_id: id,
       summary: `Employee ${existing.full_name} updated`,
-      metadata: { fields: Object.keys(data) },
+      metadata: {
+        fields: Object.keys(data),
+        rerouted_leave_requests: rerouted.length,
+      },
     });
 
     res.json({
@@ -732,12 +806,22 @@ export async function DeleteEmployeeController(
       }
     });
 
+    // setelah COMMIT, supaya cache tidak terisi ulang dengan akun yang
+    // ternyata batal dihapus
+    if (existing.user_id) await forgetSession(existing.user_id);
+
+    // Pengajuan cuti bawahan yang menunggu keputusan karyawan ini dialihkan
+    const rerouted = await rerouteSafely();
+
     activity.success({
       action: "employee.delete",
       entity: "employee",
       entity_id: id,
       summary: `Employee ${existing.full_name} deleted`,
-      metadata: { employee_number: existing.employee_number },
+      metadata: {
+        employee_number: existing.employee_number,
+        rerouted_leave_requests: rerouted.length,
+      },
     });
 
     res.json({ success: true, message: "Employee deleted successfully" });

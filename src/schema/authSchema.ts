@@ -80,6 +80,11 @@ export const resendVerificationSchema = z.object({
   email: emailField,
 });
 
+// baru: query email buat endpoint kode QA
+export const verificationCodeQuerySchema = z.object({
+  email: emailField,
+});
+
 export const forgotPasswordSchema = z.object({
   email: emailField,
 });

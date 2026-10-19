@@ -216,9 +216,23 @@ function buildFilter(params: ListAttendanceParams, values: unknown[]): string {
     conditions.push(`a.employee_id = $${values.length}::uuid`);
   }
 
+  // Bawahan langsung: yang atasannya ditetapkan manual ke manager_id ini, atau
+  // yang tanpa pengecualian manual dan jabatannya melapor ke jabatan manager_id
   if (params.manager_id) {
     values.push(params.manager_id);
-    conditions.push(`e.manager_id = $${values.length}::uuid`);
+    // ubah: bawahan juga dihitung dari struktur jabatan
+    const manager = `$${values.length}::uuid`;
+
+    conditions.push(
+      `(e.manager_id = ${manager}
+        OR (e.manager_id IS NULL AND e.position_id IN (
+          SELECT p.id FROM positions p
+          WHERE p.deleted_at IS NULL
+            AND p.reports_to_position_id = (
+              SELECT position_id FROM employees WHERE id = ${manager}
+            )
+        )))`,
+    );
   }
 
   if (params.department_id) {

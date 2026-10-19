@@ -147,7 +147,7 @@ describe("createDepartment", () => {
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     // Batas cuti bersamaan kosong berarti tanpa batas
-    expect(values).toEqual(["IT", "Teknologi Informasi", null]);
+    expect(values).toEqual(["IT", "Teknologi Informasi", null, null, null]);
   });
 
   it("menyimpan batas cuti bersamaan bila diisi", async () => {
@@ -162,7 +162,7 @@ describe("createDepartment", () => {
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("max_concurrent_leave");
-    expect(values).toEqual(["IT", "Teknologi Informasi", 2]);
+    expect(values).toEqual(["IT", "Teknologi Informasi", 2, null, null]);
   });
 
   it("mengembalikan departemen yang baru dibuat", async () => {
@@ -410,5 +410,122 @@ describe("findByName", () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
     expect(await departmentModel.findByName("Baru")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------
+// Unit organisasi bertingkat
+// ---------------------------------------------------------------
+const PARENT_ID = "77777777-7777-4777-8777-777777777777";
+
+function lastQuery(): [string, unknown[]] {
+  return mockQuery.mock.calls.at(-1) as [string, unknown[]];
+}
+
+describe("createDepartment sebagai unit organisasi", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [fakeDepartment] } as never);
+  });
+
+  it("menyimpan unit induk dan jenis unit", async () => {
+    await departmentModel.createDepartment({
+      code: "TECH",
+      name: "Direktorat Teknologi",
+      parent_id: PARENT_ID,
+      unit_type: "directorate",
+    });
+
+    const [sql, values] = lastQuery();
+
+    expect(sql).toContain("$4::uuid, COALESCE($5, 'department')");
+    expect(values).toEqual([
+      "TECH",
+      "Direktorat Teknologi",
+      null,
+      PARENT_ID,
+      "directorate",
+    ]);
+  });
+});
+
+describe("updateDepartment sebagai unit organisasi", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [fakeDepartment] } as never);
+  });
+
+  it("memakai cast uuid untuk unit induk", async () => {
+    await departmentModel.updateDepartment(DEPARTMENT_ID, {
+      parent_id: PARENT_ID,
+      unit_type: "division",
+    });
+
+    const [sql] = lastQuery();
+
+    expect(sql).toContain("parent_id = $1::uuid");
+    expect(sql).toContain("unit_type = $2");
+  });
+});
+
+describe("isUnitInSubtree", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menelusuri sub-unit secara rekursif", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ found: true }] } as never);
+
+    expect(
+      await departmentModel.isUnitInSubtree(DEPARTMENT_ID, PARENT_ID),
+    ).toBe(true);
+
+    const [sql, values] = lastQuery();
+
+    expect(sql).toContain("WITH RECURSIVE cabang");
+    expect(sql).toContain("JOIN cabang c ON d.parent_id = c.id");
+    expect(sql).toContain("c.kedalaman < $3::int");
+    expect(values).toEqual([DEPARTMENT_ID, PARENT_ID, 15]);
+  });
+});
+
+describe("findUnitAncestry", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("mengembalikan unit itu sendiri lalu induknya, terdekat lebih dulu", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [{ id: DEPARTMENT_ID }, { id: PARENT_ID }],
+    } as never);
+
+    expect(await departmentModel.findUnitAncestry(DEPARTMENT_ID)).toEqual([
+      DEPARTMENT_ID,
+      PARENT_ID,
+    ]);
+
+    const [sql] = lastQuery();
+
+    expect(sql).toContain("JOIN induk i ON d.id = i.parent_id");
+    expect(sql).toContain("ORDER BY kedalaman ASC");
+  });
+});
+
+describe("countChildUnits dan countPositions", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [{ count: "2" }] } as never);
+  });
+
+  it("menghitung sub-unit yang belum dihapus", async () => {
+    expect(await departmentModel.countChildUnits(DEPARTMENT_ID)).toBe(2);
+    expect(lastQuery()[0]).toContain(
+      "parent_id = $1::uuid AND deleted_at IS NULL",
+    );
+  });
+
+  it("menghitung jabatan di dalam unit", async () => {
+    expect(await departmentModel.countPositions(DEPARTMENT_ID)).toBe(2);
+    expect(lastQuery()[0]).toContain("FROM positions");
   });
 });

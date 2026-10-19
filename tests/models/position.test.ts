@@ -53,14 +53,32 @@ describe("findAll", () => {
     expect(sql).toContain("deleted_at IS NULL");
   });
 
-  it("mengurutkan dari level terendah lalu nama", async () => {
+  it("mengurutkan per unit, kepala unit lebih dulu, jabatan lama di akhir", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
     await positionModel.findAll();
 
     const [sql] = mockQuery.mock.calls[0] as [string];
 
-    expect(sql).toContain("ORDER BY level ASC, name ASC");
+    expect(sql).toContain(
+      "ORDER BY d.name ASC NULLS LAST, p.is_unit_head DESC, p.name ASC",
+    );
+  });
+
+  // nama jabatan hanya unik per unit, jadi unit dan atasannya ikut dikirim
+  it("menyertakan nama unit dan nama atasan jabatan", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await positionModel.findAll();
+
+    const [sql] = mockQuery.mock.calls[0] as [string];
+
+    expect(sql).toContain("d.name AS department_name");
+    expect(sql).toContain("s.name AS reports_to_position_name");
+    expect(sql).toContain("LEFT JOIN departments d ON d.id = p.department_id");
+    expect(sql).toContain(
+      "LEFT JOIN positions s ON s.id = p.reports_to_position_id",
+    );
   });
 });
 
@@ -102,21 +120,48 @@ describe("findByCode", () => {
     jest.clearAllMocks();
   });
 
-  it("mencari berdasarkan kolom code", async () => {
+  // Kode jabatan unik per unit, bukan global
+  it("mencari kode di dalam satu unit", async () => {
     mockQuery.mockResolvedValue({ rows: [fakePosition] } as never);
 
-    await positionModel.findByCode("SWE");
+    await positionModel.findByCode(
+      "SWE",
+      "99999999-9999-4999-8999-999999999999",
+    );
 
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("code = $1");
-    expect(values).toEqual(["SWE"]);
+    expect(sql).toContain("department_id IS NOT DISTINCT FROM $2::uuid");
+    expect(values).toEqual([
+      "SWE",
+      "99999999-9999-4999-8999-999999999999",
+      null,
+    ]);
+  });
+
+  it("mengecualikan dirinya sendiri saat dipakai untuk perubahan", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await positionModel.findByCode(
+      "SWE",
+      "99999999-9999-4999-8999-999999999999",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("id <> $3::uuid");
+    expect(values[2]).toBe("11111111-1111-4111-8111-111111111111");
   });
 
   it("mengembalikan null jika kode belum dipakai", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    const position = await positionModel.findByCode("BARU");
+    const position = await positionModel.findByCode(
+      "BARU",
+      "99999999-9999-4999-8999-999999999999",
+    );
 
     expect(position).toBeNull();
   });
@@ -137,7 +182,37 @@ describe("createPosition", () => {
 
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
-    expect(values).toEqual(["SWE", "Software Engineer", 3]);
+    expect(values).toEqual([
+      "SWE",
+      "Software Engineer",
+      3,
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("menyimpan unit, atasan jabatan, kepala unit, dan kuota kursi", async () => {
+    await positionModel.createPosition({
+      code: "LEAD",
+      name: "Tech Lead",
+      department_id: "99999999-9999-4999-8999-999999999999",
+      reports_to_position_id: "22222222-2222-4222-8222-222222222222",
+      is_unit_head: true,
+      max_holders: 1,
+    });
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+
+    expect(sql).toContain("$4::uuid, $5::uuid");
+    expect(sql).toContain("COALESCE($6::boolean, false), $7::int");
+    expect(values.slice(3)).toEqual([
+      "99999999-9999-4999-8999-999999999999",
+      "22222222-2222-4222-8222-222222222222",
+      true,
+      1,
+    ]);
   });
 
   it("memakai level bawaan jika tidak dikirim", async () => {
@@ -307,14 +382,23 @@ describe("findByName", () => {
   it("membandingkan nama tanpa membedakan huruf besar-kecil dan spasi tepi", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    await positionModel.findByName(" Engineering ");
+    await positionModel.findByName(
+      " Engineering ",
+      "99999999-9999-4999-8999-999999999999",
+    );
 
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(sql).toContain("lower(btrim(name)) = lower(btrim($1))");
     expect(sql).toContain("FROM positions");
     expect(sql).toContain("deleted_at IS NULL");
-    expect(values).toEqual([" Engineering ", null]);
+    // nama jabatan unik per unit
+    expect(sql).toContain("department_id IS NOT DISTINCT FROM $2::uuid");
+    expect(values).toEqual([
+      " Engineering ",
+      "99999999-9999-4999-8999-999999999999",
+      null,
+    ]);
   });
 
   it("mengecualikan dirinya sendiri saat dipakai untuk perubahan", async () => {
@@ -322,18 +406,198 @@ describe("findByName", () => {
 
     await positionModel.findByName(
       "Engineering",
+      "99999999-9999-4999-8999-999999999999",
       "11111111-1111-4111-8111-111111111111",
     );
 
     const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
-    expect(sql).toContain("id <> $2::uuid");
-    expect(values[1]).toBe("11111111-1111-4111-8111-111111111111");
+    expect(sql).toContain("id <> $3::uuid");
+    expect(values[2]).toBe("11111111-1111-4111-8111-111111111111");
   });
 
   it("mengembalikan null bila tidak ada yang sama", async () => {
     mockQuery.mockResolvedValue({ rows: [] } as never);
 
     expect(await positionModel.findByName("Baru")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------
+// Hierarki jabatan
+// ---------------------------------------------------------------
+const UNIT_ID = "99999999-9999-4999-8999-999999999999";
+const SUPERIOR_ID = "55555555-5555-4555-8555-555555555555";
+
+function lastQuery(): [string, unknown[]] {
+  return mockQuery.mock.calls.at(-1) as [string, unknown[]];
+}
+
+describe("isPositionInSubtree", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menelusuri bawahan secara rekursif dari jabatan itu", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ found: true }] } as never);
+
+    const found = await positionModel.isPositionInSubtree(
+      POSITION_ID,
+      SUPERIOR_ID,
+    );
+
+    const [sql, values] = lastQuery();
+
+    expect(found).toBe(true);
+    expect(sql).toContain("WITH RECURSIVE cabang");
+    expect(sql).toContain("JOIN cabang c ON p.reports_to_position_id = c.id");
+    expect(sql).toContain("c.kedalaman < $3::int");
+    expect(values).toEqual([POSITION_ID, SUPERIOR_ID, 15]);
+  });
+
+  it("false bila calon atasan berada di luar cabangnya", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ found: false }] } as never);
+
+    expect(
+      await positionModel.isPositionInSubtree(POSITION_ID, SUPERIOR_ID),
+    ).toBe(false);
+  });
+});
+
+describe("depthOf", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menghitung jumlah tingkat sampai puncak", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ depth: 3 }] } as never);
+
+    expect(await positionModel.depthOf(POSITION_ID)).toBe(3);
+
+    const [sql] = lastQuery();
+
+    expect(sql).toContain("JOIN atasan a ON p.id = a.reports_to_position_id");
+    expect(sql).toContain("COALESCE(MAX(kedalaman), 0)");
+  });
+
+  it("jabatan puncak bernilai 0", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ depth: 0 }] } as never);
+
+    expect(await positionModel.depthOf(POSITION_ID)).toBe(0);
+  });
+});
+
+describe("findRoots", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+  });
+
+  // jabatan lama tanpa unit belum masuk struktur, jadi bukan puncak
+  it("hanya menghitung jabatan yang sudah punya unit", async () => {
+    await positionModel.findRoots();
+
+    const [sql, values] = lastQuery();
+
+    expect(sql).toContain("reports_to_position_id IS NULL");
+    expect(sql).toContain("department_id IS NOT NULL");
+    expect(values).toEqual([null]);
+  });
+
+  it("mengecualikan jabatan yang sedang diubah", async () => {
+    await positionModel.findRoots(POSITION_ID);
+
+    expect(lastQuery()[1]).toEqual([POSITION_ID]);
+  });
+});
+
+describe("findUnitHead", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+  });
+
+  it("mencari kepala unit yang belum dihapus", async () => {
+    await positionModel.findUnitHead(UNIT_ID, POSITION_ID);
+
+    const [sql, values] = lastQuery();
+
+    expect(sql).toContain("department_id = $1::uuid AND is_unit_head");
+    expect(sql).toContain("id <> $2::uuid");
+    expect(values).toEqual([UNIT_ID, POSITION_ID]);
+  });
+});
+
+describe("countDirectReports", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("menghitung jabatan yang melapor langsung", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ count: "2" }] } as never);
+
+    expect(await positionModel.countDirectReports(POSITION_ID)).toBe(2);
+    expect(lastQuery()[0]).toContain("reports_to_position_id = $1::uuid");
+  });
+});
+
+describe("syncHolderDepartments", () => {
+  it("memindahkan departemen pemegang jabatan ke unit barunya", async () => {
+    const client = { query: jest.fn(() => Promise.resolve({ rowCount: 4 })) };
+
+    const moved = await positionModel.syncHolderDepartments(
+      client as never,
+      POSITION_ID,
+      UNIT_ID,
+    );
+
+    const [sql, values] = client.query.mock.calls[0] as unknown as [
+      string,
+      unknown[],
+    ];
+
+    expect(moved).toBe(4);
+    expect(sql).toContain("SET department_id = $2::uuid");
+    expect(sql).toContain("department_id IS DISTINCT FROM $2::uuid");
+    expect(values).toEqual([POSITION_ID, UNIT_ID]);
+  });
+});
+
+describe("updatePosition dengan struktur", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery.mockResolvedValue({ rows: [fakePosition] } as never);
+  });
+
+  it("memakai cast untuk kolom hierarki", async () => {
+    await positionModel.updatePosition(POSITION_ID, {
+      department_id: UNIT_ID,
+      reports_to_position_id: SUPERIOR_ID,
+      is_unit_head: true,
+      max_holders: 2,
+    });
+
+    const [sql] = lastQuery();
+
+    expect(sql).toContain("department_id = $1::uuid");
+    expect(sql).toContain("reports_to_position_id = $2::uuid");
+    expect(sql).toContain("is_unit_head = $3::boolean");
+    expect(sql).toContain("max_holders = $4::int");
+  });
+
+  it("menjalankan UPDATE lewat klien transaksi bila diberikan", async () => {
+    const client = {
+      query: jest.fn(() => Promise.resolve({ rows: [fakePosition] })),
+    };
+
+    await positionModel.updatePosition(
+      POSITION_ID,
+      { department_id: UNIT_ID },
+      undefined,
+      client as never,
+    );
+
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });

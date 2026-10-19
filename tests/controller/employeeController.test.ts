@@ -26,7 +26,13 @@ jest.unstable_mockModule("../../src/models/user.js", () => ({
   softDeleteUser: jest.fn(),
   findPending: jest.fn(),
   setEmailVerified: jest.fn(),
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
@@ -63,6 +69,13 @@ jest.unstable_mockModule("../../src/models/department.js", () => ({
   countEmployees: jest.fn(),
 }));
 
+jest.unstable_mockModule("../../src/models/orgStructure.js", () => ({
+  findLineManagerForPosition: jest.fn(() => Promise.resolve(null)),
+  countHolders: jest.fn(() => Promise.resolve(0)),
+  findLineManager: jest.fn(() => Promise.resolve(null)),
+  loadOrgChart: jest.fn(),
+}));
+
 jest.unstable_mockModule("../../src/models/position.js", () => ({
   findAll: jest.fn(),
   findById: jest.fn(),
@@ -77,6 +90,7 @@ const userModel = await import("../../src/models/user.js");
 const employeeModel = await import("../../src/models/employee.js");
 const departmentModel = await import("../../src/models/department.js");
 const positionModel = await import("../../src/models/position.js");
+const orgStructure = await import("../../src/models/orgStructure.js");
 const { logger } = await import("../../src/config/logger.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
@@ -2136,5 +2150,137 @@ describe("nomor telepon karyawan harus unik", () => {
 
     expect(res.status).toBe(409);
     expect(employeeModel.updateEmployee).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------
+// Penempatan karyawan di struktur jabatan
+// ---------------------------------------------------------------
+describe("penempatan karyawan di jabatan", () => {
+  const OTHER_DEPARTMENT_ID = "77777777-7777-4777-8777-777777777777";
+  const STRUCTURED_POSITION = {
+    id: POSITION_ID,
+    code: "SENIOR",
+    name: "Senior Engineer",
+    department_id: DEPARTMENT_ID,
+    reports_to_position_id: null,
+    is_unit_head: false,
+    max_holders: null as number | null,
+  };
+
+  beforeEach(() => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+    (employeeModel.updateEmployee as jest.Mock).mockResolvedValue(
+      fakeEmployee as never,
+    );
+    (departmentModel.findById as jest.Mock).mockResolvedValue(
+      fakeDepartment as never,
+    );
+    (positionModel.findById as jest.Mock).mockResolvedValue(
+      STRUCTURED_POSITION as never,
+    );
+    (orgStructure.countHolders as jest.Mock).mockResolvedValue(0 as never);
+  });
+
+  function patch(body: Record<string, unknown>) {
+    return request(app)
+      .patch(`/api/v1/employees/${EMPLOYEE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+  }
+
+  it("departemen karyawan diisi otomatis dari unit jabatannya", async () => {
+    const res = await patch({ position_id: POSITION_ID });
+
+    const [, data] = (employeeModel.updateEmployee as jest.Mock).mock
+      .calls[0] as [string, Record<string, unknown>];
+
+    expect(res.status).toBe(200);
+    expect(data.department_id).toBe(DEPARTMENT_ID);
+  });
+
+  it("menolak jabatan yang berada di unit lain dari departemen yang dipilih", async () => {
+    const res = await patch({
+      position_id: POSITION_ID,
+      department_id: OTHER_DEPARTMENT_ID,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("belongs to a different unit");
+    expect(employeeModel.updateEmployee).not.toHaveBeenCalled();
+  });
+
+  it("menolak jabatan yang kuota kursinya sudah penuh", async () => {
+    (positionModel.findById as jest.Mock).mockResolvedValue({
+      ...STRUCTURED_POSITION,
+      max_holders: 1,
+    } as never);
+    (orgStructure.countHolders as jest.Mock).mockResolvedValue(1 as never);
+
+    const res = await patch({ position_id: POSITION_ID });
+
+    expect(res.status).toBe(409);
+    expect(employeeModel.updateEmployee).not.toHaveBeenCalled();
+  });
+
+  it("karyawan yang sudah memegang jabatan itu tidak dihitung dua kali", async () => {
+    (employeeModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      position_id: POSITION_ID,
+    } as never);
+    (positionModel.findById as jest.Mock).mockResolvedValue({
+      ...STRUCTURED_POSITION,
+      max_holders: 1,
+    } as never);
+    (orgStructure.countHolders as jest.Mock).mockResolvedValue(1 as never);
+
+    const res = await patch({
+      position_id: POSITION_ID,
+      full_name: "Ganti Nama",
+    });
+
+    expect(res.status).toBe(200);
+    expect(orgStructure.countHolders).not.toHaveBeenCalled();
+  });
+
+  it("menambah beberapa karyawan sekaligus ikut memeriksa kuota", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+    (positionModel.findById as jest.Mock).mockResolvedValue({
+      ...STRUCTURED_POSITION,
+      max_holders: 1,
+    } as never);
+
+    const res = await request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send([
+        { ...validCreate, position_id: POSITION_ID },
+        {
+          ...validCreate,
+          email: "kedua@awan.io",
+          phone: "+628123456780",
+          position_id: POSITION_ID,
+        },
+      ]);
+
+    expect(res.status).toBe(409);
+    expect(employeeModel.createEmployees).not.toHaveBeenCalled();
+  });
+
+  it("karyawan baru ditempatkan di departemen jabatannya", async () => {
+    (userModel.findByEmail as jest.Mock).mockResolvedValue(null as never);
+
+    const res = await request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...validCreate, position_id: POSITION_ID });
+
+    const [, rows] = (employeeModel.createEmployees as jest.Mock).mock
+      .calls[0] as [unknown, { data: { department_id?: string } }[]];
+
+    expect(res.status).toBe(201);
+    expect(rows[0]!.data.department_id).toBe(DEPARTMENT_ID);
   });
 });

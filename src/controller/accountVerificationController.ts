@@ -30,11 +30,13 @@ import {
   AppError,
   Conflict,
   BadRequest,
+  NotFound,
   TooManyRequests,
 } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { notifyAccountNeedsApproval } from "../helpers/notify.js";
 import { plural } from "../helpers/plural.js";
+import { forgetSession } from "../helpers/sessionStore.js";
 
 const CODE_VALID_MINUTES = 10;
 const RESET_LINK_TTL_MINUTES = 15;
@@ -445,6 +447,65 @@ export async function ResendVerificationController(
   }
 }
 
+// baru: khusus admin, ambil kode verifikasi buat QA otomatis
+// Bantuan QA otomatis: admin menerbitkan kode verifikasi baru dan menerimanya
+// langsung di respons, tanpa membuka kotak masuk email.
+//
+// Kode lama tidak bisa dibaca ulang karena yang disimpan hanya hash argon2-nya,
+// jadi setiap panggilan menerbitkan kode baru dan membatalkan kode sebelumnya.
+// Email tidak dikirim. Hanya akun yang belum terverifikasi yang dilayani, dan
+// setiap panggilan dicatat di log aktivitas atas nama admin yang memanggil
+export async function QaVerificationCodeController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const activity = startActivity(req);
+  const { email } = res.locals.query as { email: string };
+
+  try {
+    const user = await userModel.findByEmail(email);
+    if (!user) throw NotFound("No account is registered with this email");
+
+    if (user.email_verified_at) {
+      throw Conflict("This email is already verified");
+    }
+
+    const code = await issueVerificationCode(email, requestMeta(req));
+
+    activity.success({
+      action: "auth.qa_verification_code",
+      entity: "user",
+      entity_id: user.id,
+      summary: `Verification code for ${email} issued to an admin for QA`,
+    });
+
+    // Kode rahasia, tidak boleh tersimpan di cache peramban atau proxy
+    res.set("Cache-Control", "no-store");
+    res.json({
+      success: true,
+      message:
+        "A new verification code was issued. Earlier codes no longer work.",
+      data: {
+        email,
+        code,
+        expires_in_minutes: CODE_VALID_MINUTES,
+      },
+    });
+  } catch (err) {
+    activity.failed({
+      action: "auth.qa_verification_code",
+      entity: "user",
+      summary: `Verification code for ${email} could not be issued for QA`,
+      metadata: {
+        reason: err instanceof AppError ? err.message : "unexpected error",
+      },
+    });
+
+    next(err);
+  }
+}
+
 export async function ForgotPasswordController(
   req: Request,
   res: Response,
@@ -542,6 +603,7 @@ export async function ResetPasswordController(
     const hashed = await hashPassword(password);
 
     await userModel.updatePassword(user.id, hashed);
+    await forgetSession(user.id);
 
     // Tautan lain dari permintaan sebelumnya ikut dibatalkan, supaya satu
     // email lama yang masih tersimpan tidak bisa dipakai mengganti password

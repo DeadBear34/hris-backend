@@ -4,7 +4,11 @@ import type { Notification } from "../models/notification.js";
 // tipe ini, jadi bentuknya tidak bisa berbeda-beda antar jalur
 export type NotificationEvent =
   | { event: "notification.created"; data: NotificationView }
-  | { event: "notification.cleared"; ids: string[] };
+  | { event: "notification.cleared"; ids: string[] }
+  // baru: event notif ditandai dibaca sama sistem
+  // ditandai dibaca oleh sistem, misalnya tugas persetujuan yang sudah
+  // diputus orang lain. Notifikasinya tetap ada sebagai riwayat
+  | { event: "notification.read"; ids: string[] };
 
 // Kolom yang boleh dilihat penerima. recipient_user_id dan entity tidak ikut
 export interface NotificationView {
@@ -46,11 +50,15 @@ export function parseEvent(value: unknown): NotificationEvent | null {
       : null;
   }
 
-  if (candidate.event === "notification.cleared") {
+  if (
+    // ubah: event read ikut dikenali
+    candidate.event === "notification.cleared" ||
+    candidate.event === "notification.read"
+  ) {
     const ids = (candidate as { ids?: unknown }).ids;
 
     return Array.isArray(ids) && ids.every((id) => typeof id === "string")
-      ? { event: "notification.cleared", ids }
+      ? { event: candidate.event, ids }
       : null;
   }
 

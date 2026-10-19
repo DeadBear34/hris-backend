@@ -4,7 +4,22 @@ import request from "supertest";
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
   pool: {
     connect: jest.fn(),
-    query: jest.fn(() => Promise.resolve({ rows: [] })),
+    // query sesi di middleware authenticate dijawab akun aktif, sisanya kosong
+    query: jest.fn((sql: unknown) =>
+      Promise.resolve(
+        String(sql).includes("is_active FROM users")
+          ? {
+              rows: [
+                {
+                  id: "session-user",
+                  password_changed_at: null,
+                  is_active: true,
+                },
+              ],
+            }
+          : { rows: [] },
+      ),
+    ),
   },
 }));
 

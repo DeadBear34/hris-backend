@@ -9,7 +9,13 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
   findById: jest.fn(),
   findByEmail: jest.fn(),
 }));
@@ -138,7 +144,11 @@ beforeEach(() => {
     url: "https://storage.test/signed",
     expires_in: 900,
   } as never);
-  (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+  (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+    id: "session-user",
+    password_changed_at: null,
+    is_active: true,
+  } as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
   );
@@ -346,6 +356,36 @@ describe("GET /api/v1/leave-requests/:id/attachments", () => {
       .set("Authorization", `Bearer ${employeeToken}`);
 
     expect(res.status).toBe(403);
+  });
+  // Kotak masuk pemegang leave.approve_all berisi semua pengajuan. Tanpa ini
+  // ia bisa menyetujui tetapi tidak bisa memeriksa lampiran yang diwajibkan
+  it("pemegang leave.approve_all boleh melihat lampiran pengajuan siapa pun", async () => {
+    const { pool } = await import("../../src/config/databaseConnection.js");
+    const { invalidateFeatureCache } =
+      await import("../../src/helpers/featureCache.js");
+    invalidateFeatureCache();
+
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: OTHER_ID,
+      position_id: "77777777-7777-4777-8777-777777777777",
+    } as never);
+    (pool.query as jest.Mock).mockImplementation(async (sql: unknown) =>
+      String(sql).includes("FROM position_features")
+        ? ({ rows: [{ code: "leave.approve_all" }] } as never)
+        : ({ rows: [] } as never),
+    );
+
+    const res = await request(app)
+      .get(`/api/v1/leave-requests/${REQUEST_ID}/attachments`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    (pool.query as jest.Mock).mockImplementation(
+      async () => ({ rows: [] }) as never,
+    );
+    invalidateFeatureCache();
+
+    expect(res.status).toBe(200);
   });
 });
 

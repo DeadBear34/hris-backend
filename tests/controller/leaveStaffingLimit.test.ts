@@ -15,7 +15,13 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
   findById: jest.fn(),
   findByEmail: jest.fn(),
 }));
@@ -233,7 +239,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   grantFeatures(["leave.approve_team"]);
   mockClient.query.mockResolvedValue({ rows: [] } as never);
-  (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+  (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+    id: "session-user",
+    password_changed_at: null,
+    is_active: true,
+  } as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
   );

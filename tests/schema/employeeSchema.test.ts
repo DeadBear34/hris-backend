@@ -5,6 +5,7 @@ import {
   updateEmployeeSchema,
   updateOwnProfileSchema,
 } from "../../src/schema/employeeSchema.js";
+import { todayInOfficeZone } from "../../src/helpers/timezone.js";
 
 const DEPARTMENT_ID = "33333333-3333-4333-8333-333333333333";
 const POSITION_ID = "44444444-4444-4444-8444-444444444444";
@@ -740,10 +741,14 @@ describe("usia dihitung secara kalender", () => {
     gender: "male",
   };
 
+  // Dihitung dari tanggal hari ini menurut zona waktu kantor, sama seperti
+  // skema. Memakai new Date() lalu toISOString() menghasilkan tanggal UTC,
+  // yang antara pukul 00.00 dan 07.00 WIB masih tertinggal sehari sehingga
+  // tes ini gagal setiap hari pada jam-jam itu
   function dateForAge(years: number, dayOffset = 0): string {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() - years);
-    d.setDate(d.getDate() + dayOffset);
+    const d = new Date(`${todayInOfficeZone()}T00:00:00Z`);
+    d.setUTCFullYear(d.getUTCFullYear() - years);
+    d.setUTCDate(d.getUTCDate() + dayOffset);
 
     return d.toISOString().slice(0, 10);
   }

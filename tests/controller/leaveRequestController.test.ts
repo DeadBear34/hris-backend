@@ -11,7 +11,13 @@ jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/models/user.js", () => ({
-  findSessionInfo: jest.fn(),
+  findSessionInfo: jest.fn(() =>
+    Promise.resolve({
+      id: "session-user",
+      password_changed_at: null,
+      is_active: true,
+    }),
+  ),
   findById: jest.fn(),
   findByEmail: jest.fn(),
 }));
@@ -44,6 +50,15 @@ jest.unstable_mockModule("../../src/models/leaveRequest.js", () => ({
   approveRequest: jest.fn(),
   rejectRequest: jest.fn(),
   cancelRequest: jest.fn(),
+}));
+
+// Penyetuju dihitung dari struktur jabatan; perhitungannya diuji tersendiri
+// di tests/models/orgStructure.test.ts
+jest.unstable_mockModule("../../src/models/orgStructure.js", () => ({
+  findLineManagerForPosition: jest.fn(() => Promise.resolve(null)),
+  findLineManager: jest.fn(() => Promise.resolve(null)),
+  countHolders: jest.fn(() => Promise.resolve(0)),
+  loadOrgChart: jest.fn(),
 }));
 
 jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
@@ -107,6 +122,7 @@ const employeeModel = await import("../../src/models/employee.js");
 const holidayModel = await import("../../src/models/holiday.js");
 const leaveTypeModel = await import("../../src/models/leaveType.js");
 const leaveRequestModel = await import("../../src/models/leaveRequest.js");
+const orgStructure = await import("../../src/models/orgStructure.js");
 const balanceModel = await import("../../src/models/leaveBalance.js");
 const attachmentModel = await import("../../src/models/leaveAttachment.js");
 const attendanceModel = await import("../../src/models/attendance.js");
@@ -273,7 +289,11 @@ beforeEach(() => {
   invalidateFeatureCache();
   grantFeatures(["leave.approve_team"]);
   mockClient.query.mockResolvedValue({ rows: [] } as never);
-  (userModel.findSessionInfo as jest.Mock).mockResolvedValue(null as never);
+  (userModel.findSessionInfo as jest.Mock).mockResolvedValue({
+    id: "session-user",
+    password_changed_at: null,
+    is_active: true,
+  } as never);
   (employeeModel.findByUserId as jest.Mock).mockResolvedValue(
     fakeEmployee as never,
   );
@@ -418,61 +438,69 @@ describe("jatah cuti tahunan otomatis saat pengajuan", () => {
 });
 
 describe("penentuan penyetuju", () => {
-  it("mengarahkan pengajuan ke atasan langsung", async () => {
-    await submitRequest();
-
+  function approverOfCreatedRequest() {
     const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
       .calls[0] as [unknown, { approver_id: string | null }];
 
-    expect(data.approver_id).toBe(MANAGER_ID);
+    return data.approver_id;
+  }
+
+  function lineManagerIs(employee_id: string | null) {
+    (orgStructure.findLineManager as jest.Mock).mockResolvedValue(
+      (employee_id
+        ? {
+            employee_id,
+            full_name: "Atasan",
+            user_id: "atasan-user",
+            position_id: "jabatan-atasan",
+            position_name: "Tech Lead",
+            source: "structure",
+            levels_up: 1,
+          }
+        : null) as never,
+    );
+  }
+
+  it("mengarahkan pengajuan ke atasan hasil hitungan struktur jabatan", async () => {
+    lineManagerIs(MANAGER_ID);
+
+    await submitRequest();
+
+    expect(orgStructure.findLineManager).toHaveBeenCalledWith(EMPLOYEE_ID);
+    expect(approverOfCreatedRequest()).toBe(MANAGER_ID);
   });
 
-  it("mengosongkan penyetuju saat pemohon tidak punya atasan", async () => {
+  // manager_id di data karyawan tidak lagi dibaca langsung oleh controller;
+  // pengecualian manual itu sudah diperhitungkan di dalam findLineManager
+  it("tidak membaca manager_id karyawan secara langsung", async () => {
     (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
       ...fakeEmployee,
-      manager_id: null,
+      manager_id: OTHER_ID,
     } as never);
+    lineManagerIs(MANAGER_ID);
 
     await submitRequest();
 
-    const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
-      .calls[0] as [unknown, { approver_id: string | null }];
+    expect(approverOfCreatedRequest()).toBe(MANAGER_ID);
+  });
 
-    expect(data.approver_id).toBeNull();
+  it("mengosongkan penyetuju saat tidak ada atasan aktif sampai puncak", async () => {
+    lineManagerIs(null);
+
+    await submitRequest();
+
+    expect(approverOfCreatedRequest()).toBeNull();
   });
 
   it("aturan yang sama berlaku untuk pemohon berperan admin", async () => {
-    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
-      ...fakeEmployee,
-      manager_id: MANAGER_ID,
-    } as never);
+    lineManagerIs(MANAGER_ID);
 
     await request(app)
       .post("/api/v1/leave-requests")
       .set("Authorization", `Bearer ${adminToken}`)
       .send(requestBody);
 
-    const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
-      .calls[0] as [unknown, { approver_id: string | null }];
-
-    expect(data.approver_id).toBe(MANAGER_ID);
-  });
-
-  it("admin tanpa atasan juga memakai jalur tanpa penyetuju", async () => {
-    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
-      ...fakeEmployee,
-      manager_id: null,
-    } as never);
-
-    await request(app)
-      .post("/api/v1/leave-requests")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .send(requestBody);
-
-    const [, data] = (leaveRequestModel.createRequest as jest.Mock).mock
-      .calls[0] as [unknown, { approver_id: string | null }];
-
-    expect(data.approver_id).toBeNull();
+    expect(approverOfCreatedRequest()).toBe(MANAGER_ID);
   });
 });
 
@@ -843,6 +871,37 @@ describe("PATCH /api/v1/leave-requests/:id/approve", () => {
     expect(mockClient.query).not.toHaveBeenCalled();
     expect(mockClient.release).not.toHaveBeenCalled();
   });
+
+  // leave.view_all hanya untuk melihat, bukan wewenang memutus
+  it("menolak pemegang leave.view_all yang tidak punya fitur penyetuju", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
+  it("menolak penyetuju yang ditugaskan bila ia hanya memegang leave.view_all", async () => {
+    (employeeModel.findByUserId as jest.Mock).mockResolvedValue({
+      ...fakeEmployee,
+      id: MANAGER_ID,
+    } as never);
+    grantFeatures(["leave.view_all"]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.approveRequest).not.toHaveBeenCalled();
+  });
+
+  it("pemegang leave.view_all tetap dapat menyetujui bila juga memegang leave.approve_all", async () => {
+    grantFeatures(["leave.view_all", "leave.approve_all"]);
+
+    const res = await approve();
+
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("kewajiban lampiran saat persetujuan", () => {
@@ -981,6 +1040,15 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
     const res = await reject();
 
     expect(res.status).toBe(400);
+  });
+
+  it("menolak pemegang leave.view_all yang tidak punya fitur penyetuju", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await reject(employeeToken);
+
+    expect(res.status).toBe(403);
+    expect(leaveRequestModel.rejectRequest).not.toHaveBeenCalled();
   });
 });
 
@@ -1317,6 +1385,19 @@ describe("daftar dan detail pengajuan", () => {
     expect(res.status).toBe(403);
   });
 
+  it("detail dapat dilihat pemegang leave.approve_all tanpa leave.view_all", async () => {
+    grantFeatures(["leave.approve_all"]);
+    (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
+      fakeRequest({ employee_id: OTHER_ID, approver_id: OTHER_ID }) as never,
+    );
+
+    const res = await request(app)
+      .get(`/api/v1/leave-requests/${REQUEST_ID}`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
   it("detail dapat dilihat admin", async () => {
     (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
       fakeRequest({ employee_id: OTHER_ID, approver_id: OTHER_ID }) as never,
@@ -1327,6 +1408,41 @@ describe("daftar dan detail pengajuan", () => {
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
+  });
+
+  it("pemegang leave.view_all melihat daftar seluruh pengajuan", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await request(app)
+      .get("/api/v1/leave-requests")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("pemegang leave.view_all dapat membuka detail pengajuan siapa pun", async () => {
+    grantFeatures(["leave.view_all"]);
+    (leaveRequestModel.findDetailById as jest.Mock).mockResolvedValue(
+      fakeRequest({ employee_id: OTHER_ID, approver_id: OTHER_ID }) as never,
+    );
+
+    const res = await request(app)
+      .get(`/api/v1/leave-requests/${REQUEST_ID}`)
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("kotak masuk persetujuan pemegang leave.view_all saja tetap kosong", async () => {
+    grantFeatures(["leave.view_all"]);
+
+    const res = await request(app)
+      .get("/api/v1/leave-requests/approvals")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(leaveRequestModel.listRequests).not.toHaveBeenCalled();
   });
 });
 

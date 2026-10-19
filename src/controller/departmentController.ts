@@ -5,6 +5,7 @@ import { Conflict, NotFound, BadRequest } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { plural } from "../helpers/plural.js";
+import { assertUnitParent, assertUnitMove } from "../helpers/orgValidation.js";
 
 export async function ListDepartmentController(
   _req: Request,
@@ -51,6 +52,9 @@ export async function CreateDepartmentController(
     const sameName = await departmentModel.findByName(data.name);
     if (sameName) throw Conflict("Department name is already in use");
 
+    // baru: cek induk unit valid
+    await assertUnitParent(null, data.parent_id);
+
     const department = await departmentModel.createDepartment(data);
 
     activity.success({
@@ -94,6 +98,14 @@ export async function UpdateDepartmentController(
     if (data.name) {
       const sameName = await departmentModel.findByName(data.name, id);
       if (sameName) throw Conflict("Department name is already in use");
+    }
+
+    // baru: cek pas unit dipindah ke induk lain
+    // V1: unit tidak boleh dipindah ke bawah dirinya sendiri atau sub-unitnya
+    if (data.parent_id !== undefined && data.parent_id !== existing.parent_id) {
+      await assertUnitParent(id, data.parent_id);
+      // V4: kepala unit harus tetap melapor ke jabatan di jajaran induknya
+      await assertUnitMove(id, data.parent_id);
     }
 
     if (data.is_active === false && existing.is_active) {
@@ -151,11 +163,33 @@ export async function DeleteDepartmentController(
     const existing = await departmentModel.findById(id);
     if (!existing) throw NotFound("Department not found");
 
-    const count = await departmentModel.countEmployees(id);
+    const [count, children, positions] = await Promise.all([
+      departmentModel.countEmployees(id),
+      // ubah: sekarang ikut ngecek sub-unit & jabatan
+      departmentModel.countChildUnits(id),
+      departmentModel.countPositions(id),
+    ]);
+
     if (count > 0) {
       throw BadRequest(
         `Department cannot be deleted because it still has ${plural(count, "employee")}. Move them to another department first.`,
         { employee_count: count },
+      );
+    }
+
+    // baru: gak boleh hapus unit yang masih ada isinya
+    // V6: sub-unit dan jabatan di dalamnya akan kehilangan induk
+    if (children > 0) {
+      throw BadRequest(
+        `Unit cannot be deleted because it still has ${plural(children, "sub-unit")}. Move or delete them first.`,
+        { child_unit_count: children },
+      );
+    }
+
+    if (positions > 0) {
+      throw BadRequest(
+        `Unit cannot be deleted because it still has ${plural(positions, "position")}. Move or delete them first.`,
+        { position_count: positions },
       );
     }
 

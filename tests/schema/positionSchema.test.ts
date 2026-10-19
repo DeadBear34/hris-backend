@@ -7,6 +7,7 @@ import {
 const validPosition = {
   code: "SWE",
   name: "Software Engineer",
+  department_id: "99999999-9999-4999-8999-999999999999",
 };
 
 describe("createPositionSchema", () => {

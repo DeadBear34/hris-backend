@@ -14,26 +14,46 @@ import { BadRequest, Forbidden, NotFound } from "../helpers/appError.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 import { startActivity } from "../helpers/activityLog.js";
 
+// "view" untuk melihat daftar dan membuka berkas, "upload" untuk menambah
+// lampiran. Keduanya dibedakan karena lampiran ikut menentukan keputusan:
+// cuti yang wajib berlampiran tidak bisa disetujui sebelum ada berkasnya
+type AttachmentAccess = "view" | "upload";
+
 async function assertMayAccess(
   req: Request,
   res: Response,
   request: LeaveRequest,
+  mode: AttachmentAccess = "view",
 ): Promise<string> {
   const employee = await requireRequestEmployee(req, res);
-  const canViewAll = await hasFeature(req, res, "leave.view_all");
 
-  const allowed =
-    canViewAll ||
-    request.employee_id === employee.id ||
-    request.approver_id === employee.id;
+  const involved =
+    request.employee_id === employee.id || request.approver_id === employee.id;
 
-  if (!allowed) {
+  if (involved) return employee.id;
+
+  // leave.view_all hanya untuk melihat. Pemegangnya tidak boleh menambah
+  // berkas ke pengajuan orang lain, supaya fitur itu tidak bisa dipakai
+  // memengaruhi keputusan. Admin tetap boleh, sesuai aturan admin melewati
+  // seluruh pemeriksaan fitur
+  if (mode === "upload") {
+    if (req.user?.role === "admin") return employee.id;
+
     throw Forbidden(
-      "You don't have access to this leave request's attachments",
+      "Only the requester or the assigned approver can upload attachments to this leave request",
     );
   }
 
-  return employee.id;
+  // approve_all ikut boleh melihat: pengajuan yang wajib berlampiran tidak
+  // bisa disetujui sebelum penyetujunya memeriksa berkasnya
+  const [canViewAll, canApproveAll] = await Promise.all([
+    hasFeature(req, res, "leave.view_all"),
+    // ubah: approve_all sekarang boleh lihat lampiran
+    hasFeature(req, res, "leave.approve_all"),
+  ]);
+  if (canViewAll || canApproveAll) return employee.id;
+
+  throw Forbidden("You don't have access to this leave request's attachments");
 }
 
 export async function UploadLeaveAttachmentController(
@@ -64,7 +84,7 @@ export async function UploadLeaveAttachmentController(
     const request = await leaveRequestModel.findById(id);
     if (!request) throw NotFound("Leave request not found");
 
-    const employeeId = await assertMayAccess(req, res, request);
+    const employeeId = await assertMayAccess(req, res, request, "upload");
 
     const mime = detectImageMimeType(uploadedFile.buffer);
 

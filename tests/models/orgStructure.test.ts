@@ -169,3 +169,35 @@ describe("loadOrgChart", () => {
     expect(sqlOf(2)).toContain("position_id IS NOT NULL");
   });
 });
+
+describe("findLineManagerForPosition", () => {
+  it("berangkat dari jabatan, bukan dari karyawan", async () => {
+    mockQuery.mockResolvedValue({ rows: [manager("structure")] } as never);
+
+    const result = await orgStructure.findLineManagerForPosition(POSITION_ID);
+
+    expect(result?.full_name).toBe("Tammam Manager Engineering");
+    expect(sqlOf(0)).toContain("WHERE p.id = $1::uuid");
+    expect(sqlOf(0)).toContain("r.tingkat > 0");
+    expect(paramsOf(0)).toEqual([POSITION_ID, null, MAX_TREE_DEPTH]);
+  });
+
+  it("mengecualikan karyawan yang sedang diubah", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await orgStructure.findLineManagerForPosition(POSITION_ID, EMPLOYEE_ID);
+
+    expect(sqlOf(0)).toContain("($2::uuid IS NULL OR e.id <> $2::uuid)");
+    expect(paramsOf(0)[1]).toBe(EMPLOYEE_ID);
+  });
+
+  it("hanya pemegang aktif yang dihitung, jabatan kosong dilewati", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    const result = await orgStructure.findLineManagerForPosition(POSITION_ID);
+
+    expect(result).toBeNull();
+    expect(sqlOf(0)).toContain("e.is_active = true");
+    expect(sqlOf(0)).toContain("ORDER BY r.tingkat ASC");
+  });
+});

@@ -48,3 +48,8 @@ export const updatePositionSchema = createPositionSchema.partial().extend({
   is_active: z.boolean().optional(),
   updated_at: expectedUpdatedAt,
 });
+
+// baru: query pratinjau atasan; karyawan yang sedang diubah dikecualikan
+export const positionLineManagerQuerySchema = z.object({
+  exclude_employee_id: z.uuid("Invalid employee").optional(),
+});

@@ -53,6 +53,7 @@ jest.unstable_mockModule("../../src/helpers/orgValidation.js", () => ({
 }));
 
 jest.unstable_mockModule("../../src/models/orgStructure.js", () => ({
+  findLineManagerForPosition: jest.fn(() => Promise.resolve(null)),
   countHolders: jest.fn(() => Promise.resolve(0)),
   findLineManager: jest.fn(() => Promise.resolve(null)),
   loadOrgChart: jest.fn(),

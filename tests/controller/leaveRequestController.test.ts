@@ -55,6 +55,7 @@ jest.unstable_mockModule("../../src/models/leaveRequest.js", () => ({
 // Penyetuju dihitung dari struktur jabatan; perhitungannya diuji tersendiri
 // di tests/models/orgStructure.test.ts
 jest.unstable_mockModule("../../src/models/orgStructure.js", () => ({
+  findLineManagerForPosition: jest.fn(() => Promise.resolve(null)),
   findLineManager: jest.fn(() => Promise.resolve(null)),
   countHolders: jest.fn(() => Promise.resolve(0)),
   loadOrgChart: jest.fn(),

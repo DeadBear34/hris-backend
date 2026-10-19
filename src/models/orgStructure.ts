@@ -99,6 +99,47 @@ export async function findLineManager(
   );
 }
 
+// baru: pratinjau atasan buat form karyawan, sebelum datanya disimpan
+// Atasan yang akan didapat pemegang jabatan ini, dihitung dengan aturan yang
+// sama seperti findStructuralManager tetapi berangkat dari jabatan. Dipakai
+// form karyawan untuk menampilkan atasan otomatis sebelum data disimpan.
+// exceptEmployeeId: karyawan yang sedang diubah, supaya ia tidak terpilih
+// sebagai atasannya sendiri bila masih memegang jabatan atasan itu
+export async function findLineManagerForPosition(
+  position_id: string,
+  exceptEmployeeId?: string,
+  db: Executor = pool,
+): Promise<LineManager | null> {
+  const result = await db.query<LineManager>(
+    `WITH RECURSIVE rantai AS (
+       SELECT p.id, p.reports_to_position_id, 0 AS tingkat
+       FROM positions p
+       WHERE p.id = $1::uuid AND p.deleted_at IS NULL
+
+       UNION ALL
+
+       SELECT p.id, p.reports_to_position_id, r.tingkat + 1
+       FROM positions p
+       JOIN rantai r ON p.id = r.reports_to_position_id
+       WHERE p.deleted_at IS NULL AND r.tingkat < $3::int
+     )
+     SELECT e.id AS employee_id, e.full_name, e.user_id,
+            p.id AS position_id, p.name AS position_name,
+            'structure' AS source, r.tingkat AS levels_up
+     FROM rantai r
+     JOIN positions p ON p.id = r.id
+     JOIN employees e ON e.position_id = r.id
+     WHERE r.tingkat > 0
+       AND ($2::uuid IS NULL OR e.id <> $2::uuid)
+       AND ${ACTIVE_HOLDER}
+     ORDER BY r.tingkat ASC, e.join_date ASC, e.created_at ASC
+     LIMIT 1`,
+    [position_id, exceptEmployeeId ?? null, MAX_TREE_DEPTH],
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function countHolders(
   position_id: string,
   exceptEmployeeId?: string,

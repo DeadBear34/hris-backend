@@ -312,6 +312,12 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     description:
       "Atasan yang menjadi penyetuju cuti karyawan ini. `source: override` berarti diisi manual lewat `manager_id`; `structure` berarti dihitung dari atasan jabatan, dengan jabatan kosong dilewati (`levels_up` lebih dari 1). `line_manager: null` berarti tidak ada atasan aktif sampai puncak, sehingga cutinya ditangani HR dan admin.",
   },
+  "GET /positions/:id/line-manager": {
+    tag: "Struktur Organisasi",
+    summary: "Pratinjau atasan untuk sebuah jabatan",
+    description:
+      "Atasan yang akan didapat karyawan bila memegang jabatan ini, dihitung dari atasan jabatan dengan jabatan kosong dilewati. Dipakai form tambah dan ubah karyawan untuk mengisi atasan otomatis sebelum disimpan. Isi `exclude_employee_id` dengan karyawan yang sedang diubah supaya ia tidak terpilih sebagai atasannya sendiri. Pengecualian manual (`manager_id`) tidak dihitung.",
+  },
   "GET /positions": { tag: "Jabatan & Hak Akses", summary: "Daftar jabatan" },
   "GET /positions/:id": {
     tag: "Jabatan & Hak Akses",

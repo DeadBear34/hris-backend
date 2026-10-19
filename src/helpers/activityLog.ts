@@ -37,6 +37,7 @@ export type ActivityAction =
   | "auth.register"
   | "auth.verify_email"
   | "auth.resend_verification"
+  // baru: log admin ngambil kode verifikasi buat QA
   | "auth.qa_verification_code"
   | "auth.forgot_password"
   | "auth.reset_password"

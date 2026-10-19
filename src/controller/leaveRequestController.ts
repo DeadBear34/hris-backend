@@ -100,6 +100,7 @@ async function getRequester(req: Request, res: Response): Promise<Requester> {
 function canView(request: LeaveRequest, requester: Requester): boolean {
   return (
     requester.canViewAll ||
+    // ubah: approve_all boleh buka detail pengajuan
     requester.canApproveAll ||
     request.employee_id === requester.employee.id ||
     request.approver_id === requester.employee.id
@@ -522,6 +523,7 @@ export async function CreateLeaveRequestController(
       }
     }
 
+    // ubah: penyetuju diambil dari struktur jabatan, bukan manager_id doang
     // Penyetuju satu tingkat: atasan langsung hasil hitungan struktur jabatan
     // (atau pengecualian manual), dibekukan saat pengajuan dibuat. Null berarti
     // tidak ada atasan aktif sampai puncak, sehingga ditangani HR dan admin
@@ -546,6 +548,7 @@ export async function CreateLeaveRequestController(
         end_date,
         total_days: totalDays,
         reason: reason ?? null,
+        // ubah: pakai hasil findLineManager
         approver_id: lineManager?.employee_id ?? null,
       });
 

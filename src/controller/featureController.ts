@@ -187,6 +187,7 @@ export async function FeatureMatrixController(
           code: p.code,
           name: p.name,
           level: p.level,
+          // baru: info unit jabatan buat matriks fitur
           // nama jabatan hanya unik per unit, jadi unitnya ikut ditampilkan
           department_id: p.department_id,
           department_name: p.department_name,

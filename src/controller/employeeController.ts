@@ -124,6 +124,7 @@ async function checkRelations(
   return results.filter((error): error is FieldError => error !== null);
 }
 
+// baru: isi departemen dari unit jabatan + cek kuota kursi
 // Menempatkan karyawan di jabatannya: departemen diisi dari unit jabatan,
 // dan kuota kursi jabatan diperiksa (V7). rows boleh berisi beberapa karyawan
 // sekaligus, jadi kuota dihitung dari jumlah yang masuk ke jabatan yang sama.
@@ -632,6 +633,7 @@ export async function CreateEmployeeController(
       rejectFailedRows(failed, rawRows, isMany, context, occurredAt);
     }
 
+    // baru: cek kuota & departemen pas tambah karyawan
     await placeInPositions(rows);
 
     // Hash dibuat sebelum transaksi dimulai. Argon2 sengaja lambat, jadi
@@ -717,6 +719,7 @@ export async function UpdateEmployeeController(
 
     await assertRelationsExist(data, id);
 
+    // baru: cek kuota & departemen kalau jabatan ganti
     // Kuota dan departemen hanya diperiksa bila jabatannya benar-benar berganti
     if (data.position_id && data.position_id !== existing.position_id) {
       await placeInPositions([data], id);
@@ -744,6 +747,7 @@ export async function UpdateEmployeeController(
       );
     }
 
+    // baru: jabatan/atasan/status berubah -> pindahin penyetuju cuti pending
     // Jabatan, pengecualian atasan, atau status aktif menentukan siapa atasan
     // siapa. Pengajuan cuti yang masih menunggu dialihkan bila atasannya berubah
     const structural =

@@ -1,3 +1,4 @@
+// baru: aturan struktur V1-V8 (gak boleh muter, kuota kursi, dll)
 import * as departmentModel from "../models/department.js";
 import { MAX_TREE_DEPTH } from "./orgConstants.js";
 import * as positionModel from "../models/position.js";

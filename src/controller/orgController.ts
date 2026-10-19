@@ -1,3 +1,4 @@
+// baru: endpoint bagan organisasi & atasan langsung
 import type { Request, Response, NextFunction } from "express";
 import * as employeeModel from "../models/employee.js";
 import { findLineManager, loadOrgChart } from "../models/orgStructure.js";

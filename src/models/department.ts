@@ -15,6 +15,7 @@ export interface Department {
   id: string;
   code: string;
   name: string;
+  // baru: kolom hierarki unit
   // unit induk: perusahaan -> direktorat -> divisi -> departemen -> tim
   parent_id: string | null;
   unit_type: UnitType;
@@ -167,6 +168,7 @@ export async function countEmployees(id: string): Promise<number> {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+// baru: cek unit ada di bawah unit lain (anti muter)
 // true bila candidate adalah unit itu sendiri atau salah satu keturunannya.
 // Dipakai sebelum memindahkan unit, supaya unit tidak menjadi induk dari
 // dirinya sendiri secara tidak langsung (A -> B -> A)
@@ -193,6 +195,7 @@ export async function isUnitInSubtree(
   return result.rows[0]?.found === true;
 }
 
+// baru: daftar unit dari diri sendiri sampai puncak
 // Unit itu sendiri beserta seluruh induknya sampai puncak, terdekat lebih dulu
 export async function findUnitAncestry(unitId: string): Promise<string[]> {
   const result = await pool.query<{ id: string }>(
@@ -214,6 +217,7 @@ export async function findUnitAncestry(unitId: string): Promise<string[]> {
   return result.rows.map((row) => row.id);
 }
 
+// baru: hitung sub-unit
 export async function countChildUnits(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM departments
@@ -223,6 +227,7 @@ export async function countChildUnits(id: string): Promise<number> {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+// baru: hitung jabatan di unit
 export async function countPositions(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM positions

@@ -1,3 +1,4 @@
+// baru: rute /org/tree dan /employees/:id/line-manager
 import { Router } from "express";
 import {
   OrgTreeController,

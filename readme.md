@@ -1427,12 +1427,13 @@ Kode fitur jabatan juga disimpan di `res.locals` dalam bentuk janji (promise). B
 Hierarki mengikuti pola _Position Management_ (SAP OM, Oracle HCM, Workday): **unit organisasi bertingkat → jabatan per unit → pemegang jabatan**. Hierarki disimpan di struktur jabatan, bukan di data orang, sehingga pemegang yang keluar tidak memutus rantai atasan dan penggantinya langsung mewarisi posisinya.
 
 ```
-PT Awan (unit company)                      CEO
+PT Archenix Komputasi Indonesia (company)   CEO
 ├── Direktorat Teknologi (directorate)      └── CTO
-│   └── Engineering (department)                └── Head of Engineering (kepala unit)
-│                                                   └── Senior Engineer
-│                                                       ├── Software Engineer
-│                                                       └── Intern
+│   └── Engineering (department)                └── Engineering Manager (kepala unit)
+│                                                   └── Engineering Lead
+│                                                       ├── Senior Backend Developer
+│                                                       ├── Backend Developer
+│                                                       └── Junior Backend Developer
 └── ...
 ```
 
@@ -1848,11 +1849,11 @@ Untuk database yang datanya harus dipertahankan, jangan pakai `schema.sql`; jala
 
 ### Isi seed
 
-| Data                | Isi                                                                                                                                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Struktur organisasi | 10 unit (PT Awan → 3 direktorat → 6 departemen), 18 jabatan beserta atasan jabatan, kuota kursi, dan paket hak akses per jabatan                                                                                          |
-| Akun                | 3 admin yang menduduki CEO, CTO, dan COO; 6 kepala departemen; 15 karyawan. Jabatan CPO sengaja kosong untuk memperlihatkan jabatan kosong yang dilewati                                                                  |
-| Lainnya             | Jadwal kerja bawaan, hari libur nasional tahun berjalan, jatah cuti tahunan tahun ini dan tahun depan, 5 contoh pengajuan cuti yang penyetujunya dihitung dari struktur, dan absensi bulan berjalan dengan status beragam |
+| Data                | Isi                                                                                                                                                                                                                                                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Struktur organisasi | PT Archenix Komputasi Indonesia (data center dan AI): 12 unit (perusahaan → 3 direktorat → 8 departemen), 44 jabatan dengan jenjang Junior, Mid, Senior, Lead/Supervisor, Manager, dan Direktur (kolom `level` 2 sampai 7), beserta atasan jabatan, kuota kursi, dan paket hak akses |
+| Akun                | 3 admin yang menduduki CEO, CTO, dan COO; 8 manajer departemen; 25 karyawan. Jabatan CPO sengaja kosong untuk memperlihatkan jabatan kosong yang dilewati                                                                                                                            |
+| Lainnya             | Jadwal kerja bawaan, hari libur nasional tahun berjalan, jatah cuti tahunan tahun ini dan tahun depan, 5 contoh pengajuan cuti yang penyetujunya dihitung dari struktur, dan absensi bulan berjalan dengan status beragam                                                            |
 
 Atasan setiap karyawan dihitung dari struktur jabatan, jadi seed tidak mengisi `manager_id`. Pola absensi ditentukan dari sisa bagi, bukan acak, sehingga hasilnya sama setiap kali dijalankan.
 

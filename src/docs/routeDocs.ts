@@ -147,6 +147,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
       },
     ],
   },
+  // baru: dokumentasi endpoint QA
   "GET /auth/verification-code": {
     tag: "Auth",
     summary: "Ambil kode verifikasi email untuk QA (khusus admin)",
@@ -297,6 +298,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     description: "Ditolak (400) bila masih ada karyawan.",
   },
 
+  // baru: dokumentasi struktur organisasi
   // Jabatan & hak akses
   "GET /org/tree": {
     tag: "Struktur Organisasi",

@@ -1,3 +1,4 @@
+// baru: query atasan langsung & data bagan organisasi
 import { pool } from "../config/databaseConnection.js";
 import { MAX_TREE_DEPTH } from "../helpers/orgConstants.js";
 import type { Executor } from "./user.js";

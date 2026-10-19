@@ -134,6 +134,7 @@ export async function SetUserActiveController(
     // yang masih berlaku
     await forgetSession(id);
 
+    // baru: akun di-nonaktif/aktifkan -> cek ulang penyetuju cuti pending
     // Akun nonaktif tidak bisa menyetujui apa pun; pengajuan bawahannya yang
     // menunggu dialihkan ke atasan berikutnya (dan sebaliknya saat diaktifkan)
     const rerouted = await rerouteSafely();

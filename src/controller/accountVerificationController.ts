@@ -447,6 +447,7 @@ export async function ResendVerificationController(
   }
 }
 
+// baru: khusus admin, ambil kode verifikasi buat QA otomatis
 // Bantuan QA otomatis: admin menerbitkan kode verifikasi baru dan menerimanya
 // langsung di respons, tanpa membuka kotak masuk email.
 //

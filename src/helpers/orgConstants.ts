@@ -1,3 +1,4 @@
+// baru: konstanta struktur organisasi, dipisah biar gampang di-mock
 // Jenis unit organisasi, dari yang paling luas sampai paling sempit
 export const UNIT_TYPES = [
   "company",

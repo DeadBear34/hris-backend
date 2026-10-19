@@ -1,3 +1,4 @@
+// baru: pindahin penyetuju cuti pending kalau struktur berubah
 import { logger } from "../config/logger.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import { findLineManager } from "../models/orgStructure.js";

@@ -16,6 +16,7 @@ export const createDepartmentSchema = z.object({
     .min(3, "Department name must be at least 3 characters")
     .max(100, "Department name must be at most 100 characters"),
 
+  // baru: unit induk & jenis unit
   // unit induk; null berarti unit puncak (misalnya unit perusahaan)
   parent_id: z.uuid("Invalid parent unit").nullable().optional(),
 

@@ -48,6 +48,7 @@ function clearPending(type: NewNotification["type"], entity_id: string): void {
     });
 }
 
+// baru: tugas yang udah beres ditandai dibaca
 // Tugas yang sudah ditindak ditandai dibaca untuk semua penerimanya. Tetap
 // tersimpan sebagai riwayat, tetapi lencana tidak lagi menghitungnya dan
 // penyetuju lain tidak mengira tugas itu masih menunggu
@@ -140,6 +141,7 @@ async function userIdOf(employee_id: string): Promise<string | null> {
   return employee?.user_id ?? null;
 }
 
+// baru: notif pas penyetuju dialihkan
 export interface ApproverReassignedInput {
   request_id: string;
   requester_name: string;
@@ -204,6 +206,7 @@ export interface LeaveDecidedInput {
   request_id: string;
   requester_employee_id: string;
   requester_name?: string;
+  // baru: atasan ikut dikabari hasil keputusan
   // atasan yang ditugaskan, diberi tahu walau yang memutus orang lain
   approver_employee_id?: string | null;
   decision: "approved" | "rejected";
@@ -265,6 +268,7 @@ export async function notifyLeaveDecided(
     // Notifikasi untuk yang menyetujui/memutus dan pemegang leave.view_all (kecuali pemohon)
     const otherRecipients = new Set(viewAllUsers);
     if (input.decider_user_id) otherRecipients.add(input.decider_user_id);
+    // baru: atasan ikut dapat notif keputusan
     // atasan langsung perlu tahu cuti bawahannya sudah diputus, terutama bila
     // yang memutus HR atau admin
     if (approverUserId) otherRecipients.add(approverUserId);
@@ -332,6 +336,7 @@ export function clearAccountApproval(user_id: string): void {
   clearPending("account_approval_needed", user_id);
 }
 
+// ubah: sekarang ditandai dibaca, bukan dibiarin
 // Pemohon membatalkan sendiri. Notifikasi "perlu disetujui" tetap disimpan
 // sebagai riwayat, tetapi ditandai dibaca karena sudah tidak bisa disetujui
 export function clearLeaveApproval(request_id: string): void {

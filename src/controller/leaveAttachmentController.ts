@@ -48,6 +48,7 @@ async function assertMayAccess(
   // bisa disetujui sebelum penyetujunya memeriksa berkasnya
   const [canViewAll, canApproveAll] = await Promise.all([
     hasFeature(req, res, "leave.view_all"),
+    // ubah: approve_all sekarang boleh lihat lampiran
     hasFeature(req, res, "leave.approve_all"),
   ]);
   if (canViewAll || canApproveAll) return employee.id;

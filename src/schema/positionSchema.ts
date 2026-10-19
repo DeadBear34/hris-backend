@@ -22,6 +22,7 @@ export const createPositionSchema = z.object({
     .max(10, "Level must be at most 10")
     .optional(),
 
+  // baru: jabatan wajib punya unit, plus atasan jabatan & kuota
   // unit pemilik jabatan: departemen, direktorat, atau unit perusahaan
   department_id: z.uuid("Unit is required"),
 

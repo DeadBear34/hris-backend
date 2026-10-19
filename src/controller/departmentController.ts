@@ -52,6 +52,7 @@ export async function CreateDepartmentController(
     const sameName = await departmentModel.findByName(data.name);
     if (sameName) throw Conflict("Department name is already in use");
 
+    // baru: cek induk unit valid
     await assertUnitParent(null, data.parent_id);
 
     const department = await departmentModel.createDepartment(data);
@@ -99,6 +100,7 @@ export async function UpdateDepartmentController(
       if (sameName) throw Conflict("Department name is already in use");
     }
 
+    // baru: cek pas unit dipindah ke induk lain
     // V1: unit tidak boleh dipindah ke bawah dirinya sendiri atau sub-unitnya
     if (data.parent_id !== undefined && data.parent_id !== existing.parent_id) {
       await assertUnitParent(id, data.parent_id);
@@ -163,6 +165,7 @@ export async function DeleteDepartmentController(
 
     const [count, children, positions] = await Promise.all([
       departmentModel.countEmployees(id),
+      // ubah: sekarang ikut ngecek sub-unit & jabatan
       departmentModel.countChildUnits(id),
       departmentModel.countPositions(id),
     ]);
@@ -174,6 +177,7 @@ export async function DeleteDepartmentController(
       );
     }
 
+    // baru: gak boleh hapus unit yang masih ada isinya
     // V6: sub-unit dan jabatan di dalamnya akan kehilangan induk
     if (children > 0) {
       throw BadRequest(

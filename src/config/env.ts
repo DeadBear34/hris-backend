@@ -73,6 +73,7 @@ export const envSchema = z.object({
     z.enum(["true", "false"]).optional(),
   ),
 
+  // baru: saklar endpoint QA
   // Endpoint bantu QA seperti pengambilan kode verifikasi email. Kosong
   // berarti menyala di luar production dan mati di production
   QA_TOOLS_ENABLED: z.preprocess(

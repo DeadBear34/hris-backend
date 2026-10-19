@@ -1,3 +1,4 @@
+// baru: saklar endpoint bantu QA (QA_TOOLS_ENABLED)
 import type { Request, Response, NextFunction } from "express";
 import { env } from "../config/env.js";
 import { notFoundHandler } from "./errorHandler.js";

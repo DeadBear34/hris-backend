@@ -1,4 +1,3 @@
-// baru: pindahin penyetuju cuti pending kalau struktur berubah
 import { logger } from "../config/logger.js";
 import * as leaveRequestModel from "../models/leaveRequest.js";
 import { findLineManager } from "../models/orgStructure.js";
@@ -19,16 +18,22 @@ export interface RerouteResult {
 // baru tidak tahu ada pengajuan. Pola standar sistem HR adalah mengalihkan
 // persetujuan yang menunggu ke atasan yang berlaku sekarang.
 //
-// Semua pengajuan yang menunggu dihitung ulang, bukan hanya yang terdampak,
-// karena perubahan satu jabatan bisa menggeser atasan seluruh cabangnya.
-// Jumlah pengajuan yang menunggu di HRIS kecil, jadi biayanya wajar
+// Semua pengajuan yang menunggu diperiksa karena perubahan satu jabatan bisa
+// menggeser atasan seluruh cabangnya. Pengajuan milik karyawan yang sama
+// memakai satu hasil pencarian atasan selama proses pengalihan ini.
 export async function reroutePendingApprovals(): Promise<RerouteResult[]> {
   const pending = await leaveRequestModel.findPendingForRouting();
   const results: RerouteResult[] = [];
+  const managerByEmployee = new Map<string, string | null>();
 
   for (const request of pending) {
-    const manager = await findLineManager(request.employee_id);
-    const to = manager?.employee_id ?? null;
+    let to = managerByEmployee.get(request.employee_id);
+
+    if (to === undefined) {
+      const manager = await findLineManager(request.employee_id);
+      to = manager?.employee_id ?? null;
+      managerByEmployee.set(request.employee_id, to);
+    }
 
     if (to === request.approver_id) continue;
 

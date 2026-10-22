@@ -91,6 +91,34 @@ describe("findCodesByPosition", () => {
   });
 });
 
+describe("findUserIdByEmployeeWithFeature", () => {
+  it("membatasi pencarian pada satu karyawan dan akun aktif", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ user_id: USER_ID }] } as never);
+
+    const userId = await featureModel.findUserIdByEmployeeWithFeature(
+      EMPLOYEE_ID,
+      "leave.approve_team",
+    );
+
+    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("e.id = $1::uuid");
+    expect(sql).toContain("u.is_active = true");
+    expect(sql).toContain("u.role = 'admin'");
+    expect(sql).toContain("f.code = $2::text");
+    expect(values).toEqual([EMPLOYEE_ID, "leave.approve_team"]);
+    expect(userId).toBe(USER_ID);
+  });
+
+  it("mengembalikan null bila karyawan tidak memiliki fitur", async () => {
+    expect(
+      await featureModel.findUserIdByEmployeeWithFeature(
+        EMPLOYEE_ID,
+        "leave.approve_team",
+      ),
+    ).toBeNull();
+  });
+});
+
 describe("replacePositionFeatures", () => {
   it("menghapus seluruh pemberian lama lebih dulu", async () => {
     await featureModel.replacePositionFeatures(

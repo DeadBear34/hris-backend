@@ -98,24 +98,21 @@ export async function notifyLeaveSubmitted(
   input: LeaveSubmittedInput,
 ): Promise<void> {
   try {
-    const [approverUser, approveAll, approveTeam, requesterUser] =
-      await Promise.all([
-        input.approver_employee_id
-          ? userIdOf(input.approver_employee_id)
-          : null,
-        featureModel.findUserIdsWithFeature("leave.approve_all"),
-        input.approver_employee_id
-          ? featureModel.findUserIdsWithFeature("leave.approve_team")
-          : ([] as string[]),
-        userIdOf(input.requester_employee_id),
-      ]);
+    const [approverUser, approveAll, requesterUser] = await Promise.all([
+      input.approver_employee_id
+        ? featureModel.findUserIdByEmployeeWithFeature(
+            input.approver_employee_id,
+            "leave.approve_team",
+          )
+        : null,
+      featureModel.findUserIdsWithFeature("leave.approve_all"),
+      userIdOf(input.requester_employee_id),
+    ]);
 
-    // Set, supaya atasan yang sekaligus HR atau admin hanya menerima satu
+    // Set memastikan atasan yang sekaligus HR atau admin hanya menerima satu
     const recipients = new Set(approveAll);
 
-    if (approverUser && approveTeam.includes(approverUser)) {
-      recipients.add(approverUser);
-    }
+    if (approverUser) recipients.add(approverUser);
 
     if (requesterUser) recipients.delete(requesterUser);
 

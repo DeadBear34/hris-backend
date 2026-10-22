@@ -100,6 +100,38 @@ export async function findUserIdsWithFeature(code: string): Promise<string[]> {
   return result.rows.map((row) => row.user_id);
 }
 
+// Untuk satu penyetuju tertentu, cukup periksa akunnya. Mengambil seluruh
+// pemegang fitur hanya untuk mengecek satu orang menambah beban query dan data.
+export async function findUserIdByEmployeeWithFeature(
+  employee_id: string,
+  code: string,
+): Promise<string | null> {
+  const result = await pool.query<{ user_id: string }>(
+    `SELECT u.id AS user_id
+     FROM employees e
+     JOIN users u ON u.id = e.user_id
+     WHERE e.id = $1::uuid
+       AND e.deleted_at IS NULL
+       AND u.deleted_at IS NULL
+       AND u.is_active = true
+       AND (
+         u.role = 'admin'
+         OR EXISTS (
+           SELECT 1
+           FROM position_features pf
+           JOIN features f ON f.id = pf.feature_id
+           WHERE pf.position_id = e.position_id
+             AND f.code = $2::text
+             AND f.is_active = true
+         )
+       )
+     LIMIT 1`,
+    [employee_id, code],
+  );
+
+  return result.rows[0]?.user_id ?? null;
+}
+
 export async function findFeaturesByPosition(
   position_id: string,
 ): Promise<Feature[]> {

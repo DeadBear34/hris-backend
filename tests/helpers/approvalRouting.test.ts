@@ -148,6 +148,20 @@ describe("reroutePendingApprovals", () => {
     expect(notifyApproverReassigned).toHaveBeenCalledTimes(1);
   });
 
+  it("memakai satu pencarian atasan untuk beberapa pengajuan milik karyawan yang sama", async () => {
+    givenPending(pending("r1", OLD_MANAGER), {
+      ...pending("r2", OLD_MANAGER),
+      employee_id: "emp-r1",
+    });
+    givenManager(NEW_MANAGER);
+
+    const result = await reroutePendingApprovals();
+
+    expect(findLineManager).toHaveBeenCalledTimes(1);
+    expect(result.map((row) => row.request_id)).toEqual(["r1", "r2"]);
+    expect(notifyApproverReassigned).toHaveBeenCalledTimes(2);
+  });
+
   it("tanpa pengajuan menunggu tidak mencatat log", async () => {
     givenPending();
 

@@ -17,7 +17,6 @@
     "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "seed": "tsx src/scripts/seed.ts",
-    "docs:openapi": "tsx src/scripts/exportOpenApi.ts",
     "typecheck": "tsc --noEmit"
   },
   "repository": {

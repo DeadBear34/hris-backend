@@ -4,8 +4,9 @@ import {
   MAX_EMPLOYEES_PER_REQUEST,
 } from "../schema/employeeSchema.js";
 
-// Teks yang dibaca manusia untuk setiap endpoint, dalam bahasa Inggris
-// karena ikut tayang di docs.hris.click. Field, tipe, aturan validasi,
+// Teks yang dibaca manusia untuk setiap endpoint, dalam bahasa Inggris.
+// Hanya tayang di Dokumentasi API dalam aplikasi (fitur system.view_api_docs),
+// tidak di situs publik docs.hris.click. Field, tipe, aturan validasi,
 // autentikasi, dan hak akses TIDAK ditulis di sini: semuanya dibaca otomatis
 // dari route dan skema Zod-nya, sehingga tidak bisa tertinggal dari kode.
 // Tes memastikan setiap route punya entri di sini.

@@ -652,6 +652,27 @@ Tidak ada Redis atau layanan tambahan yang diperlukan.
 
 Origin yang tidak dikirim sama sekali tetap diterima, karena hanya peramban yang dapat disuruh menyambung oleh situs lain. `curl`, aplikasi mobile, dan pengujian tidak mengirim `Origin`.
 
+### Repositori publik
+
+Repositori ini publik. Keamanannya tidak bergantung pada kode yang dirahasiakan: siapa pun boleh membaca route dan aturannya, sedangkan akses tetap dijaga login, fitur jabatan, dan konfigurasi server.
+
+| Ada di repositori                                     | Hanya ada di server                                                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Kode, skema database, tes, `.env.example` tanpa nilai | `.env.production` di VM: `DATABASE_URL`, `JWT_SECRET`, kunci Supabase dan Resend, `CRON_SECRET`, `TUNNEL_TOKEN`    |
+| Pembangkit dokumentasi API (`src/docs/`)              | Dokumen API itu sendiri, dibangkitkan saat server berjalan dan hanya terbuka untuk pemegang `system.view_api_docs` |
+| Endpoint bantu QA beserta saklarnya                   | Nilai `QA_TOOLS_ENABLED`: kosong di production berarti endpoint mati                                               |
+| Workflow deploy                                       | Kunci SSH, host, dan user VM di GitHub Secrets (`VM_SSH_KEY`, `VM_HOST`, `VM_USER`, `VM_KNOWN_HOSTS`)              |
+| —                                                     | `src/scripts/seed.ts` (berisi email asli dan password awal akun contoh), selalu di `.gitignore`                    |
+
+Aturan untuk setiap commit:
+
+- Jangan pernah meng-commit nilai rahasia, email atau nomor telepon asli, maupun password. Contoh di dokumentasi memakai data fiktif.
+- CI menjalankan **gitleaks** pada setiap push dan pull request (`.gitleaks.toml`). Commit yang membawa kunci atau token gagal di CI.
+- Bila rahasia terlanjur ter-push, menghapus berkasnya saja tidak cukup karena riwayat Git tetap publik: **ganti nilainya** (rotasi) di server dan di layanan asalnya, baru bersihkan riwayatnya.
+- Akun hasil seed memakai password bawaan yang sama. Di production, ganti password akun admin dan akun yang dipakai sungguhan.
+
+Cara melaporkan celah keamanan ada di [SECURITY.md](SECURITY.md).
+
 ## Redis
 
 Redis bersifat **opsional**. Kalau `REDIS_URL` kosong, backend berjalan seperti biasa dan fitur yang memakai Redis dimatikan. Kalau Redis sempat mati, server tetap melayani permintaan dan menyambung ulang sendiri di latar belakang.
@@ -929,7 +950,7 @@ Satu karyawan dikirim sebagai objek:
 ```json
 {
   "email": "andi@awan.io",
-  "password": "12345678",
+  "password": "Initial#Pass2026",
   "full_name": "Andi Saputra",
   "phone": "+628110000101",
   "gender": "male"
@@ -942,14 +963,14 @@ Banyak karyawan dikirim sebagai array, **maksimal 20 per permintaan**:
 [
   {
     "email": "andi@awan.io",
-    "password": "12345678",
+    "password": "Initial#Pass2026",
     "full_name": "Andi Saputra",
     "phone": "+628110000101",
     "gender": "male"
   },
   {
     "email": "citra@awan.io",
-    "password": "12345678",
+    "password": "Initial#Pass2026",
     "full_name": "Citra Dewi",
     "phone": "+628110000102",
     "gender": "female"
@@ -1840,12 +1861,13 @@ Fitur baru yang mengubah salah satu kolom itu wajib memanggil `forgetSession(use
 
 Versi aplikasi ditulis di satu tempat, `version` pada `package.json`, dan mengikuti Semantic Versioning (`MAYOR.MINOR.PATCH`). Versi yang sedang berjalan tampil di `GET /health` dan di dokumen OpenAPI.
 
-| Berkas                             | Isi                                                  |
-| ---------------------------------- | ---------------------------------------------------- |
-| `CHANGELOG.md`                     | Perubahan setiap rilis (format Keep a Changelog)     |
-| `npm run docs:openapi -- <berkas>` | Ekspor dokumen OpenAPI untuk Referensi API per versi |
+| Berkas         | Isi                                              |
+| -------------- | ------------------------------------------------ |
+| `CHANGELOG.md` | Perubahan setiap rilis (format Keep a Changelog) |
 
-Aturan kapan angka versi naik, catatan rilis, dan dokumentasi per versi ada di repositori `hris-docs` (docs.hris.click), dalam Bahasa Inggris: halaman [Versioning Policy](https://docs.hris.click/versioning), [Changelog](https://docs.hris.click/changelog), dan [Release Process](https://docs.hris.click/release-process). Teks Referensi API (`src/docs/routeDocs.ts`) juga berbahasa Inggris karena ikut tayang di situs itu.
+`CHANGELOG.md` adalah catatan teknis untuk tim. Situs publik docs.hris.click (repositori `hris-docs`, Bahasa Inggris) berisi panduan pengguna dan [Release Notes](https://docs.hris.click/release-notes) yang ditulis dari sudut pandang pengguna, tanpa detail API maupun QA. Langkah rilis ada di `RELEASING.md` repositori itu.
+
+Referensi API tidak dipublikasikan. Dokumen OpenAPI hanya tersedia di menu Dokumentasi API dalam aplikasi untuk pemegang `system.view_api_docs`; teksnya (`src/docs/routeDocs.ts`) berbahasa Inggris. Panduan QA ada di [docs/qa/registration-testing.md](docs/qa/registration-testing.md).
 
 ## Data Contoh
 

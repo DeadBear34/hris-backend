@@ -1,0 +1,17 @@
+# Pemindaian rahasia (gitleaks) untuk repositori publik ini.
+# Memakai aturan bawaan gitleaks, ditambah pengecualian untuk nilai tiruan
+# yang memang sengaja ditulis: fixture tes dan variabel CI palsu.
+# Rahasia sungguhan hanya boleh ada di .env.production di VM dan GitHub Secrets.
+title = "hris-backend"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Nilai tiruan untuk tes dan CI"
+paths = [
+  '''^tests/''',
+  '''^\.github/workflows/ci\.yml$''',
+  '''^\.env\.example$''',
+  '''^package-lock\.json$''',
+]

@@ -33,7 +33,6 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 ### Added
 
 - The application version is exposed in `GET /health` (`version`) and in the OpenAPI document.
-- `npm run docs:openapi` exports the OpenAPI document for each release to docs.hris.click.
 - `npm audit` check in CI and Dependabot configuration.
 
 ### Changed

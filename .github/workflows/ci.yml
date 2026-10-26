@@ -18,6 +18,25 @@ permissions:
   contents: read
 
 jobs:
+  # Repositori ini publik: commit yang membawa kunci, token, atau password
+  # harus tertahan sebelum masuk. Yang dipindai hanya commit baru pada push
+  # atau pull request ini; pengecualian nilai tiruan ada di .gitleaks.toml
+  secrets:
+    name: Pindai rahasia
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test:
     name: Type check dan tes
     runs-on: ubuntu-latest

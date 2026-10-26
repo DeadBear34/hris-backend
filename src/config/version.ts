@@ -4,7 +4,8 @@ import { join } from "node:path";
 // Versi aplikasi diambil dari package.json, satu-satunya tempat versi ditulis.
 // Dibaca dari folder kerja proses: root repo saat development dan test, /app
 // di image Docker (Dockerfile menyalin package.json ke sana).
-// Aturan menaikkan versi ada di docs.hris.click, halaman Kebijakan Versi
+// Arti nomor versi dijelaskan di docs.hris.click/versioning, langkah rilis di
+// CHANGELOG.md dan RELEASING.md repositori hris-docs
 function readVersion(): string {
   try {
     const raw = readFileSync(join(process.cwd(), "package.json"), "utf8");

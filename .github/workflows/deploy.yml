@@ -25,8 +25,14 @@ env:
   IMAGE: ghcr.io/deadbear34/hris-backend
 
 jobs:
+  # Workflow yang dipanggil tidak boleh meminta izin melebihi pemanggilnya.
+  # Job "Pindai rahasia" di ci.yml membaca daftar commit pull request
+  # (pull-requests: read), jadi izin itu harus diberikan di sini juga
   ci:
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      pull-requests: read
 
   image:
     name: Build dan kirim image

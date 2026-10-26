@@ -258,9 +258,9 @@ export async function CheckInController(
         ? `You already checked in today at ${clockTimeOf(new Date(existing.check_in_at))}`
         : `Attendance for ${date} is already recorded with status ${statusLabel(existing.status)}`;
 
-      await eventModel.markRejected(event.id, message);
-
-      throw Conflict(message, { attendance: existing });
+      throw rejectEvent(event.id, message, (reason) =>
+        Conflict(reason, { attendance: existing }),
+      );
     }
 
     const closedReason = blockedReasonForTime(
@@ -375,9 +375,9 @@ export async function CheckOutController(
     if (existing.check_out_at) {
       const message = `You already checked out today at ${clockTimeOf(new Date(existing.check_out_at))}`;
 
-      await eventModel.markRejected(event.id, message);
-
-      throw Conflict(message, { attendance: existing });
+      throw rejectEvent(event.id, message, (reason) =>
+        Conflict(reason, { attendance: existing }),
+      );
     }
 
     const startMinutes = minutesFromClockTime(schedule.start_time);

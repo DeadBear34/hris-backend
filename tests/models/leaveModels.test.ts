@@ -665,3 +665,33 @@ describe("model leaveRequest: pengalihan penyetuju", () => {
     );
   });
 });
+
+describe("model leaveBalance: pengembalian saldo pengajuan", () => {
+  it("menghitung pengembalian dari transaksi pengajuan itu sendiri", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 1 } as never);
+
+    const count = await balanceModel.refundRequestBalance(
+      fakeDb as never,
+      REQUEST_ID,
+      EMPLOYEE_ID,
+      "Balance refund because the request was rejected",
+    );
+
+    const [sql, values] = (fakeDb.query as jest.Mock).mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+
+    expect(sql).toContain("-SUM(amount)");
+    expect(sql).toContain("WHERE leave_request_id = $1::uuid");
+    expect(sql).toContain("'refund'::leave_transaction_type");
+    // hanya bila masih ada yang tertahan; refund sebelumnya ikut dijumlahkan
+    expect(sql).toContain("HAVING SUM(amount) < 0");
+    expect(values).toEqual([
+      REQUEST_ID,
+      EMPLOYEE_ID,
+      "Balance refund because the request was rejected",
+    ]);
+    expect(typeof count).toBe("number");
+  });
+});

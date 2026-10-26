@@ -22,6 +22,7 @@ jest.unstable_mockModule("../../src/realtime/dispatcher.js", () => ({
 
 jest.unstable_mockModule("../../src/models/feature.js", () => ({
   findUserIdsWithFeature: jest.fn(() => Promise.resolve([])),
+  findUserIdByEmployeeWithFeature: jest.fn(() => Promise.resolve(null)),
 }));
 
 jest.unstable_mockModule("../../src/models/employee.js", () => ({
@@ -84,10 +85,19 @@ function givenApprovers({
   (featureModel.findUserIdsWithFeature as jest.Mock).mockImplementation(
     async (code: unknown) => {
       if (code === "leave.approve_all") return approveAll;
-      if (code === "leave.approve_team") return approveTeam;
       if (code === "leave.view_all") return viewAll;
       return [];
     },
+  );
+  (
+    featureModel.findUserIdByEmployeeWithFeature as jest.Mock
+  ).mockImplementation(async (employeeId: unknown, code: unknown) =>
+    employeeId === MANAGER_EMPLOYEE &&
+    code === "leave.approve_team" &&
+    managerUser &&
+    approveTeam.includes(managerUser)
+      ? managerUser
+      : null,
   );
   (employeeModel.findById as jest.Mock).mockImplementation(
     async (id: unknown) =>
@@ -116,6 +126,13 @@ describe("notifikasi pengajuan cuti", () => {
 
     expect(recipients()).toEqual([MANAGER_USER]);
     expect(firstBatch()![0]!.type).toBe("leave_approval_needed");
+    expect(featureModel.findUserIdByEmployeeWithFeature).toHaveBeenCalledWith(
+      MANAGER_EMPLOYEE,
+      "leave.approve_team",
+    );
+    expect(featureModel.findUserIdsWithFeature).not.toHaveBeenCalledWith(
+      "leave.approve_team",
+    );
   });
 
   // Laporan pengujian: HR Manager dan admin bisa memutus semua pengajuan,
@@ -139,9 +156,7 @@ describe("notifikasi pengajuan cuti", () => {
     await settle();
 
     expect(recipients()).toEqual([HR_USER, ADMIN_USER].sort());
-    expect(featureModel.findUserIdsWithFeature).not.toHaveBeenCalledWith(
-      "leave.approve_team",
-    );
+    expect(featureModel.findUserIdByEmployeeWithFeature).not.toHaveBeenCalled();
   });
 
   it("atasan yang tidak boleh menyetujui tidak diberi tahu", async () => {
@@ -604,6 +619,52 @@ describe("notifikasi pengalihan penyetuju", () => {
     (notificationModel.markPendingReadFor as jest.Mock).mockResolvedValue([
       { id: "n-lama", recipient_user_id: MANAGER_USER },
     ] as never);
+    // penyetuju baru memegang leave.approve_team; tidak ada pemegang approve_all
+    (
+      featureModel.findUserIdByEmployeeWithFeature as jest.Mock
+    ).mockImplementation(
+      async (id: unknown) =>
+        (id === NEW_MANAGER_EMPLOYEE ? NEW_MANAGER_USER : null) as never,
+    );
+    (featureModel.findUserIdsWithFeature as jest.Mock).mockResolvedValue(
+      [] as never,
+    );
+  });
+
+  it("penyetuju baru tanpa leave.approve_team tidak diberi tugas", async () => {
+    (
+      featureModel.findUserIdByEmployeeWithFeature as jest.Mock
+    ).mockResolvedValue(null as never);
+
+    await notifyApproverReassigned(reassigned);
+    await settle();
+
+    expect(featureModel.findUserIdByEmployeeWithFeature).toHaveBeenCalledWith(
+      NEW_MANAGER_EMPLOYEE,
+      "leave.approve_team",
+    );
+    expect(notificationModel.insertMany).not.toHaveBeenCalled();
+  });
+
+  it("tugas penyetuju lama yang memegang approve_all tidak ditandai dibaca", async () => {
+    (featureModel.findUserIdsWithFeature as jest.Mock).mockResolvedValue([
+      MANAGER_USER,
+    ] as never);
+
+    await notifyApproverReassigned(reassigned);
+
+    expect(notificationModel.markPendingReadFor).not.toHaveBeenCalled();
+  });
+
+  it("penyetuju baru yang memegang approve_all tidak dikirimi tugas kedua", async () => {
+    (featureModel.findUserIdsWithFeature as jest.Mock).mockResolvedValue([
+      NEW_MANAGER_USER,
+    ] as never);
+
+    await notifyApproverReassigned(reassigned);
+    await settle();
+
+    expect(notificationModel.insertMany).not.toHaveBeenCalled();
   });
 
   it("penyetuju baru menerima tugas persetujuan", async () => {

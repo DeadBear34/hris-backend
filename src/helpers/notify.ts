@@ -98,24 +98,21 @@ export async function notifyLeaveSubmitted(
   input: LeaveSubmittedInput,
 ): Promise<void> {
   try {
-    const [approverUser, approveAll, approveTeam, requesterUser] =
-      await Promise.all([
-        input.approver_employee_id
-          ? userIdOf(input.approver_employee_id)
-          : null,
-        featureModel.findUserIdsWithFeature("leave.approve_all"),
-        input.approver_employee_id
-          ? featureModel.findUserIdsWithFeature("leave.approve_team")
-          : ([] as string[]),
-        userIdOf(input.requester_employee_id),
-      ]);
+    const [approverUser, approveAll, requesterUser] = await Promise.all([
+      input.approver_employee_id
+        ? featureModel.findUserIdByEmployeeWithFeature(
+            input.approver_employee_id,
+            "leave.approve_team",
+          )
+        : null,
+      featureModel.findUserIdsWithFeature("leave.approve_all"),
+      userIdOf(input.requester_employee_id),
+    ]);
 
-    // Set, supaya atasan yang sekaligus HR atau admin hanya menerima satu
+    // Set memastikan atasan yang sekaligus HR atau admin hanya menerima satu
     const recipients = new Set(approveAll);
 
-    if (approverUser && approveTeam.includes(approverUser)) {
-      recipients.add(approverUser);
-    }
+    if (approverUser) recipients.add(approverUser);
 
     if (requesterUser) recipients.delete(requesterUser);
 
@@ -156,17 +153,31 @@ export interface ApproverReassignedInput {
 // Penyetuju pengajuan yang masih menunggu berganti karena struktur berubah.
 // Penyetuju baru diberi tugas, tugas di penyetuju lama ditandai dibaca.
 // Bila penyetuju barunya kosong, pengajuan tetap tampil di kotak masuk HR dan
-// admin, jadi tidak ada notifikasi baru yang perlu dibuat
+// admin, jadi tidak ada notifikasi baru yang perlu dibuat.
+//
+// Aturannya sama dengan notifyLeaveSubmitted dan canDecide:
+// - penyetuju baru hanya diberi tugas bila jabatannya memegang
+//   leave.approve_team; tanpa itu ia tidak bisa memutus pengajuannya
+// - pemegang leave.approve_all tetap boleh memutus pengajuan siapa pun, jadi
+//   tugasnya tidak ditandai dibaca dan tidak perlu dikirimi tugas kedua
 export async function notifyApproverReassigned(
   input: ApproverReassignedInput,
 ): Promise<void> {
   try {
-    const [fromUser, toUser] = await Promise.all([
+    const [fromUser, toUser, approveAll] = await Promise.all([
       input.from_employee_id ? userIdOf(input.from_employee_id) : null,
-      input.to_employee_id ? userIdOf(input.to_employee_id) : null,
+      input.to_employee_id
+        ? featureModel.findUserIdByEmployeeWithFeature(
+            input.to_employee_id,
+            "leave.approve_team",
+          )
+        : null,
+      featureModel.findUserIdsWithFeature("leave.approve_all"),
     ]);
 
-    if (fromUser && fromUser !== toUser) {
+    const canApproveAll = new Set(approveAll);
+
+    if (fromUser && fromUser !== toUser && !canApproveAll.has(fromUser)) {
       const resolved = await notificationModel.markPendingReadFor(
         "leave_approval_needed",
         input.request_id,
@@ -181,7 +192,7 @@ export async function notifyApproverReassigned(
       }
     }
 
-    if (toUser) {
+    if (toUser && !canApproveAll.has(toUser)) {
       persist([
         {
           recipient_user_id: toUser,

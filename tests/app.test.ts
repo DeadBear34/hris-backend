@@ -62,6 +62,18 @@ describe("GET /health", () => {
     expect(res.status).toBe(200);
     expect(res.body.redis).toBe("disabled");
   });
+
+  it("menyertakan versi aplikasi dari package.json", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { version } = JSON.parse(readFileSync("package.json", "utf8")) as {
+      version: string;
+    };
+
+    const res = await request(app).get("/health");
+
+    expect(res.body.version).toBe(version);
+    expect(res.body.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
 });
 
 describe("penanganan route yang tidak dikenal", () => {

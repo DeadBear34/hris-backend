@@ -31,27 +31,28 @@ Modul yang tersedia: autentikasi (termasuk verifikasi email dan reset password),
 - [Cuti](#alur-persetujuan-cuti)
 - [Alur Akun](#alur-verifikasi-email)
 - [Batasan yang Diketahui](#batasan-yang-diketahui)
+- [Diagram Alur Sistem](#diagram-alur-sistem)
 
 ## Tech Stack
 
-| Komponen         | Teknologi                       |
-| ---------------- | ------------------------------- |
-| Runtime          | Node.js 22                      |
-| Bahasa           | TypeScript (ESM, `NodeNext`)    |
-| Framework        | Express 5                       |
-| Database         | PostgreSQL (Supabase)           |
-| Driver DB        | node-postgres (`pg`), tanpa ORM |
-| Penyimpanan file | Supabase Storage                |
-| Real-time        | WebSocket (`ws`)                |
-| Autentikasi      | JSON Web Token                  |
-| Hashing          | Argon2id                        |
-| Validasi         | Zod                             |
-| Unggah berkas    | Multer                          |
-| Logging          | Pino                            |
-| Pengiriman email | Resend                          |
-| Keamanan HTTP    | Helmet, CORS                    |
-| Unit test        | Jest, Supertest                 |
-| Formatting kode  | Prettier                        |
+| Komponen         | Teknologi                                     |
+| ---------------- | --------------------------------------------- |
+| Runtime          | Node.js 22                                    |
+| Bahasa           | TypeScript (`NodeNext`, hasil build CommonJS) |
+| Framework        | Express 5                                     |
+| Database         | PostgreSQL (Supabase)                         |
+| Driver DB        | node-postgres (`pg`), tanpa ORM               |
+| Penyimpanan file | Supabase Storage                              |
+| Real-time        | WebSocket (`ws`)                              |
+| Autentikasi      | JSON Web Token                                |
+| Hashing          | Argon2id                                      |
+| Validasi         | Zod                                           |
+| Unggah berkas    | Multer                                        |
+| Logging          | Pino                                          |
+| Pengiriman email | Resend                                        |
+| Keamanan HTTP    | Helmet, CORS                                  |
+| Unit test        | Jest, Supertest                               |
+| Formatting kode  | Prettier                                      |
 
 ## Struktur Proyek
 
@@ -71,7 +72,7 @@ src/
 tests/                  # Mengikuti struktur src/ satu per satu
 ```
 
-Satu request berjalan melewati lapisan yang sama:
+Request API mengikuti alur umum berikut; autentikasi dan pemeriksaan fitur hanya dipasang pada endpoint yang membutuhkannya:
 
 ```
 route → rateLimit → authenticate → requireFeature → validate → controller → model → PostgreSQL
@@ -101,7 +102,7 @@ Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model ti
 
 ## Instalasi dan Menjalankan
 
-Prasyarat: Node.js 22 (tersedia di `.nvmrc`, jalankan `nvm use`).
+Prasyarat: Node.js 22.23.4 atau lebih baru di jalur 22 (tersedia di `.nvmrc`, jalankan `nvm use`). Versi di bawahnya terdampak Security Release 21 Oktober 2026, termasuk CVE-2026-111497 (Brotli).
 
 ```bash
 git clone https://github.com/DeadBear34/hris-backend.git
@@ -583,11 +584,12 @@ socket.onopen = () => {
 
 Pesan dari server:
 
-| `event`                | Isi                           | Kapan                                      |
-| ---------------------- | ----------------------------- | ------------------------------------------ |
-| `ready`                | `unread`                      | Segera setelah autentikasi berhasil        |
-| `notification.created` | `data` berisi satu notifikasi | Notifikasi baru untuk pengguna ini         |
-| `notification.cleared` | `ids` berisi daftar id        | Notifikasi dihapus karena tugasnya selesai |
+| `event`                | Isi                           | Kapan                                         |
+| ---------------------- | ----------------------------- | --------------------------------------------- |
+| `ready`                | `unread`                      | Segera setelah autentikasi berhasil           |
+| `notification.created` | `data` berisi satu notifikasi | Notifikasi baru untuk pengguna ini            |
+| `notification.read`    | `ids` berisi daftar id        | Tugas persetujuan selesai dan ditandai dibaca |
+| `notification.cleared` | `ids` berisi daftar id        | Notifikasi dihapus karena tugasnya selesai    |
 
 ```json
 {
@@ -1200,7 +1202,7 @@ Yang sengaja tidak dicatat: `/health` (dipanggil terus oleh healthcheck Docker) 
 
 ## Jejak Kejadian Absensi
 
-Setiap penekanan tombol absen ditulis ke `attendance_events` **sebelum satu pun perhitungan berjalan**, terpisah dari hasil olahannya pada `attendances`.
+Setelah identitas karyawan, jadwal, dan waktu absensi dipastikan valid, percobaan check-in atau check-out ditulis ke `attendance_events` sebelum aturan kehadiran diperiksa. Hasil olahannya disimpan terpisah di `attendances`.
 
 | Kolom              | Arti                                               |
 | ------------------ | -------------------------------------------------- |
@@ -1211,9 +1213,9 @@ Setiap penekanan tombol absen ditulis ke `attendance_events` **sebelum satu pun 
 | `attendance_id`    | Baris absensi yang dihasilkan, kosong bila ditolak |
 | `rejection_reason` | Alasan penolakan, bila ada                         |
 
-Penulisannya berdiri sendiri di luar transaksi absensi, sehingga percobaan yang ditolak pun meninggalkan jejak. Jejak ini menjawab pertanyaan "apakah dia benar-benar menekan tombol" ketika hasil akhirnya tidak sesuai harapan karyawan.
+Penulisannya berdiri sendiri di luar transaksi absensi, sehingga percobaan yang ditolak oleh aturan kehadiran tetap meninggalkan jejak. Penolakan saat pemeriksaan identitas, jadwal, atau waktu offline belum menghasilkan event. Jejak ini membantu menjawab pertanyaan "apakah dia benar-benar menekan tombol" ketika hasil akhirnya tidak sesuai harapan karyawan.
 
-Kolom `received_at` memakai `clock_timestamp()`, bukan `now()`, karena `now()` mengembalikan waktu mulai transaksi sehingga seluruh baris dalam satu transaksi akan bernilai sama.
+Kolom `received_at` diisi dari waktu server saat request diproses. Jika nilai tidak dikirim, database memakai nilai bawaan `clock_timestamp()`.
 
 `GET /attendances/events` membaca jejak ini, dapat disaring `employee_id`, `kind`, `source`, `only_rejected`, `start_date`, dan `end_date`, dan menyertakan `delay_seconds` pada setiap baris.
 
@@ -1834,6 +1836,17 @@ Middleware `authenticate` dan server WebSocket memakai satu aturan yang sama, `s
 
 Fitur baru yang mengubah salah satu kolom itu wajib memanggil `forgetSession(userId)` setelah perubahannya tersimpan. Bila Redis tidak tersedia, sesi dibaca langsung dari database seperti sebelumnya, dan kegagalan Redis hanya dicatat sebagai `warn`.
 
+## Versi dan Changelog
+
+Versi aplikasi ditulis di satu tempat, `version` pada `package.json`, dan mengikuti Semantic Versioning (`MAYOR.MINOR.PATCH`). Versi yang sedang berjalan tampil di `GET /health` dan di dokumen OpenAPI.
+
+| Berkas                             | Isi                                                  |
+| ---------------------------------- | ---------------------------------------------------- |
+| `CHANGELOG.md`                     | Perubahan setiap rilis (format Keep a Changelog)     |
+| `npm run docs:openapi -- <berkas>` | Ekspor dokumen OpenAPI untuk Referensi API per versi |
+
+Aturan kapan angka versi naik, catatan rilis, dan dokumentasi per versi ada di repositori `hris-docs` (docs.hris.click), dalam Bahasa Inggris: halaman [Versioning Policy](https://docs.hris.click/versioning), [Changelog](https://docs.hris.click/changelog), dan [Release Process](https://docs.hris.click/release-process). Teks Referensi API (`src/docs/routeDocs.ts`) juga berbahasa Inggris karena ikut tayang di situs itu.
+
 ## Data Contoh
 
 ### Membuat ulang database dari nol
@@ -1873,3 +1886,374 @@ Hal-hal berikut disadari dan belum dikerjakan:
 | `updated_at` masih opsional                   | Form yang tidak mengirim `updated_at` masih bisa menimpa perubahan orang lain                                       | Wajibkan setelah seluruh form frontend mengirimnya                                                                     |
 | `system.manage_feature` tidak diberlakukan    | Mencentangnya di matriks tidak memberi akses apa pun                                                                | Nonaktifkan dari katalog dengan SQL di atas, atau buat aturan khusus bila pengelolaan fitur memang ingin didelegasikan |
 | Cache fitur per proses                        | Instance lain tertinggal paling lama satu menit setelah fitur jabatan diubah                                        | Siarkan pembatalan cache lewat `LISTEN`/`NOTIFY` yang sama dengan notifikasi                                           |
+
+## Diagram Alur Sistem
+
+Seluruh diagram menggunakan `flowchart TD`. Garis biasa menunjukkan alur langsung; garis putus-putus menunjukkan efek tambahan atau jalur kesalahan. Garis putus-putus **tidak otomatis berarti asinkron**. Autentikasi, pemeriksaan fitur, validasi, dan upload hanya berlaku bila dipasang oleh route terkait. Semua endpoint bisnis memakai awalan `/api/v1`.
+
+### 1. Gambaran sistem secara menyeluruh
+
+```mermaid
+flowchart TD
+    A["Client / Frontend"] --> B["Express HTTP Server"]
+    B --> C["Global Middleware: logger, Helmet, CORS, JSON"]
+    C --> D["API Router dan rate limit umum"]
+    D --> E["Route Middleware sesuai endpoint"]
+    E --> F["Controller"]
+    F --> G["Business Logic / Helpers"]
+    F --> H["Data Access / Models"]
+    G --> H
+    H <--> I[("PostgreSQL")]
+    F -.-> J["Layanan pendukung"]
+    J --> K["Redis: cache sesi"]
+    J --> L["Email: Resend atau log"]
+    J --> M["Supabase Storage: berkas"]
+    J --> N["Notifikasi tersimpan dan WebSocket"]
+    F --> O["JSON Response"]
+    O --> A
+    C -.-> X["Error Handler"]
+    D -.-> X
+    E -.-> X
+    F -.-> X
+    G -.-> X
+    H -.-> X
+    X --> Y["Respons error JSON"]
+    Y --> A
+```
+
+Model menulis SQL berparameter tanpa ORM. Controller dapat memanggil model langsung atau melalui helper. Penulisan beberapa tabel yang harus berhasil bersama memakai `withTransaction`.
+
+### 2. Startup dan penghentian server
+
+```mermaid
+flowchart TD
+    A["Jalankan src/server.ts"] --> B["Baca dan validasi environment"]
+    B --> C["Uji koneksi PostgreSQL"]
+    C --> D{"Database tersedia?"}
+    D -->|Tidak| E["Catat error dan hentikan proses"]
+    D -->|Ya| F["Mulai koneksi Redis di latar belakang"]
+    F --> G["Express listen pada PORT"]
+    G --> H["Tempel WebSocket /ws pada HTTP server yang sama"]
+    H --> I["Mulai pembersihan notifikasi lama"]
+    I --> J["Daftarkan transport lokal dan antar-instance"]
+    J --> K["LISTEN notifikasi PostgreSQL"]
+    K --> L["Layanan siap menerima request dan koneksi soket"]
+    F -.-> M["Redis tidak tersedia: gunakan fallback yang disediakan pemanggil"]
+    L --> N{"SIGINT atau SIGTERM?"}
+    N -->|Ya| O["Tutup listener, Redis, soket, lalu HTTP server"]
+```
+
+`/health` mengembalikan status server dan Redis; kondisi Redis tidak menentukan status HTTP health check.
+
+### 3. Siklus request HTTP, izin, dan respons error
+
+```mermaid
+flowchart TD
+    A["Request HTTP"] --> B["trust proxy, request logger, Helmet, CORS, JSON parser"]
+    B --> C{"Path request?"}
+    C -->|/health| D["Respons kesehatan"]
+    C -->|/api/v1| E["Rate limit umum"]
+    C -->|Lainnya| Z["404 route tidak ditemukan"]
+    E --> F["Guard Try it out dokumentasi di production"]
+    F --> G["Pilih route modul"]
+    G --> H["Rate limit khusus jika dipasang"]
+    H --> I["Verifikasi JWT dan sesi jika route terlindungi"]
+    I --> J["Cek role atau fitur jabatan jika diperlukan"]
+    J --> K["Validasi body, query, parameter, atau upload"]
+    K --> L["Controller memeriksa aturan bisnis"]
+    L --> M["Model membaca atau menulis PostgreSQL"]
+    M --> N["Respons JSON sukses"]
+    E -.-> X["Error handler"]
+    F -.-> X
+    H -.-> X
+    I -.-> X
+    J -.-> X
+    K -.-> X
+    L -.-> X
+    M -.-> X
+    X --> Y["Respons 400 / 401 / 403 / 404 / 409 / 429 / 500 sesuai error"]
+```
+
+`authenticate` memverifikasi JWT lalu memeriksa token yang dicabut, keberadaan dan status akun, serta waktu perubahan password. Redis menyimpan cache sesi singkat; bila tidak siap, pemeriksaan memakai PostgreSQL. `requireFeature` membaca fitur jabatan; admin melewati pemeriksaan fitur. Validasi Zod menaruh body terparse di `req.body`, sedangkan query dan parameter terparse di `res.locals`. Error handler juga menangani JSON tidak valid dan pelanggaran UNIQUE database.
+
+### 4. Pendaftaran, verifikasi, persetujuan akun, dan login
+
+```mermaid
+flowchart TD
+    A["POST /auth/register"] --> B["Validasi data dan cek email"]
+    B --> C{"Email sudah terdaftar?"}
+    C -->|Sudah terverifikasi| D["409: email telah digunakan"]
+    C -->|Belum terverifikasi| E["Buat kode baru dan kirim ulang"]
+    C -->|Belum ada| F["Hash password Argon2"]
+    F --> G["Transaksi: buat users dan employees"]
+    G --> H["Simpan hash kode verifikasi dan kirim email"]
+    E --> I["POST /auth/verify-email"]
+    H --> I
+    V["POST /auth/resend-verification"] --> E
+    W["GET /auth/verification-code; QA aktif dan admin"] --> X["Terbitkan kode baru tanpa email"]
+    X --> I
+    I --> J["Cek kode, masa berlaku, dan batas percobaan"]
+    J --> K["Tandai email terverifikasi"]
+    K -.-> L["Notifikasi kepada pemegang employee.approve_user"]
+    K --> M["GET /users/pending"]
+    M --> N["PATCH /users/:id/approve oleh pengguna berwenang"]
+    N --> O["Akun disetujui; cache sesi dibersihkan; email dikirim"]
+    O --> P["POST /auth/login"]
+    P --> Q["Cek password, verifikasi, persetujuan, dan status aktif"]
+    Q --> R{"Semua syarat terpenuhi?"}
+    R -->|Ya| S["Terbitkan JWT dengan jti; perbarui last_login_at"]
+    R -->|Tidak| T["401 dengan alasan yang sesuai"]
+    S --> U["Client memakai Bearer JWT pada route terlindungi"]
+```
+
+Registrasi mandiri membuat akun dan karyawan dalam satu transaksi. Pengajuan persetujuan baru terlihat sesudah email diverifikasi. Pembuatan karyawan oleh pemegang `employee.create` mengikuti alur terpisah pada diagram 6.
+
+### 5. Sesi, profil sendiri, password, dan reset password
+
+```mermaid
+flowchart TD
+    A["Bearer JWT pada HTTP atau pesan auth pertama WebSocket"] --> B["Verifikasi tanda tangan dan kedaluwarsa"]
+    B --> C["Cek jti yang dicabut"]
+    C --> D["Ambil status sesi dari Redis atau PostgreSQL"]
+    D --> E{"Akun aktif dan password belum berubah sejak token terbit?"}
+    E -->|Ya| F["Lanjutkan request / sambungkan soket"]
+    E -->|Tidak| G["Tolak sesi"]
+    F --> H["GET atau PATCH /auth/me; foto sendiri; fitur sendiri"]
+    F --> I["PATCH /auth/password"]
+    I --> J["Hash password baru dan bersihkan cache sesi"]
+    F --> K["POST /auth/logout"]
+    K --> L["Cabut jti sampai token kedaluwarsa"]
+    M["POST /auth/forgot-password"] --> N["Buat token reset acak; simpan hash; kirim tautan email"]
+    N --> O["POST /auth/reset-password"]
+    O --> P["Cocokkan token aktif dan tandai terpakai"]
+    P --> Q["Ganti hash password, batalkan tautan lain, bersihkan sesi"]
+```
+
+Endpoint `PATCH /users/:id/status` dapat menonaktifkan akun dan membersihkan cache sesi. Foto profil diproses melalui alur berkas pada diagram 12.
+
+### 6. Karyawan dan akun yang dibuat oleh pengelola
+
+```mermaid
+flowchart TD
+    A["POST /employees; fitur employee.create"] --> B["Terima satu karyawan atau batch"]
+    B --> C["Validasi bentuk, email, telepon, tanggal, dan relasi"]
+    C --> D["Cek unit jabatan, kuota pemegang, dan duplikasi"]
+    D --> E{"Semua baris valid?"}
+    E -->|Tidak| F["Tolak seluruh batch dengan rincian baris"]
+    E -->|Ya| G["Hash password sebelum transaksi"]
+    G --> H["Transaksi: buat users dan employees bersama"]
+    H --> I["Respons hasil beserta nomor baris input"]
+    J["PATCH /employees/:id"] --> K["Cek data lama, relasi, jabatan, dan telepon"]
+    K --> L["UPDATE dengan pemeriksaan updated_at jika disediakan"]
+    L -.-> M["Bila posisi, manager, atau status berubah: alihkan persetujuan cuti pending"]
+    N["DELETE /employees/:id"] --> O["Tolak jika masih punya bawahan langsung"]
+    O --> P["Transaksi: soft delete employee dan akun terkait"]
+    P --> Q["Bersihkan cache sesi dan hitung ulang penyetuju cuti pending"]
+    R["GET /employees dan /employees/:id"] --> S["Filter, pagination, detail relasi, dan foto"]
+```
+
+Update jabatan memakai versi `updated_at` bila dikirim. Pembuatan batch bersifat seluruhnya berhasil atau seluruhnya dibatalkan.
+
+### 7. Unit organisasi, jabatan, fitur, dan data referensi
+
+```mermaid
+flowchart TD
+    A["Kelola departments / positions"] --> B["Validasi kode, nama, unit induk, dan struktur jabatan"]
+    B --> C["Cegah siklus, salah penempatan, kedalaman berlebih, dan kuota kursi"]
+    C --> D["Model menyimpan perubahan di PostgreSQL"]
+    D --> E{"Perubahan jabatan memengaruhi atasan?"}
+    E -->|Ya| F["Hitung ulang approver_id pengajuan cuti pending"]
+    E -->|Tidak| G["Respons"]
+    F --> G
+    H["GET /org/tree dan line-manager"] --> I["Baca unit, jabatan, dan pemegang"]
+    I --> J["Susun pohon / cari atasan manual lalu struktur jabatan"]
+    J --> G
+    K["PUT /positions/:id/features; admin"] --> L["Validasi kode fitur dan versi jabatan"]
+    L --> M["Transaksi: sentuh versi jabatan dan ganti seluruh grant fitur"]
+    M --> N["Invalidasi cache fitur jabatan"]
+    N --> G
+    O["Kelola work-schedules, holidays, leave-types"] --> P["Validasi aturan masing-masing dan simpan lewat model"]
+    P --> G
+```
+
+`departments` menyimpan unit bertingkat; `positions` menyimpan atasan jabatan; `employees` memegang jabatan. Atasan manual `manager_id` dipakai lebih dulu bila aktif, lalu sistem naik melalui rantai jabatan. Pembacaan katalog fitur dan matriks khusus admin, sedangkan `GET /me/features` menunjukkan fitur pengguna. Penghapusan unit atau jabatan yang masih dipakai ditolak. Jadwal berlaku menurut prioritas: jadwal karyawan, jadwal unit, lalu jadwal global.
+
+### 8. Absensi masuk, pulang, dan sinkronisasi offline
+
+```mermaid
+flowchart TD
+    A["POST /attendances/check-in atau check-out"] --> B["Autentikasi dan cari karyawan aktif"]
+    B --> C["Tentukan jadwal yang berlaku"]
+    C --> D{"offline_time dikirim?"}
+    D -->|Tidak| E["Gunakan waktu server; source online"]
+    D -->|Ya| F["Validasi masa depan, jeda sinkronisasi, tanggal kantor, dan batas awal"]
+    F --> G["Tentukan online atau offline_sync menurut selisih waktu"]
+    E --> H["Catat attendance_events"]
+    G --> H
+    H --> I{"check-in atau check-out?"}
+    I -->|check-in| J["Cek hari kerja, holiday, cuti approved, dan absensi ganda"]
+    J --> K["Cek cutoff; tentukan present atau late"]
+    K --> L["INSERT attendances dengan waktu, sumber, dan keterlambatan"]
+    I -->|check-out| M["Cari check-in pada tanggal kantor yang sama"]
+    M --> N["Cek belum pulang dan waktu pulang valid"]
+    N --> O["UPDATE check_out_at, sumber, dan work_minutes"]
+    L --> P["Hubungkan event dengan attendance; respons"]
+    O --> P
+    J -.-> Q["Jika aturan kehadiran menolak: tandai event dan respons error"]
+    K -.-> Q
+    M -.-> Q
+    N -.-> Q
+```
+
+`attendance_events` baru dibuat sesudah karyawan, jadwal, dan waktu absensi valid. Waktu offline adalah klaim klien yang dibatasi; waktu penerimaan server dan `source` disimpan agar dapat diaudit. Satu tanggal kantor hanya memiliki satu baris absensi per karyawan.
+
+### 9. Penutup hari, koreksi, dan laporan absensi
+
+```mermaid
+flowchart TD
+    A["Penjadwal POST /attendances/close-day"] --> B["Validasi x-cron-secret; bukan JWT"]
+    B --> C["Ambil tanggal kantor, jadwal aktif, holiday, cuti approved, baris existing"]
+    C --> D["Untuk tiap karyawan: lewatkan baris yang sudah ada"]
+    D --> E{"Keadaan hari?"}
+    E -->|Holiday| F["Buat status holiday"]
+    E -->|Cuti approved| G["Buat status leave"]
+    E -->|Bukan hari kerja| H["Lewati"]
+    E -->|Hari kerja tanpa catatan| I["Buat status absent"]
+    F --> J["Tulis per 500 baris dalam transaksi"]
+    G --> J
+    I --> J
+    J --> K["Respons jumlah baris; pemanggilan ulang tidak menimpa existing"]
+    L["PATCH /attendances/:id/correct"] --> M["Cek fitur attendance.correct, data, alasan, dan versi updated_at"]
+    M --> N["Hitung ulang late_minutes dan work_minutes"]
+    N --> O["Simpan koreksi, sumber waktu, catatan, dan log aktivitas"]
+    P["GET today, me, team, all, report, events, offline-log"] --> Q["Batasi pemilik/tim/fitur; filter dan pagination"]
+    Q --> R["Model baca attendances dan attendance_events"]
+    R --> S["Respons data, ringkasan, atau laporan"]
+```
+
+Koreksi yang tidak mengubah waktu mempertahankan sumber waktu sebelumnya; perubahan waktu menggunakan sumber `correction`. Laporan event dan offline-log membaca jejak yang berbeda dari baris hasil absensi.
+
+### 10. Pengajuan cuti, keputusan, dan ledger saldo
+
+```mermaid
+flowchart TD
+    A["POST /leave-requests"] --> B["Cek karyawan, jenis cuti, tanggal, gender, dan syarat"]
+    B --> C["Hitung hari kerja di luar akhir pekan dan holidays"]
+    C --> D["Pastikan accrual tahunan bila jenis cuti memotong saldo"]
+    D --> E["Cek saldo, pengajuan tumpang tindih, dan batas cuti departemen"]
+    E --> F["Cari atasan langsung; simpan sebagai approver_id"]
+    F --> G["Transaksi: kunci saldo, cek ulang, buat pending, hold bila perlu"]
+    G -.-> H["Sesudah commit: notifikasi tugas persetujuan"]
+    I["PATCH approve"] --> J["Cek penyetuju, status pending, dan lampiran wajib"]
+    J --> K["Transaksi: kunci departemen, cek batas, ubah ke approved"]
+    K --> L["Ubah hold menjadi deduction bila ada; buat attendance leave"]
+    L -.-> M["Sesudah commit: notifikasi keputusan"]
+    N["PATCH reject"] --> O["Cek penyetuju dan status pending"]
+    O --> P["Transaksi: ubah ke rejected dan refund bila ada hold"]
+    P -.-> M
+    Q["PATCH cancel oleh pemohon"] --> R["Cek status; approved hanya sebelum mulai"]
+    R --> S["Transaksi: ubah ke cancelled dan hapus attendance leave bila perlu"]
+    S --> T["Hapus metadata lampiran dalam transaksi; refund bila saldo ditahan"]
+    T -.-> U["Sesudah commit: hapus berkas dan selesaikan notifikasi tugas"]
+```
+
+Penyetuju yang ditunjuk memerlukan `leave.approve_team`; pemegang `leave.approve_all` atau admin dapat memutus lebih luas. Tidak ada pengguna yang boleh memutus cutinya sendiri. Transisi status yang diizinkan: `pending` ke `approved`, `rejected`, atau `cancelled`; `approved` ke `cancelled` sebelum tanggal mulai. Perubahan status bersaing dicegah pada query update dan dijawab sebagai konflik.
+
+### 11. Saldo cuti, kalender, dan daftar pengajuan
+
+```mermaid
+flowchart TD
+    A["GET /leave-balances/me atau /:id"] --> B["Tentukan tahun periode"]
+    B --> C["Pastikan accrual yang berhak dibuat sekali untuk tahun itu"]
+    C --> D["Jumlahkan leave_balance_transactions"]
+    D --> E["Respons saldo per jenis cuti"]
+    F["GET /leave-balances/me/ledger"] --> G["Pastikan accrual dan baca transaksi dengan filter/pagination"]
+    G --> H["Respons jejak accrual, hold, deduction, refund, adjustment"]
+    I["POST /leave-balances/adjustments"] --> J["Cek fitur leave.adjust_balance dan data"]
+    J --> K["Transaksi: kunci karyawan, pastikan accrual, tulis adjustment"]
+    K --> L{"Pengurangan membuat saldo negatif?"}
+    L -->|Ya| BadAdjust["Rollback dan respons 400"]
+    L -->|Tidak| GoodAdjust["Commit dan respons saldo baru"]
+    M["GET pengajuan: me, approvals, daftar, kalender, detail"] --> N["Batasi data menurut pemohon, penyetuju, atau fitur"]
+    N --> O["Model baca pengajuan, rekan cuti, dan lampiran terkait"]
+    O --> P["Respons daftar atau detail"]
+```
+
+Saldo adalah penjumlahan ledger, bukan kolom saldo tunggal. `accrual` menambah jatah; `hold` menahan saat pengajuan; `deduction` mengganti hold setelah disetujui; `refund` mengembalikan; `adjustment` mencatat koreksi. Accrual diberikan saat dibutuhkan untuk tahun yang memenuhi syarat.
+
+### 12. Foto karyawan dan lampiran cuti
+
+```mermaid
+flowchart TD
+    A["Upload foto atau lampiran multipart"] --> B["Multer: satu berkas, maksimum 5 MB"]
+    B --> C["Controller cek pemilik atau izin akses"]
+    C --> D["Periksa magic bytes JPEG, PNG, atau WebP"]
+    D --> E["Buat path penyimpanan dan upload ke Supabase Storage"]
+    E --> F{"Jenis berkas?"}
+    F -->|Foto| G["Simpan photo_path pada employees"]
+    G -.-> H["Hapus foto lama setelah path baru tersimpan"]
+    F -->|Lampiran| I["Simpan metadata, checksum, dan storage_path pada leave_attachments"]
+    J["GET lampiran atau signed URL"] --> J2["Cek akses dan baca metadata pengajuan"]
+    J2 --> K["Kembalikan daftar atau signed URL sementara"]
+    L["Hapus foto atau batalkan cuti"] --> M["Hapus referensi database"]
+    M -.-> N["Hapus berkas Storage setelah perubahan database berhasil"]
+```
+
+Nama asli berkas tidak menjadi satu-satunya dasar path. Lampiran cuti privat diakses lewat signed URL; URL itu diterbitkan ketika diminta, bukan disimpan permanen di database.
+
+### 13. Notifikasi, WebSocket, dan banyak instance
+
+```mermaid
+flowchart TD
+    A["Controller menyelesaikan operasi bisnis"] -.-> B["Helper memilih penerima notifikasi"]
+    B --> C["INSERT notifications di PostgreSQL"]
+    C --> D["Dispatcher mengirim event setelah tersimpan"]
+    D --> E["WebSocket lokal untuk pengguna yang online"]
+    D --> F["pg_notify hris_notifications"]
+    F --> G["LISTEN pada instance backend lain"]
+    G --> H["WebSocket lokal instance lain"]
+    I["Client membuka /ws"] --> J["Cek Origin dan tunggu pesan auth JWT"]
+    J --> K["Validasi token dan sesi seperti HTTP"]
+    K --> L["Registrasi socket; kirim ready dan jumlah unread"]
+    E --> M["Client menerima ready atau event notifikasi"]
+    H --> M
+    L --> M
+    N["GET /notifications"] --> O["Baca notifikasi tersimpan untuk pengguna"]
+    P["PATCH read atau read-all"] --> Q["Ubah status baca di PostgreSQL"]
+    R["Pembersihan harian"] --> S["Hapus notifikasi dibaca yang lebih tua dari 30 hari"]
+```
+
+WebSocket memakai JWT sebagai pesan pertama, bukan bagian dari URL. Operasi menandai dibaca tetap melalui REST. Kegagalan pengiriman realtime tidak menghilangkan notifikasi yang telah tersimpan; pengguna dapat mengambilnya lewat `GET /notifications`. Notifikasi dan log aktivitas yang dijalankan sebagai efek tambahan tidak membatalkan operasi bisnis yang telah berhasil.
+
+### 14. Dokumentasi API, log aktivitas, dan pembacaan umum
+
+```mermaid
+flowchart TD
+    A["GET /docs/openapi.json"] --> B["JWT dan fitur system.view_api_docs"]
+    B --> C["Baca route Express serta metadata schema, role, fitur, upload"]
+    C --> D["Hasilkan dokumen OpenAPI 3.1"]
+    E["Aksi penting pada controller"] -.-> F["startActivity / recordActivity"]
+    F --> G["Tulis activity_logs dengan pelaku, aksi, hasil, waktu, metadata"]
+    H["GET /activity-logs"] --> I["JWT dan fitur system.view_log"]
+    I --> J["Filter, pagination, lalu baca activity_logs"]
+    K["GET master data atau laporan"] --> L["Cek hak akses; model SELECT dengan filter"]
+    L --> M["Respons data dan metadata pagination bila relevan"]
+```
+
+Di production, permintaan yang mengubah data dari fitur _Try it out_ dokumentasi ditolak oleh guard tambahan. Log aktivitas disimpan tanpa menahan respons utama; kegagalan pencatatannya ditulis ke log server.
+
+### Peta diagram ke kode
+
+| Diagram                          | Berkas utama                                                                                                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Startup dan HTTP                 | `src/server.ts`, `src/app.ts`, `src/route/route.ts`                                                                                                               |
+| Middleware dan sesi              | `src/middlewares/`, `src/helpers/sessionStore.ts`, `src/helpers/jwt.ts`                                                                                           |
+| Akun                             | `src/controller/accountVerificationController.ts`, `src/controller/authController.ts`, `src/controller/userAccountController.ts`                                  |
+| Karyawan dan organisasi          | `src/controller/employeeController.ts`, `src/controller/departmentController.ts`, `src/controller/positionController.ts`, `src/models/orgStructure.ts`            |
+| Jadwal, libur, jenis cuti, fitur | `src/controller/workScheduleController.ts`, `src/controller/holidayController.ts`, `src/controller/leaveTypeController.ts`, `src/controller/featureController.ts` |
+| Absensi                          | `src/controller/attendanceController.ts`, `src/models/attendance.ts`, `src/models/attendanceEvent.ts`                                                             |
+| Cuti dan saldo                   | `src/controller/leaveRequestController.ts`, `src/controller/leaveBalanceController.ts`, `src/models/leaveBalance.ts`                                              |
+| Berkas                           | `src/controller/employeePhotoController.ts`, `src/controller/leaveAttachmentController.ts`, `src/helpers/storage.ts`                                              |
+| Notifikasi dan realtime          | `src/helpers/notify.ts`, `src/controller/notificationController.ts`, `src/realtime/`                                                                              |
+| Dokumentasi dan audit            | `src/docs/`, `src/controller/docsController.ts`, `src/helpers/activityLog.ts`                                                                                     |
+| Database                         | `database/schema.sql`, `database/migrations/`                                                                                                                     |

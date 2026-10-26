@@ -66,6 +66,7 @@ jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
   balanceFor: jest.fn(),
   lockEmployeeBalance: jest.fn(),
   convertHoldToDeduction: jest.fn(),
+  refundRequestBalance: jest.fn(() => Promise.resolve(1)),
   summaryFor: jest.fn(),
   listLedger: jest.fn(),
   // Bawaan: jatah tahun ini sudah ada, jadi tidak ada yang perlu dibuat
@@ -1002,14 +1003,28 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
     expect(leaveRequestModel.rejectRequest).not.toHaveBeenCalled();
   });
 
-  it("mencatat pengembalian saldo bernilai positif", async () => {
+  it("mengembalikan saldo yang ditahan pengajuan ini", async () => {
     await reject();
 
-    const refunds = transactionsOfType("refund");
+    const [db, requestId, , note] = (
+      balanceModel.refundRequestBalance as jest.Mock
+    ).mock.calls[0] as [unknown, string, string, string];
 
-    expect(refunds).toHaveLength(1);
-    expect(refunds[0]!.amount).toBe(TOTAL_DAYS);
-    expect(refunds[0]!.leave_request_id).toBe(REQUEST_ID);
+    // di dalam transaksi, dihitung dari transaksi pengajuan itu sendiri
+    expect(db).toBe(mockClient);
+    expect(requestId).toBe(REQUEST_ID);
+    expect(note).toContain("rejected");
+  });
+
+  it("tetap mengembalikan saldo walau jenis cutinya kini tidak memotong saldo", async () => {
+    (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
+      ...fakeLeaveType,
+      deducts_balance: false,
+    } as never);
+
+    await reject();
+
+    expect(balanceModel.refundRequestBalance).toHaveBeenCalledTimes(1);
   });
 
   it("meneruskan catatan keputusan ke model", async () => {
@@ -1022,7 +1037,7 @@ describe("PATCH /api/v1/leave-requests/:id/reject", () => {
   });
 
   it("menjalankan ROLLBACK saat pencatatan pengembalian gagal", async () => {
-    (balanceModel.createTransaction as jest.Mock).mockRejectedValue(
+    (balanceModel.refundRequestBalance as jest.Mock).mockRejectedValueOnce(
       new Error("ledger gagal") as never,
     );
 
@@ -1110,10 +1125,12 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
   it("mencatat pengembalian saldo", async () => {
     await cancelLeave();
 
-    const refunds = transactionsOfType("refund");
+    const [, requestId, , note] = (
+      balanceModel.refundRequestBalance as jest.Mock
+    ).mock.calls[0] as [unknown, string, string, string];
 
-    expect(refunds).toHaveLength(1);
-    expect(refunds[0]!.amount).toBe(TOTAL_DAYS);
+    expect(requestId).toBe(REQUEST_ID);
+    expect(note).toContain("cancelled");
   });
 
   it("mengizinkan pembatalan pengajuan yang sudah disetujui", async () => {
@@ -1150,7 +1167,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
   });
 
   it("menjalankan ROLLBACK saat pencatatan gagal", async () => {
-    (balanceModel.createTransaction as jest.Mock).mockRejectedValue(
+    (balanceModel.refundRequestBalance as jest.Mock).mockRejectedValueOnce(
       new Error("ledger gagal") as never,
     );
 
@@ -1201,7 +1218,7 @@ describe("PATCH /api/v1/leave-requests/:id/cancel", () => {
     });
 
     it("tidak menyentuh storage bila transaksinya dibatalkan", async () => {
-      (balanceModel.createTransaction as jest.Mock).mockRejectedValue(
+      (balanceModel.refundRequestBalance as jest.Mock).mockRejectedValueOnce(
         new Error("ledger gagal") as never,
       );
 

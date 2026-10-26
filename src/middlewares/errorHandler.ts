@@ -12,14 +12,45 @@ export function notFoundHandler(req: Request, res: Response) {
 
 const UNIQUE_VIOLATION = "23505";
 
-// Pelanggaran UNIQUE dari database biasanya muncul saat permintaan yang sama
-// datang bersamaan. Itu konflik data, bukan kesalahan server
+const BODY_ERRORS: Record<
+  string,
+  { status: number; message: string; code: string }
+> = {
+  "encoding.unsupported": {
+    status: 415,
+    message: "Compressed request bodies are not supported",
+    code: "UNSUPPORTED_ENCODING",
+  },
+  "entity.too.large": {
+    status: 413,
+    message: "Request body is too large",
+    code: "PAYLOAD_TOO_LARGE",
+  },
+  "charset.unsupported": {
+    status: 415,
+    message: "Unsupported request charset",
+    code: "UNSUPPORTED_CHARSET",
+  },
+};
+
+function bodyParserError(err: unknown) {
+  if (typeof err !== "object" || err === null) return null;
+  const type = (err as { type?: unknown }).type;
+
+  return typeof type === "string" ? (BODY_ERRORS[type] ?? null) : null;
+}
+
+// constraint EXCLUDE, misalnya dua cuti aktif yang tanggalnya bertumpuk
+const EXCLUSION_VIOLATION = "23P01";
+
+// Pelanggaran UNIQUE atau EXCLUDE dari database biasanya muncul saat
+// permintaan yang sama datang bersamaan dan sama-sama lolos pemeriksaan di
+// aplikasi. Itu konflik data, bukan kesalahan server
 function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { code?: unknown }).code === UNIQUE_VIOLATION
-  );
+  if (typeof err !== "object" || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+
+  return code === UNIQUE_VIOLATION || code === EXCLUSION_VIOLATION;
 }
 
 export function errorHandler(
@@ -45,6 +76,17 @@ export function errorHandler(
       success: false,
       message: "Invalid JSON format",
       code: "INVALID_JSON",
+    });
+  }
+
+  // Penolakan dari body-parser (body terkompresi, terlalu besar, charset
+  // asing) adalah kesalahan klien, bukan kesalahan server
+  const bodyError = bodyParserError(err);
+  if (bodyError) {
+    return res.status(bodyError.status).json({
+      success: false,
+      message: bodyError.message,
+      code: bodyError.code,
     });
   }
 

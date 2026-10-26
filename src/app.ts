@@ -8,6 +8,7 @@ import { redisState } from "./config/redis.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { createRequestLogger } from "./middlewares/requestLogger.js";
 import router from "./route/route.js";
+import { APP_VERSION } from "./config/version.js";
 
 export const app = express();
 
@@ -34,13 +35,22 @@ app.use(
     ],
   }),
 );
-app.use(express.json());
+// inflate: false menolak body terkompresi (gzip, deflate, br) dengan 415.
+// Frontend tidak pernah mengirim body terkompresi, sedangkan dekompresi
+// berjalan sebelum autentikasi: celah di dekoder zlib atau Brotli, seperti
+// CVE-2026-111497, langsung terbuka untuk siapa pun yang bisa mengirim request
+app.use(express.json({ inflate: false }));
 
 // Status Redis ikut ditampilkan supaya mudah memeriksa koneksinya, tetapi
 // tidak memengaruhi status HTTP. Redis bersifat opsional, jadi server yang
 // Redis-nya mati tetap dianggap sehat oleh healthcheck Docker
 app.get("/health", (_req, res) => {
-  res.json({ success: true, message: "Server running", redis: redisState() });
+  res.json({
+    success: true,
+    message: "Server running",
+    version: APP_VERSION,
+    redis: redisState(),
+  });
 });
 
 app.use("/api/v1", router);

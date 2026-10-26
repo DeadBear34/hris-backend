@@ -168,6 +168,18 @@ describe("errorHandler untuk data kembar dari database", () => {
     expect(mockLoggerError).not.toHaveBeenCalled();
   });
 
+  it("mengubah pelanggaran EXCLUDE (cuti bertumpuk bersamaan) menjadi 409", () => {
+    const err = Object.assign(new Error("conflicting key value"), {
+      code: "23P01",
+    });
+
+    const result = runHandler(err);
+
+    expect(result.status).toBe(409);
+    expect(result.body.code).toBe("CONFLICT");
+    expect(mockLoggerError).not.toHaveBeenCalled();
+  });
+
   it("tetap memperlakukan error database lain sebagai error server", () => {
     const err = Object.assign(new Error("connection lost"), { code: "08006" });
 

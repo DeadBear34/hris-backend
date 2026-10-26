@@ -27,7 +27,11 @@ let reconnectTimer: NodeJS.Timeout | null = null;
 // Membuka koneksi khusus untuk LISTEN. Tidak boleh dari pool, karena
 // pool mengembalikan koneksinya setelah query selesai
 async function connectListener(): Promise<void> {
-  const client = new pg.Client({ connectionString: env.DATABASE_URL });
+  // ssl disamakan dengan pool di databaseConnection.ts
+  const client = new pg.Client({
+    connectionString: env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
 
   client.on("notification", (raw) => {
     if (!raw.payload || !handler) return;
@@ -45,13 +49,25 @@ async function connectListener(): Promise<void> {
   });
 
   client.on("error", (err) => {
+    // error dari klien yang sudah diganti atau gagal tersambung diabaikan,
+    // supaya tidak memicu sambung ulang kedua
+    if (listener !== client) return;
+
     logger.error({ err }, "Cross-instance listener connection lost");
     listener = null;
+    void client.end().catch(() => undefined);
     scheduleReconnect();
   });
 
-  await client.connect();
-  await client.query(`LISTEN ${CHANNEL}`);
+  try {
+    await client.connect();
+    await client.query(`LISTEN ${CHANNEL}`);
+  } catch (err) {
+    // Klien yang gagal ditutup, supaya percobaan berulang setiap 5 detik
+    // tidak meninggalkan socket menggantung selama database tidak terjangkau
+    await client.end().catch(() => undefined);
+    throw err;
+  }
 
   listener = client;
   logger.debug("Cross-instance notification listener ready");

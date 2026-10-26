@@ -1,4 +1,3 @@
-// baru: nyusun data datar jadi pohon bagan organisasi
 import type {
   HolderRow,
   PositionRow,
@@ -61,6 +60,7 @@ export function buildOrgTree(
     holdersByPosition.set(holder.position_id, list);
   }
 
+  const positionsById = new Map(positions.map((row) => [row.id, row]));
   const positionNodes = new Map<string, PositionNode>();
   for (const row of positions) {
     positionNodes.set(row.id, {
@@ -101,7 +101,7 @@ export function buildOrgTree(
     }
 
     const superior = row.reports_to_position_id
-      ? positions.find((p) => p.id === row.reports_to_position_id)
+      ? positionsById.get(row.reports_to_position_id)
       : undefined;
 
     // Bawahan di unit yang sama digantung di bawah atasannya. Atasan di unit

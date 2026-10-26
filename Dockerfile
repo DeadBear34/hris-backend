@@ -1,4 +1,10 @@
-FROM node:22-bookworm-slim AS build
+# Versi Node dikunci ke rilis yang sudah ditambal (Security Release
+# 21 Okt 2026: CVE-2026-111497 Brotli, CVE TLS/DNS, dan lainnya). Tag mengambang
+# seperti node:22 bisa memakai image lama yang tersimpan di cache build.
+# Naikkan bersama .nvmrc setiap ada security release
+ARG NODE_IMAGE=node:22.23.4-bookworm-slim
+
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -8,13 +14,13 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:22-bookworm-slim AS deps
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:22-bookworm-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production

@@ -38,6 +38,12 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Gagal bila ada kerentanan high/critical di dependency yang ikut ke
+      # image production. Dependency dev tidak ikut image (npm ci --omit=dev)
+      - name: Audit dependency production
+        run: npm audit --omit=dev --audit-level=high
+
       - run: npx tsc --noEmit
       - run: npm test
 

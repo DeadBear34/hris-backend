@@ -1,13 +1,13 @@
 {
   "name": "hris-backend",
-  "version": "0.1.0",
+  "version": "0.7.1",
   "description": "HRIS backend API",
   "private": true,
   "license": "ISC",
   "type": "commonjs",
   "main": "dist/server.js",
   "engines": {
-    "node": ">=22"
+    "node": "^22.23.4 || >=24.22.1"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -17,6 +17,7 @@
     "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "seed": "tsx src/scripts/seed.ts",
+    "docs:openapi": "tsx src/scripts/exportOpenApi.ts",
     "typecheck": "tsc --noEmit"
   },
   "repository": {
@@ -34,16 +35,16 @@
     "argon2": "^0.45.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1",
+    "express": "^5.3.0",
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.2.0",
+    "multer": "^2.5.0",
     "pg": "^8.22.0",
     "pino": "^10.3.1",
     "resend": "^6.19.0",
     "ws": "^8.21.3",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@jest/globals": "^30.4.1",

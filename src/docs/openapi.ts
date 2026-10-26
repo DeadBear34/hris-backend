@@ -2,6 +2,7 @@ import { z, type ZodType } from "zod";
 import { authenticate } from "../middlewares/auth.js";
 import { ROUTE_DOCS, TAGS, type ErrorDoc } from "./routeDocs.js";
 import { featureOf, rolesOf, schemaOf, uploadFieldOf } from "./routeMeta.js";
+import { APP_VERSION } from "../config/version.js";
 
 // Membangkitkan dokumen OpenAPI 3.1 dengan menelusuri router Express yang
 // sebenarnya. Path, method, autentikasi, hak akses, parameter, dan body
@@ -106,7 +107,7 @@ function buildResponses(options: {
 }) {
   const responses: Record<string, unknown> = {
     [String(options.successStatus)]: {
-      description: "Berhasil",
+      description: "Success",
       content: json(
         options.rawResponse
           ? { type: "object" }
@@ -130,21 +131,21 @@ function buildResponses(options: {
   if (options.validated)
     add(
       400,
-      "Validasi gagal (VALIDATION_ERROR), detail per field di errors[]",
+      "Validation failed (VALIDATION_ERROR), per-field details in errors[]",
       VALIDATION_REF,
     );
   if (options.authenticated)
-    add(401, "Belum login, token salah, atau kedaluwarsa (UNAUTHORIZED)");
+    add(
+      401,
+      "Not signed in, or the token is invalid or expired (UNAUTHORIZED)",
+    );
   if (options.cron) {
-    add(401, "Header x-cron-secret salah (UNAUTHORIZED)");
-    add(403, "CRON_SECRET belum diatur di server (FORBIDDEN)");
+    add(401, "Wrong x-cron-secret header (UNAUTHORIZED)");
+    add(403, "CRON_SECRET is not configured on the server (FORBIDDEN)");
   }
   if (options.restricted)
-    add(
-      403,
-      "Tidak punya hak akses, lihat details.required_feature (FORBIDDEN)",
-    );
-  if (options.hasPathParams) add(404, "Data tidak ditemukan (NOT_FOUND)");
+    add(403, "Missing permission, see details.required_feature (FORBIDDEN)");
+  if (options.hasPathParams) add(404, "Record not found (NOT_FOUND)");
 
   for (const error of options.errors) {
     add(error.status, `${error.description} (${error.code})`);
@@ -152,7 +153,7 @@ function buildResponses(options: {
 
   add(
     429,
-    "Terlalu banyak permintaan, tunggu sesuai header Retry-After (RATE_LIMIT_EXCEEDED)",
+    "Too many requests, wait for the Retry-After header (RATE_LIMIT_EXCEEDED)",
   );
 
   return responses;
@@ -222,7 +223,7 @@ function buildOperation(route: CollectedRoute) {
               [uploadField]: {
                 type: "string",
                 format: "binary",
-                description: "Gambar JPG/PNG/WebP, maksimal 5 MB",
+                description: "JPG, PNG, or WebP image, up to 5 MB",
               },
             },
             required: [uploadField],
@@ -239,19 +240,19 @@ function buildOperation(route: CollectedRoute) {
 
   // Hak akses dalam kalimat, ditaruh di deskripsi supaya terbaca di UI
   const access = cron
-    ? "Header `x-cron-secret`"
+    ? "`x-cron-secret` header"
     : roles
       ? `Role: ${roles.join(", ")}`
       : feature
-        ? `Fitur \`${feature}\` (admin otomatis memiliki semua fitur)`
+        ? `Feature \`${feature}\` (administrators hold every feature)`
         : authenticated
-          ? "Login"
-          : "Publik, tanpa token";
+          ? "Signed-in user"
+          : "Public, no token required";
 
   const operation: Record<string, unknown> = {
-    tags: [doc?.tag ?? "Lainnya"],
+    tags: [doc?.tag ?? "Other"],
     summary: doc?.summary ?? key,
-    description: [doc?.description, `**Hak akses:** ${access}`]
+    description: [doc?.description, `**Access:** ${access}`]
       .filter(Boolean)
       .join("\n\n"),
     operationId: `${route.method.toLowerCase()}${route.path.replace(/[/:-]+(\w)/g, (_m, c: string) => c.toUpperCase())}`,
@@ -301,19 +302,19 @@ export function buildOpenApiDocument(router: unknown, options: OpenApiOptions) {
     openapi: "3.1.0",
     info: {
       title: "HRIS Backend API",
-      version: "1.0.0",
+      version: APP_VERSION,
       description: [
-        "Dibangkitkan otomatis dari route dan skema validasi backend, jadi selalu sesuai dengan server yang sedang berjalan.",
+        "Generated from the backend routes and validation schemas, so it always matches the running server.",
         "",
-        "- Autentikasi: header `Authorization: Bearer <token>` dari `POST /auth/login`.",
-        "- Sukses: `{ success: true, message?, data, meta? }`. Error: `{ success: false, message, code, details?, errors? }`.",
-        "- Batas umum: 300 permintaan per menit per pengguna.",
+        "- Authentication: `Authorization: Bearer <token>` header, with the token from `POST /auth/login`.",
+        "- Success: `{ success: true, message?, data, meta? }`. Error: `{ success: false, message, code, details?, errors? }`.",
+        "- General rate limit: 300 requests per minute per user.",
         production
-          ? "- **Production:** hanya permintaan GET yang dapat dicoba dari halaman ini."
-          : "- Semua method dapat dicoba dari halaman ini.",
+          ? "- **Production:** only GET requests can be tried from this page."
+          : "- Every method can be tried from this page.",
       ].join("\n"),
     },
-    servers: [{ url: "/api/v1", description: "Server ini" }],
+    servers: [{ url: "/api/v1", description: "This server" }],
     tags: TAGS,
     paths,
     components: {

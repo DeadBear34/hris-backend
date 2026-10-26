@@ -102,7 +102,7 @@ Setiap lapisan punya satu tanggung jawab. Controller tidak menulis SQL, model ti
 
 ## Instalasi dan Menjalankan
 
-Prasyarat: Node.js 22 (tersedia di `.nvmrc`, jalankan `nvm use`).
+Prasyarat: Node.js 22.23.4 atau lebih baru di jalur 22 (tersedia di `.nvmrc`, jalankan `nvm use`). Versi di bawahnya terdampak Security Release 21 Oktober 2026, termasuk CVE-2026-111497 (Brotli).
 
 ```bash
 git clone https://github.com/DeadBear34/hris-backend.git
@@ -1835,6 +1835,17 @@ Middleware `authenticate` dan server WebSocket memakai satu aturan yang sama, `s
 | Karyawan beserta akunnya dihapus   | `DeleteEmployeeController` |
 
 Fitur baru yang mengubah salah satu kolom itu wajib memanggil `forgetSession(userId)` setelah perubahannya tersimpan. Bila Redis tidak tersedia, sesi dibaca langsung dari database seperti sebelumnya, dan kegagalan Redis hanya dicatat sebagai `warn`.
+
+## Versi dan Changelog
+
+Versi aplikasi ditulis di satu tempat, `version` pada `package.json`, dan mengikuti Semantic Versioning (`MAYOR.MINOR.PATCH`). Versi yang sedang berjalan tampil di `GET /health` dan di dokumen OpenAPI.
+
+| Berkas                             | Isi                                                  |
+| ---------------------------------- | ---------------------------------------------------- |
+| `CHANGELOG.md`                     | Perubahan setiap rilis (format Keep a Changelog)     |
+| `npm run docs:openapi -- <berkas>` | Ekspor dokumen OpenAPI untuk Referensi API per versi |
+
+Aturan kapan angka versi naik, catatan rilis, dan dokumentasi per versi ada di repositori `hris-docs` (docs.hris.click), dalam Bahasa Inggris: halaman [Versioning Policy](https://docs.hris.click/versioning), [Changelog](https://docs.hris.click/changelog), dan [Release Process](https://docs.hris.click/release-process). Teks Referensi API (`src/docs/routeDocs.ts`) juga berbahasa Inggris karena ikut tayang di situs itu.
 
 ## Data Contoh
 

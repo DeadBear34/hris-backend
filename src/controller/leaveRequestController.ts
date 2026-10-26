@@ -566,6 +566,13 @@ export async function CreateLeaveRequestController(
       }
 
       return created;
+    }).catch((err: unknown) => {
+      if (isOverlapViolation(err)) {
+        throw Conflict(
+          "You already have an active leave request on overlapping dates",
+        );
+      }
+      throw err;
     });
 
     // setelah COMMIT, supaya atasan tidak diberi tahu pengajuan yang batal
@@ -737,23 +744,32 @@ async function markLeaveDays(
   );
 }
 
-// Saldo yang ditahan saat pengajuan dikembalikan bila pengajuannya batal
+// Saldo yang ditahan saat pengajuan dikembalikan bila pengajuannya batal.
+// Jumlahnya diambil dari transaksi pengajuan itu sendiri, bukan dari
+// deducts_balance jenis cutinya sekarang, supaya perubahan pengaturan jenis
+// cuti setelah pengajuan dibuat tidak membuat saldo hilang atau bertambah
 function refundHold(
   db: Executor,
   request: LeaveRequest,
   created_by: string,
   outcome: "rejected" | "cancelled",
 ) {
-  return balanceModel.createTransaction(db, {
-    employee_id: request.employee_id,
-    leave_type_id: request.leave_type_id,
-    period_year: periodYearOf(request.start_date),
-    amount: request.total_days,
-    type: "refund",
-    leave_request_id: request.id,
-    note: `Balance refund because the request was ${outcome}`,
+  return balanceModel.refundRequestBalance(
+    db,
+    request.id,
     created_by,
-  });
+    `Balance refund because the request was ${outcome}`,
+  );
+}
+
+// Dua pengajuan bersamaan bisa sama-sama lolos findOverlapping. Constraint
+// EXCLUDE di leave_requests yang menangkapnya, dengan kode 23P01
+function isOverlapViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === "23P01"
+  );
 }
 
 export async function ApproveLeaveRequestController(
@@ -854,9 +870,9 @@ export async function ApproveLeaveRequestController(
         throw Conflict("The request status has changed, please reload");
       }
 
-      if (leaveType.deducts_balance) {
-        await balanceModel.convertHoldToDeduction(client, id);
-      }
+      // Tanpa syarat deducts_balance: yang diubah hanya hold milik pengajuan
+      // ini, jadi pengajuan tanpa potongan saldo memang tidak terpengaruh
+      await balanceModel.convertHoldToDeduction(client, id);
 
       await markLeaveDays(client, approved, calendar);
 
@@ -950,9 +966,7 @@ export async function RejectLeaveRequestController(
         throw Conflict("The request status has changed, please reload");
       }
 
-      if (leaveType?.deducts_balance) {
-        await refundHold(client, existing, requester.employee.id, "rejected");
-      }
+      await refundHold(client, existing, requester.employee.id, "rejected");
 
       return rejected;
     });
@@ -1018,8 +1032,6 @@ export async function CancelLeaveRequestController(
       );
     }
 
-    const leaveType = await leaveTypeModel.findById(existing.leave_type_id);
-
     const { request, discardedPaths } = await withTransaction(
       async (client) => {
         // Status yang sudah diperiksa di atas ikut jadi syarat. Kalau pengajuan
@@ -1035,14 +1047,7 @@ export async function CancelLeaveRequestController(
           throw Conflict("The request status has changed, please reload");
         }
 
-        if (leaveType?.deducts_balance) {
-          await refundHold(
-            client,
-            existing,
-            requester.employee.id,
-            "cancelled",
-          );
-        }
+        await refundHold(client, existing, requester.employee.id, "cancelled");
 
         if (existing.status === "approved") {
           await attendanceModel.deleteLeaveDays(client, id);

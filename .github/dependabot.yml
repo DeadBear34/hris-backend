@@ -1,0 +1,32 @@
+# Pembaruan dependency otomatis: Dependabot membuka PR ke develop setiap
+# minggu. Update minor dan patch dikelompokkan jadi satu PR supaya tidak
+# membanjiri; update mayor tetap PR terpisah karena perlu diuji tersendiri.
+# Peringatan keamanan dibuka segera, tidak menunggu jadwal mingguan
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Jakarta
+    open-pull-requests-limit: 5
+    groups:
+      minor-dan-patch:
+        update-types: [minor, patch]
+
+  # Base image node di Dockerfile (dikunci ke versi yang sudah ditambal)
+  - package-ecosystem: docker
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Jakarta
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly

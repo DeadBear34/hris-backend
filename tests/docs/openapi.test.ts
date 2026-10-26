@@ -133,7 +133,7 @@ describe("dibaca otomatis dari route", () => {
 describe("pengaturan Try it out", () => {
   it("production hanya mengizinkan GET", () => {
     expect(doc["x-try-it-out-methods"]).toEqual(["get"]);
-    expect(doc.info.description).toContain("hanya permintaan GET");
+    expect(doc.info.description).toContain("only GET requests");
   });
 
   it("development mengizinkan semua method", () => {
@@ -156,7 +156,7 @@ describe("pengaturan Try it out", () => {
 
   it("server relatif terhadap domain API", () => {
     expect(doc.servers).toEqual([
-      { url: "/api/v1", description: "Server ini" },
+      { url: "/api/v1", description: "This server" },
     ]);
   });
 });

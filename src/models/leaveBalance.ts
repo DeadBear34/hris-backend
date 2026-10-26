@@ -242,6 +242,37 @@ export async function convertHoldToDeduction(
   return result.rows;
 }
 
+// Mengembalikan saldo yang masih tertahan oleh sebuah pengajuan, dihitung
+// dari transaksinya sendiri (hold, deduction, dan refund sebelumnya), bukan
+// dari pengaturan jenis cuti saat ini. Pengaturan deducts_balance bisa diubah
+// HR setelah pengajuan dibuat; yang menentukan adalah apa yang benar-benar
+// dipotong. Aman dipanggil ulang: refund yang sudah ada ikut dijumlahkan,
+// jadi tidak ada pengembalian ganda
+export async function refundRequestBalance(
+  db: Executor,
+  leave_request_id: string,
+  created_by: string,
+  note: string,
+): Promise<number> {
+  const result = await db.query(
+    `INSERT INTO leave_balance_transactions
+       (employee_id, leave_type_id, period_year, amount, type,
+        leave_request_id, note, created_by)
+     SELECT employee_id, leave_type_id, period_year, -SUM(amount),
+            'refund'::leave_transaction_type, $1::uuid, $3, $2::uuid
+     FROM leave_balance_transactions
+     WHERE leave_request_id = $1::uuid
+       AND type IN ('hold'::leave_transaction_type,
+                    'deduction'::leave_transaction_type,
+                    'refund'::leave_transaction_type)
+     GROUP BY employee_id, leave_type_id, period_year
+     HAVING SUM(amount) < 0`,
+    [leave_request_id, created_by, note],
+  );
+
+  return result.rowCount ?? 0;
+}
+
 // Mengunci baris karyawan sampai transaksi selesai. Dua pengajuan cuti
 // dari orang yang sama jadi berurutan, bukan saling mendahului
 export async function lockEmployeeBalance(

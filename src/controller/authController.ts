@@ -15,6 +15,17 @@ import { photoUrlFor } from "../helpers/storage.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
 
+// Hash tiruan untuk email yang tidak terdaftar. Tanpa ini, login dengan email
+// asing selesai jauh lebih cepat karena argon2 dilewati, sehingga selisih
+// waktunya membocorkan email mana yang terdaftar walaupun pesannya sama.
+// Dibuat sekali saat pertama dibutuhkan, dengan parameter argon2 yang sama
+let dummyHash: Promise<string> | null = null;
+
+function dummyPasswordHash(): Promise<string> {
+  dummyHash ??= hashPassword(`not-a-real-account-${Date.now()}`);
+  return dummyHash;
+}
+
 function buildProfile(
   user: userModel.User,
   employee: employeeModel.Employee | null,
@@ -83,6 +94,8 @@ export async function LoginController(
     const user = await userModel.findByEmail(email);
 
     if (!user) {
+      // hasilnya diabaikan; yang dibutuhkan hanya waktu kerjanya
+      await verifyPassword(await dummyPasswordHash(), password);
       throw reject("email_not_registered", "Incorrect email or password");
     }
 
@@ -243,16 +256,14 @@ export async function UpdateMeController(
       );
     }
 
-    const detail = updated
-      ? await employeeModel.findDetailById(updated.id)
-      : null;
+    const detail = await employeeModel.findDetailById(updated.id);
 
     activity.success({
       action: "profile.update",
       entity: "employee",
       entity_id: employee.id,
-      actor_name: (updated ?? employee).full_name,
-      summary: `${(updated ?? employee).full_name} updated their own profile`,
+      actor_name: updated.full_name,
+      summary: `${updated.full_name} updated their own profile`,
       metadata: { fields: Object.keys(changes) },
     });
 
@@ -261,7 +272,7 @@ export async function UpdateMeController(
       message: "Profile updated successfully",
       data: buildProfile(
         user,
-        updated ?? employee,
+        updated,
         detail,
         await getUserFeatureCodes(req, res),
       ),

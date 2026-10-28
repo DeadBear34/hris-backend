@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import * as activityLogModel from "../models/activityLog.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated } from "../helpers/pagination.js";
 
 export async function ListActivityLogController(
   _req: Request,
@@ -12,11 +12,7 @@ export async function ListActivityLogController(
 
     const { rows, total } = await activityLogModel.listLogs(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }

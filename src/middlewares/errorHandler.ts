@@ -40,13 +40,15 @@ function bodyParserError(err: unknown) {
   return typeof type === "string" ? (BODY_ERRORS[type] ?? null) : null;
 }
 
-// constraint EXCLUDE, misalnya dua cuti aktif yang tanggalnya bertumpuk
+// Pelanggaran constraint EXCLUDE. Bentrok tanggal cuti sudah diubah menjadi
+// pesan yang jelas oleh leaveRequestModel.createRequest; ini jaring pengaman
+// bila ada jalur lain yang menabrak constraint yang sama
 const EXCLUSION_VIOLATION = "23P01";
 
 // Pelanggaran UNIQUE atau EXCLUDE dari database biasanya muncul saat
 // permintaan yang sama datang bersamaan dan sama-sama lolos pemeriksaan di
 // aplikasi. Itu konflik data, bukan kesalahan server
-function isUniqueViolation(err: unknown): boolean {
+function isConstraintConflict(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const code = (err as { code?: unknown }).code;
 
@@ -90,7 +92,7 @@ export function errorHandler(
     });
   }
 
-  const appError = isUniqueViolation(err)
+  const appError = isConstraintConflict(err)
     ? Conflict("Data already exists")
     : err;
 

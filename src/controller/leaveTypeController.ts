@@ -5,6 +5,7 @@ import { BadRequest, Conflict, NotFound } from "../helpers/appError.js";
 import { startActivity } from "../helpers/activityLog.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { plural } from "../helpers/plural.js";
+import { assertLeaveTypeLimits } from "../helpers/leaveTypeRules.js";
 
 export async function ListLeaveTypeController(
   _req: Request,
@@ -46,6 +47,8 @@ export async function CreateLeaveTypeController(
     const activity = startActivity(req);
     const data = req.body as LeaveTypeInput;
 
+    assertLeaveTypeLimits(data);
+
     const existing = await leaveTypeModel.findByCode(data.code);
     if (existing) throw Conflict("Leave type code is already in use");
 
@@ -83,6 +86,9 @@ export async function UpdateLeaveTypeController(
 
     const existing = await leaveTypeModel.findById(id);
     if (!existing) throw NotFound("Leave type not found");
+
+    // perubahan sebagian diperiksa bersama nilai yang tidak ikut diubah
+    assertLeaveTypeLimits({ ...existing, ...data });
 
     if (data.code && data.code !== existing.code) {
       const duplicate = await leaveTypeModel.findByCode(data.code);

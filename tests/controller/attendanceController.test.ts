@@ -889,6 +889,9 @@ describe("job penutup hari", () => {
   }
 
   beforeEach(() => {
+    // setelah batas absen masuk jadwal umum (17:00), hari ini boleh ditutup
+    setWibTime("2026-03-10", "18:00");
+
     (workScheduleModel.resolveForAllActive as jest.Mock).mockResolvedValue([
       { employee_id: EMPLOYEE_ID, schedule: baseSchedule },
       { employee_id: OTHER_EMPLOYEE, schedule: baseSchedule },
@@ -1011,7 +1014,7 @@ describe("job penutup hari", () => {
       false as never,
     );
 
-    const res = await closeDay("2026-03-14", CRON_SECRET_VALUE);
+    const res = await closeDay("2026-03-07", CRON_SECRET_VALUE);
 
     expect(res.body.data.created).toBe(0);
     expect(res.body.data.skipped).toBe(3);
@@ -1025,7 +1028,7 @@ describe("job penutup hari", () => {
       name: "Tahun Baru",
     } as never);
 
-    const res = await closeDay("2026-03-14", CRON_SECRET_VALUE);
+    const res = await closeDay("2026-03-07", CRON_SECRET_VALUE);
 
     expect(res.body.data.marked.holiday).toBe(3);
   });
@@ -1063,6 +1066,104 @@ describe("job penutup hari", () => {
     const res = await closeDay("bukan-tanggal", CRON_SECRET_VALUE);
 
     expect(res.status).toBe(400);
+  });
+
+  it("menolak menutup tanggal yang belum terjadi", async () => {
+    const res = await closeDay("2026-03-11", CRON_SECRET_VALUE);
+
+    expect(res.status).toBe(400);
+    expect(attendanceModel.insertMarkers).not.toHaveBeenCalled();
+  });
+
+  it("belum menandai tidak hadir sebelum batas absen masuk hari ini lewat", async () => {
+    setWibTime("2026-03-10", "12:00");
+
+    const res = await closeDay("2026-03-10", CRON_SECRET_VALUE);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.marked.absent).toBe(0);
+    expect(res.body.data.pending).toBe(3);
+    expect(attendanceModel.insertMarkers).not.toHaveBeenCalled();
+  });
+
+  it("tepat pada menit batas absen masuk masih dianggap terbuka", async () => {
+    setWibTime("2026-03-10", "17:00");
+
+    const res = await closeDay("2026-03-10", CRON_SECRET_VALUE);
+
+    expect(res.body.data.pending).toBe(3);
+  });
+
+  it("satu menit setelah batas absen masuk langsung ditandai tidak hadir", async () => {
+    setWibTime("2026-03-10", "17:01");
+
+    const res = await closeDay("2026-03-10", CRON_SECRET_VALUE);
+
+    expect(res.body.data.marked.absent).toBe(3);
+    expect(res.body.data.pending).toBe(0);
+  });
+
+  it("menghormati batas absen masuk masing-masing jadwal", async () => {
+    setWibTime("2026-03-10", "09:00");
+    (workScheduleModel.resolveForAllActive as jest.Mock).mockResolvedValue([
+      {
+        employee_id: EMPLOYEE_ID,
+        schedule: { ...baseSchedule, absent_cutoff_time: "08:10:00" },
+      },
+      { employee_id: OTHER_EMPLOYEE, schedule: baseSchedule },
+    ] as never);
+
+    const res = await closeDay("2026-03-10", CRON_SECRET_VALUE);
+
+    expect(res.body.data.marked.absent).toBe(1);
+    expect(res.body.data.pending).toBe(1);
+
+    const [, , rows] = (attendanceModel.insertMarkers as jest.Mock).mock
+      .calls[0] as [unknown, string, { employee_id: string }[]];
+
+    expect(rows.map((row) => row.employee_id)).toEqual([EMPLOYEE_ID]);
+  });
+
+  it("libur dan cuti hari ini tetap ditandai walau batas belum lewat", async () => {
+    setWibTime("2026-03-10", "07:00");
+    (attendanceModel.findApprovedLeaveOn as jest.Mock).mockResolvedValue([
+      { employee_id: EMPLOYEE_ID, leave_request_id: LEAVE_REQUEST_ID },
+    ] as never);
+
+    const res = await closeDay("2026-03-10", CRON_SECRET_VALUE);
+
+    expect(res.body.data.marked).toEqual({ holiday: 0, leave: 1, absent: 0 });
+    expect(res.body.data.pending).toBe(2);
+  });
+
+  it("tanggal yang sudah lewat ditutup penuh tanpa melihat jam sekarang", async () => {
+    setWibTime("2026-03-10", "07:00");
+
+    const res = await closeDay("2026-03-09", CRON_SECRET_VALUE);
+
+    expect(res.body.data.marked.absent).toBe(3);
+    expect(res.body.data.pending).toBe(0);
+  });
+
+  it("tidak menandai karyawan pada tanggal sebelum ia bergabung", async () => {
+    (workScheduleModel.resolveForAllActive as jest.Mock).mockResolvedValue([
+      {
+        employee_id: EMPLOYEE_ID,
+        join_date: "2026-03-11",
+        schedule: baseSchedule,
+      },
+      {
+        employee_id: OTHER_EMPLOYEE,
+        join_date: "2026-03-10",
+        schedule: baseSchedule,
+      },
+      { employee_id: THIRD_EMPLOYEE, join_date: null, schedule: baseSchedule },
+    ] as never);
+
+    const res = await closeDay("2026-03-10", CRON_SECRET_VALUE);
+
+    expect(res.body.data.marked.absent).toBe(2);
+    expect(res.body.data.skipped).toBe(1);
   });
 });
 
@@ -1139,12 +1240,62 @@ describe("batas absen masuk", () => {
     expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
   });
 
-  it("tidak menyimpan baris apa pun ketika ditolak, penandaan diserahkan ke job penutup hari", async () => {
+  it("langsung mencatat tidak hadir ketika ditolak karena lewat batas", async () => {
     setWibTime("2026-03-10", "09:00");
+    (attendanceModel.insertMarkers as jest.Mock).mockResolvedValue(1 as never);
 
     await checkIn();
 
     expect(attendanceModel.createCheckIn).not.toHaveBeenCalled();
+    expect(attendanceModel.insertMarkers).toHaveBeenCalledWith(
+      expect.anything(),
+      "2026-03-10",
+      [
+        expect.objectContaining({
+          employee_id: EMPLOYEE_ID,
+          status: "absent",
+          note: expect.stringContaining("09:00"),
+        }),
+      ],
+    );
+  });
+
+  it("tetap menolak dengan pesan yang sama walau pencatatan tidak hadir gagal", async () => {
+    setWibTime("2026-03-10", "09:00");
+    (attendanceModel.insertMarkers as jest.Mock).mockRejectedValue(
+      new Error("koneksi putus") as never,
+    );
+
+    const res = await checkIn();
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("08:10");
+  });
+
+  it("tidak mencatat tidak hadir ketika absen masuk masih diterima", async () => {
+    setWibTime("2026-03-10", "08:10");
+
+    await checkIn();
+
+    expect(attendanceModel.insertMarkers).not.toHaveBeenCalled();
+  });
+
+  it("ringkasan hari ini menjelaskan bila sudah tercatat tidak hadir", async () => {
+    setWibTime("2026-03-10", "09:00");
+    (attendanceModel.findByEmployeeAndDate as jest.Mock).mockResolvedValue({
+      id: ATTENDANCE_ID,
+      status: "absent",
+      check_in_at: null,
+      check_out_at: null,
+    } as never);
+
+    const res = await request(app)
+      .get("/api/v1/attendances/today")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.body.data.can_check_in).toBe(false);
+    expect(res.body.data.can_check_out).toBe(false);
+    expect(res.body.data.blocked_reason).toContain("absent");
   });
 
   it("absensi yang sudah tercatat tetap dilaporkan sebagai bentrok, bukan sebagai ditutup", async () => {

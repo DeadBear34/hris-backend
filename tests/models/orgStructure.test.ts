@@ -60,7 +60,7 @@ describe("findLineManager", () => {
     expect(result?.source).toBe("structure");
     expect(result?.levels_up).toBe(2);
     expect(mockQuery).toHaveBeenCalledTimes(2);
-    expect(paramsOf(1)).toEqual([EMPLOYEE_ID, MAX_TREE_DEPTH]);
+    expect(paramsOf(1)).toEqual([EMPLOYEE_ID, EMPLOYEE_ID, MAX_TREE_DEPTH]);
   });
 
   it("null bila sampai puncak tidak ada atasan aktif", async () => {
@@ -94,7 +94,7 @@ describe("findLineManager", () => {
     });
 
     it("dibatasi kedalamannya supaya data melingkar tidak berputar tanpa henti", () => {
-      expect(sqlOf(1)).toContain("r.tingkat < $2::int");
+      expect(sqlOf(1)).toContain("r.tingkat < $3::int");
     });
 
     // tingkat 0 adalah jabatan karyawan itu sendiri: rekan sejabatan bukan atasan
@@ -103,7 +103,7 @@ describe("findLineManager", () => {
     });
 
     it("tidak pernah memilih karyawan itu sendiri", () => {
-      expect(sqlOf(1)).toContain("e.id <> $1::uuid");
+      expect(sqlOf(1)).toContain("($2::uuid IS NULL OR e.id <> $2::uuid)");
     });
 
     it("melewati jabatan kosong dengan memilih tingkat terdekat yang terisi", () => {

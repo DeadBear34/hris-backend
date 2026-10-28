@@ -1,4 +1,3 @@
-// baru: query atasan langsung & data bagan organisasi
 import { pool } from "../config/databaseConnection.js";
 import { MAX_TREE_DEPTH } from "../helpers/orgConstants.js";
 import type { Executor } from "./user.js";
@@ -46,27 +45,24 @@ async function findOverrideManager(
   return result.rows[0] ?? null;
 }
 
-// Naik dari jabatan karyawan ke atasan jabatannya. Jabatan yang kosong
+// Naik dari sebuah jabatan ke atasan jabatannya. Jabatan yang kosong
 // dilewati sampai ditemukan pemegang aktif. Bila satu jabatan dipegang
-// beberapa orang, yang paling lama menjabat yang dipilih. Rekan yang
-// memegang jabatan yang sama tidak pernah dianggap atasan
-async function findStructuralManager(
-  employee_id: string,
-  db: Executor,
-): Promise<LineManager | null> {
-  const result = await db.query<LineManager>(
-    `WITH RECURSIVE rantai AS (
+// beberapa orang, yang paling lama menjabat yang dipilih.
+//   origin : ekspresi SQL yang menghasilkan id jabatan awal
+//   $2     : karyawan yang tidak boleh terpilih (boleh null)
+//   $3     : batas kedalaman
+function walkUpQuery(origin: string): string {
+  return `WITH RECURSIVE rantai AS (
        SELECT p.id, p.reports_to_position_id, 0 AS tingkat
-       FROM employees asal
-       JOIN positions p ON p.id = asal.position_id AND p.deleted_at IS NULL
-       WHERE asal.id = $1::uuid
+       FROM positions p
+       WHERE p.id = ${origin} AND p.deleted_at IS NULL
 
        UNION ALL
 
        SELECT p.id, p.reports_to_position_id, r.tingkat + 1
        FROM positions p
        JOIN rantai r ON p.id = r.reports_to_position_id
-       WHERE p.deleted_at IS NULL AND r.tingkat < $2::int
+       WHERE p.deleted_at IS NULL AND r.tingkat < $3::int
      )
      SELECT e.id AS employee_id, e.full_name, e.user_id,
             p.id AS position_id, p.name AS position_name,
@@ -75,11 +71,22 @@ async function findStructuralManager(
      JOIN positions p ON p.id = r.id
      JOIN employees e ON e.position_id = r.id
      WHERE r.tingkat > 0
-       AND e.id <> $1::uuid
+       AND ($2::uuid IS NULL OR e.id <> $2::uuid)
        AND ${ACTIVE_HOLDER}
      ORDER BY r.tingkat ASC, e.join_date ASC, e.created_at ASC
-     LIMIT 1`,
-    [employee_id, MAX_TREE_DEPTH],
+     LIMIT 1`;
+}
+
+// Atasan dari struktur jabatan seorang karyawan. Karyawan itu sendiri
+// dikecualikan, jadi rekan yang memegang jabatan yang sama tidak pernah
+// dianggap atasan
+async function findStructuralManager(
+  employee_id: string,
+  db: Executor,
+): Promise<LineManager | null> {
+  const result = await db.query<LineManager>(
+    walkUpQuery("(SELECT position_id FROM employees WHERE id = $1::uuid)"),
+    [employee_id, employee_id, MAX_TREE_DEPTH],
   );
 
   return result.rows[0] ?? null;
@@ -99,7 +106,6 @@ export async function findLineManager(
   );
 }
 
-// baru: pratinjau atasan buat form karyawan, sebelum datanya disimpan
 // Atasan yang akan didapat pemegang jabatan ini, dihitung dengan aturan yang
 // sama seperti findStructuralManager tetapi berangkat dari jabatan. Dipakai
 // form karyawan untuk menampilkan atasan otomatis sebelum data disimpan.
@@ -110,32 +116,11 @@ export async function findLineManagerForPosition(
   exceptEmployeeId?: string,
   db: Executor = pool,
 ): Promise<LineManager | null> {
-  const result = await db.query<LineManager>(
-    `WITH RECURSIVE rantai AS (
-       SELECT p.id, p.reports_to_position_id, 0 AS tingkat
-       FROM positions p
-       WHERE p.id = $1::uuid AND p.deleted_at IS NULL
-
-       UNION ALL
-
-       SELECT p.id, p.reports_to_position_id, r.tingkat + 1
-       FROM positions p
-       JOIN rantai r ON p.id = r.reports_to_position_id
-       WHERE p.deleted_at IS NULL AND r.tingkat < $3::int
-     )
-     SELECT e.id AS employee_id, e.full_name, e.user_id,
-            p.id AS position_id, p.name AS position_name,
-            'structure' AS source, r.tingkat AS levels_up
-     FROM rantai r
-     JOIN positions p ON p.id = r.id
-     JOIN employees e ON e.position_id = r.id
-     WHERE r.tingkat > 0
-       AND ($2::uuid IS NULL OR e.id <> $2::uuid)
-       AND ${ACTIVE_HOLDER}
-     ORDER BY r.tingkat ASC, e.join_date ASC, e.created_at ASC
-     LIMIT 1`,
-    [position_id, exceptEmployeeId ?? null, MAX_TREE_DEPTH],
-  );
+  const result = await db.query<LineManager>(walkUpQuery("$1::uuid"), [
+    position_id,
+    exceptEmployeeId ?? null,
+    MAX_TREE_DEPTH,
+  ]);
 
   return result.rows[0] ?? null;
 }

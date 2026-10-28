@@ -35,7 +35,7 @@ import {
 import { plural } from "../helpers/plural.js";
 import { assertPositionCapacity } from "../helpers/orgValidation.js";
 import { forgetSession } from "../helpers/sessionStore.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated } from "../helpers/pagination.js";
 import { rerouteSafely } from "../helpers/approvalRouting.js";
 
 // Satu masalah pada satu kolom
@@ -124,7 +124,6 @@ async function checkRelations(
   return results.filter((error): error is FieldError => error !== null);
 }
 
-// baru: isi departemen dari unit jabatan + cek kuota kursi
 // Menempatkan karyawan di jabatannya: departemen diisi dari unit jabatan,
 // dan kuota kursi jabatan diperiksa (V7). rows boleh berisi beberapa karyawan
 // sekaligus, jadi kuota dihitung dari jumlah yang masuk ke jabatan yang sama.
@@ -178,11 +177,7 @@ export async function ListEmployeeController(
     const query = res.locals.query as ListParams;
     const { rows, total } = await employeeModel.listEmployees(query);
 
-    res.json({
-      success: true,
-      data: rows.map(withPhotoUrl),
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows.map(withPhotoUrl), total, query));
   } catch (err) {
     next(err);
   }
@@ -633,7 +628,6 @@ export async function CreateEmployeeController(
       rejectFailedRows(failed, rawRows, isMany, context, occurredAt);
     }
 
-    // baru: cek kuota & departemen pas tambah karyawan
     await placeInPositions(rows);
 
     // Hash dibuat sebelum transaksi dimulai. Argon2 sengaja lambat, jadi
@@ -719,7 +713,6 @@ export async function UpdateEmployeeController(
 
     await assertRelationsExist(data, id);
 
-    // baru: cek kuota & departemen kalau jabatan ganti
     // Kuota dan departemen hanya diperiksa bila jabatannya benar-benar berganti
     if (data.position_id && data.position_id !== existing.position_id) {
       await placeInPositions([data], id);
@@ -747,7 +740,6 @@ export async function UpdateEmployeeController(
       );
     }
 
-    // baru: jabatan/atasan/status berubah -> pindahin penyetuju cuti pending
     // Jabatan, pengecualian atasan, atau status aktif menentukan siapa atasan
     // siapa. Pengajuan cuti yang masih menunggu dialihkan bila atasannya berubah
     const structural =

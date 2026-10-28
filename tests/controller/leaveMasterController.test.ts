@@ -398,4 +398,76 @@ describe("jenis cuti", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION_ERROR");
   });
+  it("menolak ambang lampiran yang tidak masuk akal", async () => {
+    const res = await request(app)
+      .post("/api/v1/leave-types")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, attachment_required_after: 10000000 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+    expect(leaveTypeModel.createLeaveType).not.toHaveBeenCalled();
+  });
+
+  it("menolak ambang lampiran yang tidak pernah tercapai karena batas per pengajuan", async () => {
+    const res = await request(app)
+      .post("/api/v1/leave-types")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        code: "SICK",
+        name: "Cuti Sakit",
+        requires_attachment: true,
+        attachment_required_after: 300,
+        max_days_per_request: 300,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+    expect(res.body.errors[0].field).toBe("attachment_required_after");
+    expect(leaveTypeModel.createLeaveType).not.toHaveBeenCalled();
+  });
+
+  it("menolak batas per pengajuan yang melebihi jatah", async () => {
+    const res = await request(app)
+      .post("/api/v1/leave-types")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, max_days_per_request: 20 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors[0].field).toBe("max_days_per_request");
+  });
+
+  it("perubahan sebagian diperiksa bersama nilai yang tersimpan", async () => {
+    // jatah tersimpan 12, batas per pengajuan baru 20 melebihinya
+    const res = await request(app)
+      .patch(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ max_days_per_request: 20 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors[0].field).toBe("max_days_per_request");
+    expect(leaveTypeModel.updateLeaveType).not.toHaveBeenCalled();
+  });
+
+  it("menerima perubahan yang konsisten", async () => {
+    const res = await request(app)
+      .patch(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ max_days_per_request: 10 });
+
+    expect(res.status).toBe(200);
+    expect(leaveTypeModel.updateLeaveType).toHaveBeenCalled();
+  });
+
+  it("ambang lampiran yang dikosongkan disimpan sebagai 0", async () => {
+    await request(app)
+      .patch(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ attachment_required_after: null });
+
+    const [, data] = (leaveTypeModel.updateLeaveType as jest.Mock).mock
+      .calls[0] as [string, { attachment_required_after: number }];
+
+    expect(data.attachment_required_after).toBe(0);
+  });
 });

@@ -176,7 +176,7 @@ Isi `.env.production` sama dengan `.env`, dengan catatan berikut:
 | `TRUST_PROXY`                   | `1`, karena ada satu reverse proxy di depan backend                  |
 | `APP_URL`                       | Alamat frontend tanpa garis miring di akhir, dipakai di tautan email |
 | `CORS_ORIGIN`                   | Alamat frontend, boleh lebih dari satu dipisah koma                  |
-| `CRON_SECRET`                   | String acak minimal 16 karakter, dipakai job penutup hari            |
+| `CRON_SECRET`                   | Opsional. Hanya untuk memanggil job penutup hari secara manual       |
 | `LOG_LEVEL`                     | `info`                                                               |
 
 `.env.production` tidak ikut git (`.env.*` ada di `.gitignore`) dan tidak ikut image (`.dockerignore`). Rahasia hanya ada di VM.
@@ -224,12 +224,7 @@ Tanpa tiga baris WebSocket itu, API tetap jalan tetapi notifikasi real-time sela
 
 ### Job penutup hari
 
-Railway tidak lagi memanggil endpoint ini, jadi jadwalnya dipasang di crontab VM (`crontab -e`). Contoh setiap hari pukul 23.30 WIB:
-
-```cron
-CRON_TZ=Asia/Jakarta
-30 23 * * * curl -fsS -X POST -H "x-cron-secret: ISI_CRON_SECRET" http://127.0.0.1:8080/api/v1/attendances/close-day > /dev/null
-```
+Tidak perlu crontab. Backend menutup hari sendiri setiap 15 menit (lihat [Job Penutup Hari](#job-penutup-hari)). Crontab lama yang memanggil `close-day` boleh dibiarkan atau dihapus; keduanya aman berjalan bersamaan.
 
 ### Memperbarui ke versi baru
 
@@ -298,7 +293,9 @@ Log berformat JSON, satu baris per kejadian. Docker menyimpannya di disk VM deng
 | `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`            | Nama bucket privat penyimpan lampiran cuti                                             |
 | `SUPABASE_PHOTO_BUCKET`     | tidak | `employee-photos`              | Nama bucket publik penyimpan foto profil karyawan                                      |
 | `TIMEZONE`                  | tidak | `Asia/Jakarta`                 | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja                              |
-| `CRON_SECRET`               | tidak | —                              | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi                     |
+| `CRON_SECRET`               | tidak | —                              | Rahasia untuk memanggil `close-day` secara manual, minimal 16 karakter                 |
+| `ATTENDANCE_AUTO_CLOSE`     | tidak | menyala, kecuali saat test     | `true` atau `false`, penutupan hari otomatis di dalam backend                          |
+| `ATTENDANCE_BACKFILL_DAYS`  | tidak | `7`                            | Jumlah hari ke belakang yang ikut ditutup saat server menyala, 0 sampai 31             |
 | `RATE_LIMIT_ENABLED`        | tidak | menyala, kecuali saat test     | `true` atau `false`, lihat [Rate Limit](#rate-limit)                                   |
 | `QA_TOOLS_ENABLED`          | tidak | menyala, kecuali di production | `true` atau `false`, lihat [Kode verifikasi untuk QA](#kode-verifikasi-untuk-qa)       |
 | `TRUST_PROXY`               | tidak | mati                           | Jumlah proxy di depan server, wajib bila memakai reverse proxy                         |
@@ -506,7 +503,7 @@ Membaca jadwal cukup dengan login, karena setiap karyawan perlu mengetahui jam m
 | `GET`   | `/attendances/offline-log` | `attendance.report`    | Audit absensi yang dikirim setelah offline      |
 | `GET`   | `/attendances/events`      | `attendance.report`    | Jejak mentah setiap penekanan tombol absen      |
 | `PATCH` | `/attendances/:id/correct` | `attendance.correct`   | Koreksi absensi, alasan wajib diisi             |
-| `POST`  | `/attendances/close-day`   | Header `x-cron-secret` | Job penutup hari, dipanggil penjadwal eksternal |
+| `POST`  | `/attendances/close-day`   | Header `x-cron-secret` | Job penutup hari, pemanggilan manual            |
 
 Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan kemampuan dasar setiap karyawan dan tidak boleh dapat dicabut lewat jabatan.
 
@@ -1357,24 +1354,34 @@ Kalau audit menunjukkan pemakaiannya berulang pada orang yang sama, langkah beri
 
 ## Job Penutup Hari
 
-Karyawan yang tidak absen sama sekali tidak meninggalkan baris apa pun, jadi ketidakhadiran ditandai setelah hari berakhir.
+Karyawan yang tidak absen sama sekali tidak meninggalkan baris apa pun, jadi ketidakhadirannya perlu ditandai oleh job ini.
+
+### Berjalan otomatis
+
+Backend menjalankannya sendiri, tanpa crontab:
+
+- saat server menyala, hari ini beserta `ATTENDANCE_BACKFILL_DAYS` hari sebelumnya (bawaan 7) ikut ditutup, supaya hari yang terlewat ketika server mati tetap terhitung;
+- sesudahnya setiap 15 menit untuk kemarin dan hari ini.
+
+Untuk hari ini, tanda tidak hadir baru diberikan setelah `absent_cutoff_time` jadwal karyawan itu lewat. Sebelum itu karyawannya dihitung `pending` karena masih boleh absen. Tanggal sebelum `join_date` karyawan tidak ditandai. Putaran yang membuat baris baru dicatat di log aktivitas sebagai `attendance.close_day` dengan pelaku `System`.
+
+Absen masuk yang ditolak karena lewat batas langsung mencatat baris `absent` saat itu juga, dengan catatan jam percobaannya. Karyawan tidak perlu menunggu job untuk melihat alfanya di rekap.
+
+Matikan dengan `ATTENDANCE_AUTO_CLOSE=false` bila penutupan ingin dipegang penjadwal luar.
+
+### Memanggil secara manual
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/attendances/close-day" \
   -H "x-cron-secret: $CRON_SECRET"
 ```
 
-Wewenangnya diperiksa lewat header `x-cron-secret`, bukan JWT, karena pemanggilnya mesin penjadwal. Tanpa query `date`, job memakai tanggal hari ini menurut zona waktu kantor.
+Wewenangnya diperiksa lewat header `x-cron-secret`, bukan JWT, karena pemanggilnya mesin penjadwal. Tanpa query `date`, job memakai tanggal hari ini menurut zona waktu kantor. Tanggal yang belum terjadi ditolak dengan 400.
 
 Urutan penentuan statusnya: hari libur, lalu cuti yang disetujui, baru tidak hadir. Hari yang bukan hari kerja tidak menghasilkan baris sama sekali, supaya akhir pekan tidak tercampur dengan hari libur nasional pada laporan.
 
 Job aman dijalankan berkali-kali pada tanggal yang sama. Baris yang sudah ada tidak pernah ditimpa, dan penulisannya dipotong per 500 baris, masing-masing dalam satu transaksi.
 
-Contoh crontab setiap hari pukul 21:00 WIB (gunakan `0 14 * * *` bila penjadwal berjalan di UTC):
-
-```cron
-0 21 * * * curl -fsS -X POST "http://localhost:8080/api/v1/attendances/close-day" -H "x-cron-secret: YOUR_SECRET" >> /var/log/hris-close-day.log 2>&1
-```
 
 ## Otorisasi Berbasis Jabatan
 

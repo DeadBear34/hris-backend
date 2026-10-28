@@ -73,12 +73,31 @@ export const envSchema = z.object({
     z.enum(["true", "false"]).optional(),
   ),
 
-  // baru: saklar endpoint QA
   // Endpoint bantu QA seperti pengambilan kode verifikasi email. Kosong
   // berarti menyala di luar production dan mati di production
   QA_TOOLS_ENABLED: z.preprocess(
     blankToUndefined,
     z.enum(["true", "false"]).optional(),
+  ),
+
+  // Penutupan hari otomatis di dalam backend: karyawan yang tidak absen
+  // ditandai tidak hadir tanpa perlu crontab di server. Kosong berarti
+  // menyala, kecuali saat pengujian
+  ATTENDANCE_AUTO_CLOSE: z.preprocess(
+    blankToUndefined,
+    z.enum(["true", "false"]).optional(),
+  ),
+
+  // Berapa hari ke belakang yang ikut diperiksa saat server menyala, untuk
+  // menutup hari yang terlewat ketika server mati
+  ATTENDANCE_BACKFILL_DAYS: z.preprocess(
+    blankToUndefined,
+    z.coerce
+      .number()
+      .int()
+      .min(0, "ATTENDANCE_BACKFILL_DAYS cannot be negative")
+      .max(31, "ATTENDANCE_BACKFILL_DAYS must be at most 31")
+      .default(7),
   ),
 
   // Wajib diisi bila server berada di balik reverse proxy atau load balancer.

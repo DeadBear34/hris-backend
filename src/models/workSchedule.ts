@@ -175,11 +175,16 @@ export async function resolveForEmployee(
   return result.rows[0] ?? null;
 }
 
+// join_date ikut dibawa supaya penutupan hari tidak menandai tidak hadir
+// pada tanggal sebelum karyawan bergabung
 export async function resolveForAllActive(): Promise<
-  { employee_id: string; schedule: WorkSchedule }[]
+  { employee_id: string; join_date: IsoDate | null; schedule: WorkSchedule }[]
 > {
-  const result = await pool.query<WorkSchedule & { employee_id: string }>(
-    `SELECT e.id AS employee_id, ${SCHEDULE_COLUMNS}
+  const result = await pool.query<
+    WorkSchedule & { employee_id: string; join_date: IsoDate | null }
+  >(
+    `SELECT e.id AS employee_id, to_char(e.join_date, 'YYYY-MM-DD') AS join_date,
+            ${SCHEDULE_COLUMNS}
      FROM employees e
      JOIN LATERAL (
        SELECT ws.*,
@@ -201,8 +206,9 @@ export async function resolveForAllActive(): Promise<
      ORDER BY e.employee_number ASC`,
   );
 
-  return result.rows.map(({ employee_id, ...schedule }) => ({
+  return result.rows.map(({ employee_id, join_date, ...schedule }) => ({
     employee_id,
+    join_date: join_date ?? null,
     schedule: schedule as WorkSchedule,
   }));
 }

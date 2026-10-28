@@ -1,4 +1,3 @@
-// baru: endpoint bagan organisasi & atasan langsung
 import type { Request, Response, NextFunction } from "express";
 import * as employeeModel from "../models/employee.js";
 import * as positionModel from "../models/position.js";
@@ -71,7 +70,6 @@ export async function LineManagerController(
   }
 }
 
-// baru: pratinjau atasan dari jabatan yang dipilih di form karyawan
 // Atasan yang akan didapat pemegang jabatan ini menurut struktur. Dipakai
 // form tambah dan ubah karyawan untuk mengisi atasan otomatis begitu jabatan
 // dipilih, sebelum datanya disimpan. Pengecualian manual (manager_id) tidak

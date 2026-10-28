@@ -140,6 +140,20 @@ export function dateRange(start: IsoDate, end: IsoDate): IsoDate[] {
   return result;
 }
 
+// Tanggal kalender digeser sejumlah hari, negatif berarti mundur
+export function shiftDate(date: IsoDate, days: number): IsoDate {
+  const [year, month, day] = date.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+
+  const cursor = new Date(Date.UTC(year, month - 1, day));
+  cursor.setUTCDate(cursor.getUTCDate() + days);
+
+  return cursor.toISOString().slice(0, 10);
+}
+
 // Folder arsip per bulan untuk berkas yang menumpuk. Memakai zona kantor,
 // bukan jam server, supaya berkas yang diunggah pada awal bulan waktu WIB
 // tidak jatuh ke folder bulan sebelumnya

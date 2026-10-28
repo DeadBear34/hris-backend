@@ -49,7 +49,6 @@ export async function CreatePositionController(
     const activity = startActivity(req);
     const data = req.body as PositionInput & { department_id: string };
 
-    // ubah: kode & nama sekarang unik per unit, bukan global
     // Kode dan nama unik per unit, bukan global
     const [existing, sameName] = await Promise.all([
       positionModel.findByCode(data.code, data.department_id),
@@ -61,7 +60,6 @@ export async function CreatePositionController(
       throw Conflict("Position name is already in use in this unit");
 
     await assertPositionPlacement({
-      // baru: cek posisi jabatan di struktur
       positionId: null,
       department_id: data.department_id,
       reports_to_position_id: data.reports_to_position_id ?? null,
@@ -116,14 +114,12 @@ export async function UpdatePositionController(
         : existing.reports_to_position_id;
     const is_unit_head = data.is_unit_head ?? existing.is_unit_head;
 
-    // baru: jabatan gak boleh dilepas dari unit
     if (data.department_id === null) {
       throw BadRequest("A position must belong to a unit", {
         field: "department_id",
       });
     }
 
-    // baru: tandain apa aja yang berubah
     const unitChanged =
       data.department_id !== undefined &&
       data.department_id !== existing.department_id;
@@ -155,7 +151,6 @@ export async function UpdatePositionController(
       data.reports_to_position_id !== undefined ||
       data.is_unit_head !== undefined;
 
-    // baru: jabatan lama tanpa unit / masih punya bawahan -> tolak
     if (placementChanged) {
       // Jabatan lama yang belum punya unit tidak boleh diberi atasan atau
       // dijadikan kepala unit sebelum unitnya ditentukan; tanpa ini seluruh
@@ -187,7 +182,6 @@ export async function UpdatePositionController(
       });
     }
 
-    // baru: kuota kursi gak boleh di bawah jumlah pemegang
     // Kuota kursi tidak boleh diturunkan di bawah jumlah pemegang sekarang
     if (data.max_holders !== undefined && data.max_holders !== null) {
       const holders = await countHolders(id);
@@ -211,7 +205,6 @@ export async function UpdatePositionController(
       }
     }
 
-    // ubah: pindah unit -> departemen pemegang ikut disamain (1 transaksi)
     // Departemen pemegang jabatan diturunkan dari unit jabatannya, jadi ikut
     // disesuaikan dalam transaksi yang sama bila unitnya berpindah. Perubahan
     // lain cukup satu UPDATE tanpa transaksi
@@ -244,7 +237,6 @@ export async function UpdatePositionController(
       );
     }
 
-    // baru: struktur berubah -> pindahin penyetuju cuti pending
     // Atasan pemegang jabatan di cabang ini bisa berubah, jadi pengajuan cuti
     // yang masih menunggu dialihkan ke atasan yang berlaku sekarang
     const rerouted = placementChanged ? await rerouteSafely() : [];
@@ -282,7 +274,6 @@ export async function DeletePositionController(
     const existing = await positionModel.findById(id);
     if (!existing) throw NotFound("Position not found");
 
-    // ubah: hapus jabatan juga ngecek bawahan
     const [count, reports] = await Promise.all([
       positionModel.countEmployees(id),
       positionModel.countDirectReports(id),

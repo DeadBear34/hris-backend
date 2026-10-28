@@ -599,9 +599,9 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   },
   "POST /attendances/close-day": {
     tag: "Attendance",
-    summary: "Close the day (scheduled job)",
+    summary: "Close the day (manual trigger)",
     description:
-      "Called daily by the scheduler, not by users. Marks employees who did not check in as `absent`. Protected by the `x-cron-secret` header instead of a sign-in token.",
+      "The backend already closes days automatically every 15 minutes; this endpoint is for manual runs. Marks employees without an attendance row as `holiday`, `leave`, or `absent`. For today, `absent` is only given after the employee's check-in cutoff has passed; the rest are counted as `pending`. Future dates are rejected. Protected by the `x-cron-secret` header instead of a sign-in token.",
     security: "cron",
   },
 

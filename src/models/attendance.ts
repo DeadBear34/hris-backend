@@ -220,7 +220,6 @@ function buildFilter(params: ListAttendanceParams, values: unknown[]): string {
   // yang tanpa pengecualian manual dan jabatannya melapor ke jabatan manager_id
   if (params.manager_id) {
     values.push(params.manager_id);
-    // ubah: bawahan juga dihitung dari struktur jabatan
     const manager = `$${values.length}::uuid`;
 
     conditions.push(

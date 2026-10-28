@@ -55,7 +55,7 @@ import { plural } from "../helpers/plural.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 import { deleteAttachments, isStorageConfigured } from "../helpers/storage.js";
 import { logger } from "../config/logger.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated } from "../helpers/pagination.js";
 
 const SICK_LEAVE_CODE = "SICK";
 
@@ -100,7 +100,6 @@ async function getRequester(req: Request, res: Response): Promise<Requester> {
 function canView(request: LeaveRequest, requester: Requester): boolean {
   return (
     requester.canViewAll ||
-    // ubah: approve_all boleh buka detail pengajuan
     requester.canApproveAll ||
     request.employee_id === requester.employee.id ||
     request.approver_id === requester.employee.id
@@ -222,11 +221,7 @@ export async function ListMyLeaveRequestController(
       employee_id: requester.employee.id,
     });
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -244,11 +239,7 @@ export async function ListApprovalLeaveRequestController(
     // Tanpa salah satu fitur penyetuju tidak ada pengajuan yang boleh
     // ditindak, jadi daftarnya kosong alih-alih ditolak
     if (!requester.canApproveTeam && !requester.canApproveAll) {
-      res.json({
-        success: true,
-        data: [],
-        meta: paginationMeta(0, query.page, query.limit),
-      });
+      res.json(paginated([], 0, query));
       return;
     }
 
@@ -267,11 +258,7 @@ export async function ListApprovalLeaveRequestController(
       ...scope,
     });
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -287,11 +274,7 @@ export async function ListAllLeaveRequestController(
 
     const { rows, total } = await leaveRequestModel.listRequests(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -523,7 +506,6 @@ export async function CreateLeaveRequestController(
       }
     }
 
-    // ubah: penyetuju diambil dari struktur jabatan, bukan manager_id doang
     // Penyetuju satu tingkat: atasan langsung hasil hitungan struktur jabatan
     // (atau pengecualian manual), dibekukan saat pengajuan dibuat. Null berarti
     // tidak ada atasan aktif sampai puncak, sehingga ditangani HR dan admin
@@ -548,7 +530,6 @@ export async function CreateLeaveRequestController(
         end_date,
         total_days: totalDays,
         reason: reason ?? null,
-        // ubah: pakai hasil findLineManager
         approver_id: lineManager?.employee_id ?? null,
       });
 
@@ -566,13 +547,6 @@ export async function CreateLeaveRequestController(
       }
 
       return created;
-    }).catch((err: unknown) => {
-      if (isOverlapViolation(err)) {
-        throw Conflict(
-          "You already have an active leave request on overlapping dates",
-        );
-      }
-      throw err;
     });
 
     // setelah COMMIT, supaya atasan tidak diberi tahu pengajuan yang batal
@@ -759,16 +733,6 @@ function refundHold(
     request.id,
     created_by,
     `Balance refund because the request was ${outcome}`,
-  );
-}
-
-// Dua pengajuan bersamaan bisa sama-sama lolos findOverlapping. Constraint
-// EXCLUDE di leave_requests yang menangkapnya, dengan kode 23P01
-function isOverlapViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { code?: unknown }).code === "23P01"
   );
 }
 

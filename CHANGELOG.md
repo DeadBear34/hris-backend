@@ -12,6 +12,21 @@ In short, for `MAJOR.MINOR.PATCH`:
 
 Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests merged into `main` when this policy was adopted.
 
+## [Unreleased]
+
+### Added
+
+- Days are closed automatically inside the backend every 15 minutes, so absences are recorded without a server crontab. On startup the last `ATTENDANCE_BACKFILL_DAYS` days (default 7) are closed as well. Switch: `ATTENDANCE_AUTO_CLOSE`.
+
+### Fixed
+
+- A check-in rejected after the cutoff now records the day as absent immediately, as its message already said.
+- Closing today no longer marks employees absent before their check-in cutoff has passed, and future dates are rejected.
+- Days before an employee's join date are no longer marked absent.
+- `GET /attendances/today` explains why check-in is closed when the day is already recorded as absent, on leave, or a holiday.
+- Leave types reject unrealistic settings: the attachment threshold is limited to 365 days and must be lower than the max days per request, the max days per request cannot exceed the quota of a balance-deducting leave type, and the minimum notice is limited to 90 days.
+- Clearing the attachment threshold of a leave type no longer causes a server error.
+
 ## [0.7.1] - 2026-10-26
 
 ### Security
@@ -23,7 +38,6 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 
 ### Fixed
 
-- Two concurrent leave requests with overlapping dates now return 409 instead of 500.
 - Balance refunds on rejection or cancellation are calculated from the request's own transactions rather than the leave type's current settings, and can no longer happen twice.
 - Approver reassignment notifications are sent only to managers holding `leave.approve_team`, and tasks of `leave.approve_all` holders are no longer marked as read.
 - Body parser rejections return 413 or 415 instead of 500.

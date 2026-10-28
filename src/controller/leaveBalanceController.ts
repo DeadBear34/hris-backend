@@ -16,7 +16,7 @@ import {
   ensureAccruals,
   isAccrualYear,
 } from "../helpers/leaveAccrual.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated } from "../helpers/pagination.js";
 
 export async function MyLeaveBalanceController(
   req: Request,
@@ -88,11 +88,7 @@ export async function MyLeaveLedgerController(
       employee_id: employee.id,
     });
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }

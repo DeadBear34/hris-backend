@@ -1,4 +1,3 @@
-// baru: rute /org/tree dan /employees/:id/line-manager
 import { Router } from "express";
 import {
   OrgTreeController,
@@ -28,7 +27,6 @@ router.get(
   LineManagerController,
 );
 
-// baru: pratinjau atasan buat form karyawan
 router.get(
   "/positions/:id/line-manager",
   authenticate,

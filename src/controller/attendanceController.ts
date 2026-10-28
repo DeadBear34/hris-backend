@@ -3,7 +3,6 @@ import { pool } from "../config/databaseConnection.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { startActivity } from "../helpers/activityLog.js";
-import { withTransaction } from "../helpers/transaction.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as eventModel from "../models/attendanceEvent.js";
@@ -22,7 +21,6 @@ import {
   dayNameOf,
   minutesBetween,
   type IsoDate,
-  type DayName,
 } from "../helpers/timezone.js";
 import { isWorkingDay } from "../models/workSchedule.js";
 import {
@@ -35,7 +33,6 @@ import {
   requiresCheckIn,
   formatDuration,
   decideArrivalStatus,
-  decideDailyMarker,
   type ArrivalOutcome,
 } from "../helpers/attendanceStatus.js";
 import {
@@ -47,12 +44,11 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { closeDay, dayClosingSummary } from "../helpers/dayClosing.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated, paginationMeta } from "../helpers/pagination.js";
 
 const CRON_HEADER = "x-cron-secret";
-
-const BATCH_SIZE = 500;
 
 function assertMayCheckIn(employee: Employee): void {
   if (!employee.is_active) {
@@ -208,6 +204,31 @@ function blockedReasonForTime(
   return `Check-in closed at ${shortTime(schedule.absent_cutoff_time)}, you are marked absent today`;
 }
 
+// Pesan penolakan menyebut karyawan sudah tidak hadir, jadi barisnya langsung
+// dibuat saat itu juga, tidak menunggu penutupan hari. Kalau gagal disimpan,
+// penolakan tetap berjalan dan penutupan hari yang akan menandainya nanti
+async function markAbsentAfterCutoff(
+  employee_id: string,
+  date: IsoDate,
+  attemptedAt: string,
+  schedule: WorkSchedule,
+): Promise<void> {
+  try {
+    await attendanceModel.insertMarkers(pool, date, [
+      {
+        employee_id,
+        status: "absent",
+        note: `Check-in attempted at ${attemptedAt}, after the ${shortTime(schedule.absent_cutoff_time)} cutoff`,
+      },
+    ]);
+  } catch (err) {
+    logger.warn(
+      { err, employee_id, date },
+      "Failed to mark absence after the check-in cutoff",
+    );
+  }
+}
+
 export async function CheckInController(
   req: Request,
   res: Response,
@@ -267,7 +288,15 @@ export async function CheckInController(
       schedule,
       local.minutesSinceMidnight,
     );
-    if (closedReason) throw rejectEvent(event.id, closedReason, BadRequest);
+    if (closedReason) {
+      await markAbsentAfterCutoff(
+        employee.id,
+        date,
+        clockTimeOf(attendanceAt.at),
+        schedule,
+      );
+      throw rejectEvent(event.id, closedReason, BadRequest);
+    }
 
     const startMinutes = minutesFromClockTime(schedule.start_time);
     const diffMinutes = lateMinutesFrom(
@@ -449,6 +478,16 @@ export async function CheckOutController(
   }
 }
 
+// Baris tanpa jam masuk (tidak hadir, cuti, libur) tetap perlu alasan,
+// supaya layar tidak menampilkan tombol mati tanpa penjelasan
+function recordedWithoutCheckIn(
+  attendance: attendanceModel.Attendance,
+): string | null {
+  if (attendance.check_in_at) return null;
+
+  return `Today's attendance is recorded as ${statusLabel(attendance.status)}`;
+}
+
 export async function TodayAttendanceController(
   req: Request,
   res: Response,
@@ -468,7 +507,7 @@ export async function TodayAttendanceController(
     const blockedReason = schedule
       ? ((await blockedReasonForDate(employee.id, schedule, date)) ??
         (attendance
-          ? null
+          ? recordedWithoutCheckIn(attendance)
           : blockedReasonForTime(
               schedule,
               toLocalTime(now).minutesSinceMidnight,
@@ -551,11 +590,7 @@ export async function TeamAttendanceController(
       manager_id: employee.id,
     });
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -570,11 +605,7 @@ export async function ListAttendanceController(
     const query = res.locals.query as ListAttendanceParams;
     const { rows, total } = await attendanceModel.listAttendances(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -780,111 +811,6 @@ function assertCronAuthorized(req: Request): void {
   }
 }
 
-interface DayFacts {
-  holiday: Awaited<ReturnType<typeof holidayModel.findByDate>>;
-  leaveByEmployee: Map<string, string>;
-  alreadyRecorded: Set<string>;
-  employeeSchedules: Awaited<
-    ReturnType<typeof workScheduleModel.resolveForAllActive>
-  >;
-}
-
-// Semua keadaan hari itu dikumpulkan sekali di depan, supaya keputusan
-// per karyawan tidak menyentuh database lagi
-async function collectDayFacts(date: IsoDate): Promise<DayFacts> {
-  const [holiday, approvedLeaves, recorded, employeeSchedules] =
-    await Promise.all([
-      holidayModel.findByDate(date),
-      attendanceModel.findApprovedLeaveOn(date),
-      attendanceModel.findEmployeeIdsOnDate(date),
-      workScheduleModel.resolveForAllActive(),
-    ]);
-
-  return {
-    holiday,
-    leaveByEmployee: new Map(
-      approvedLeaves.map((row) => [row.employee_id, row.leave_request_id]),
-    ),
-    alreadyRecorded: new Set(recorded),
-    employeeSchedules,
-  };
-}
-
-// Menentukan penanda harian tiap karyawan. skipped dihitung terpisah karena
-// baris yang dilewati memang tidak menghasilkan apa pun untuk disimpan
-function buildMarkers(
-  facts: DayFacts,
-  day: DayName,
-): { markers: attendanceModel.MarkerRow[]; skipped: number } {
-  const markers: attendanceModel.MarkerRow[] = [];
-  let skipped = 0;
-
-  for (const { employee_id, schedule } of facts.employeeSchedules) {
-    const leave_request_id = facts.leaveByEmployee.get(employee_id);
-
-    switch (
-      decideDailyMarker({
-        alreadyRecorded: facts.alreadyRecorded.has(employee_id),
-        isHoliday: Boolean(facts.holiday),
-        onLeave: Boolean(leave_request_id),
-        isWorkday: isWorkingDay(schedule, day),
-      })
-    ) {
-      case "holiday":
-        markers.push({
-          employee_id,
-          status: "holiday",
-          note: facts.holiday?.name ?? null,
-        });
-        break;
-
-      case "leave":
-        markers.push({ employee_id, status: "leave", leave_request_id });
-        break;
-
-      case "absent":
-        markers.push({ employee_id, status: "absent" });
-        break;
-
-      case "skip":
-        skipped += 1;
-        break;
-    }
-  }
-
-  return { markers, skipped };
-}
-
-// Ditulis per potongan supaya satu transaksi tidak menahan ribuan baris
-// sekaligus. Tiap potongan berdiri sendiri
-async function storeMarkers(
-  date: IsoDate,
-  markers: attendanceModel.MarkerRow[],
-): Promise<number> {
-  let stored = 0;
-
-  for (let i = 0; i < markers.length; i += BATCH_SIZE) {
-    const chunk = markers.slice(i, i + BATCH_SIZE);
-
-    stored += await withTransaction((client) =>
-      attendanceModel.insertMarkers(client, date, chunk),
-    );
-  }
-
-  return stored;
-}
-
-function countMarkers(markers: attendanceModel.MarkerRow[]) {
-  const count = (status: string) =>
-    markers.filter((row) => row.status === status).length;
-
-  return {
-    holiday: count("holiday"),
-    leave: count("leave"),
-    absent: count("absent"),
-  };
-}
-
 export async function CloseDayController(
   req: Request,
   res: Response,
@@ -896,32 +822,19 @@ export async function CloseDayController(
     assertCronAuthorized(req);
 
     const query = res.locals.query as { date?: IsoDate };
-    const date = query.date ?? todayInOfficeZone();
-
-    const facts = await collectDayFacts(date);
-    const { markers, skipped } = buildMarkers(facts, dayNameOf(date));
-    const stored = await storeMarkers(date, markers);
-
-    const marked = countMarkers(markers);
+    const result = await closeDay(query.date ?? todayInOfficeZone());
 
     activity.success({
       action: "attendance.close_day",
       entity: "attendance",
-      summary: `Day closing for ${date}: ${plural(stored, "row")} created, ${skipped} skipped`,
-      metadata: { date, created: stored, skipped, marked },
+      summary: dayClosingSummary(result),
+      metadata: { ...result },
     });
 
     res.json({
       success: true,
-      message: `Day closing for ${date} finished, ${stored} new attendance rows created`,
-      data: {
-        date,
-        is_holiday: Boolean(facts.holiday),
-        holiday_name: facts.holiday?.name ?? null,
-        created: stored,
-        skipped,
-        marked,
-      },
+      message: `Day closing for ${result.date} finished, ${result.created} new attendance rows created`,
+      data: result,
     });
   } catch (err) {
     next(err);
@@ -937,11 +850,7 @@ export async function OfflineLogController(
     const query = res.locals.query as attendanceModel.OfflineLogParams;
     const { rows, total } = await attendanceModel.listOfflineSync(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -956,11 +865,7 @@ export async function EventLogController(
     const query = res.locals.query as eventModel.ListEventParams;
     const { rows, total } = await eventModel.listEvents(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }

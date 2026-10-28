@@ -106,7 +106,7 @@ export async function createLeaveType(
         min_notice_days, gender_restriction, exempt_from_staffing_limit)
      VALUES ($1, $2, $3::numeric,
              COALESCE($4::boolean, true), COALESCE($5::boolean, true),
-             COALESCE($6::boolean, false), $7::int, $8::int,
+             COALESCE($6::boolean, false), COALESCE($7::int, 0), $8::int,
              COALESCE($9::int, 0), $10::employee_gender,
              COALESCE($11::boolean, false))
      RETURNING ${COLUMNS}`,

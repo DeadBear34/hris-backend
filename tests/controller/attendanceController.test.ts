@@ -918,6 +918,56 @@ describe("koreksi absensi", () => {
     expect(res.body.code).toBe("VALIDATION_ERROR");
   });
 
+  it("menolak jam masuk yang belum terjadi tanpa error server", async () => {
+    // sekarang 2026-03-10 08:00 WIB, koreksi untuk hari ini jam 11:30
+    (attendanceModel.findById as jest.Mock).mockResolvedValue({
+      ...previousAttendance,
+      attendance_date: "2026-03-10",
+    } as never);
+
+    const res = await submitCorrection({
+      status: "late",
+      check_in_at: "2026-03-10T11:30:00+07:00",
+      reason,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("has not happened yet");
+    expect(attendanceModel.correctAttendance).not.toHaveBeenCalled();
+  });
+
+  it("menolak jam pulang yang belum terjadi", async () => {
+    (attendanceModel.findById as jest.Mock).mockResolvedValue({
+      ...previousAttendance,
+      attendance_date: "2026-03-10",
+    } as never);
+
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-10T07:55:00+07:00",
+      check_out_at: "2026-03-10T17:00:00+07:00",
+      reason,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("Check-out");
+  });
+
+  it("menerima koreksi hari ini untuk jam yang sudah lewat", async () => {
+    (attendanceModel.findById as jest.Mock).mockResolvedValue({
+      ...previousAttendance,
+      attendance_date: "2026-03-10",
+    } as never);
+
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-10T07:55:00+07:00",
+      reason,
+    });
+
+    expect(res.status).toBe(200);
+  });
+
   it("menolak absensi yang tidak ditemukan", async () => {
     (attendanceModel.findById as jest.Mock).mockResolvedValue(null as never);
 

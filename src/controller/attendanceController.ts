@@ -678,12 +678,27 @@ function witnessAfterCorrection(
 }
 
 // Koreksi hanya boleh menggeser jam pada hari absensi itu sendiri. Jam pulang
-// boleh lewat tengah malam (lembur), tetapi tidak lebih dari esok harinya
+// boleh lewat tengah malam (lembur), tetapi tidak lebih dari esok harinya.
+// Jam yang belum terjadi juga ditolak: jam hasil koreksi dicatat dengan waktu
+// koreksi sebagai saksinya, dan database menolak saksi yang mendahului jamnya
 function assertWithinAttendanceDay(
   date: IsoDate,
   checkIn: Date | null,
   checkOut: Date | null,
+  now: Date,
 ): void {
+  if (checkIn && checkIn > now) {
+    throw BadRequest(
+      `Check-in time ${clockTimeOf(checkIn)} on ${todayInOfficeZone(checkIn)} has not happened yet`,
+    );
+  }
+
+  if (checkOut && checkOut > now) {
+    throw BadRequest(
+      `Check-out time ${clockTimeOf(checkOut)} on ${todayInOfficeZone(checkOut)} has not happened yet, record it after it happens`,
+    );
+  }
+
   if (checkIn && todayInOfficeZone(checkIn) !== date) {
     throw BadRequest(`Check-in time must be on the attendance date ${date}`);
   }
@@ -721,7 +736,14 @@ export async function CorrectAttendanceController(
       throw BadRequest("Check-out time cannot be set without a check-in time");
     }
 
-    assertWithinAttendanceDay(existing.attendance_date, checkIn, checkOut);
+    const correctedAt = new Date();
+
+    assertWithinAttendanceDay(
+      existing.attendance_date,
+      checkIn,
+      checkOut,
+      correctedAt,
+    );
 
     let lateMinutes = 0;
 
@@ -738,7 +760,6 @@ export async function CorrectAttendanceController(
           : 0;
     }
 
-    const correctedAt = new Date();
     const newCheckIn = requiresCheckIn(data.status) ? checkIn : null;
     const newCheckOut = requiresCheckIn(data.status) ? checkOut : null;
 

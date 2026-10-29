@@ -863,6 +863,61 @@ describe("koreksi absensi", () => {
     expect(data.work_minutes).toBe(540);
   });
 
+  it("menolak jam masuk di luar tanggal absensinya", async () => {
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-10T01:00:00Z",
+      reason,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("2026-03-09");
+    expect(attendanceModel.correctAttendance).not.toHaveBeenCalled();
+  });
+
+  it("memakai tanggal zona kantor: 23:30 UTC tanggal 8 sudah tanggal 9 di WIB", async () => {
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-08T23:30:00Z",
+      reason,
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("menerima jam pulang lewat tengah malam untuk lembur", async () => {
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-09T01:00:00+07:00",
+      check_out_at: "2026-03-10T01:00:00+07:00",
+      reason,
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("menolak jam pulang lebih dari sehari setelah tanggal absensi", async () => {
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-09T08:00:00+07:00",
+      check_out_at: "2026-03-11T08:00:00+07:00",
+      reason,
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("menolak format jam saja tanpa tanggal dan zona waktu", async () => {
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "08:30:00",
+      reason,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+  });
+
   it("menolak absensi yang tidak ditemukan", async () => {
     (attendanceModel.findById as jest.Mock).mockResolvedValue(null as never);
 

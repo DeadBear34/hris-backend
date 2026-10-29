@@ -26,6 +26,7 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 - `GET /attendances/today` explains why check-in is closed when the day is already recorded as absent, on leave, or a holiday.
 - Leave types reject unrealistic settings: the attachment threshold is limited to 365 days and must be lower than the max days per request, the max days per request cannot exceed the quota of a balance-deducting leave type, and the minimum notice is limited to 90 days.
 - Clearing the attachment threshold of a leave type no longer causes a server error.
+- Attendance corrections reject a check-in time outside the attendance date and a check-out time later than the following day.
 
 ## [0.7.1] - 2026-10-26
 

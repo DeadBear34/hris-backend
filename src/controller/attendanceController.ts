@@ -20,6 +20,7 @@ import {
   lateMinutesFrom,
   dayNameOf,
   minutesBetween,
+  shiftDate,
   type IsoDate,
 } from "../helpers/timezone.js";
 import { isWorkingDay } from "../models/workSchedule.js";
@@ -676,6 +677,22 @@ function witnessAfterCorrection(
   return { recorded_at: correctedAt, source: "correction" };
 }
 
+// Koreksi hanya boleh menggeser jam pada hari absensi itu sendiri. Jam pulang
+// boleh lewat tengah malam (lembur), tetapi tidak lebih dari esok harinya
+function assertWithinAttendanceDay(
+  date: IsoDate,
+  checkIn: Date | null,
+  checkOut: Date | null,
+): void {
+  if (checkIn && todayInOfficeZone(checkIn) !== date) {
+    throw BadRequest(`Check-in time must be on the attendance date ${date}`);
+  }
+
+  if (checkOut && todayInOfficeZone(checkOut) > shiftDate(date, 1)) {
+    throw BadRequest(`Check-out time must be on ${date} or the following day`);
+  }
+}
+
 export async function CorrectAttendanceController(
   req: Request,
   res: Response,
@@ -703,6 +720,8 @@ export async function CorrectAttendanceController(
     if (checkOut && !checkIn) {
       throw BadRequest("Check-out time cannot be set without a check-in time");
     }
+
+    assertWithinAttendanceDay(existing.attendance_date, checkIn, checkOut);
 
     let lateMinutes = 0;
 

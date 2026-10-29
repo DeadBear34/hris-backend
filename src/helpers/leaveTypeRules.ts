@@ -31,13 +31,20 @@ export function leaveTypeLimitIssues(values: LeaveTypeLimits): FieldIssue[] {
     });
   }
 
+  const deducts = values.deducts_balance !== false;
+
+  // Saldo hanya dibagikan untuk jatah di atas 0, jadi cuti yang memotong
+  // saldo tanpa jatah tidak akan pernah bisa diajukan siapa pun
+  if (deducts && (quota === null || Number(quota) <= 0)) {
+    issues.push({
+      field: "default_quota",
+      message:
+        "A leave type that deducts balance needs a default quota of at least 1 day",
+    });
+  }
+
   // Cuti yang memotong saldo tidak bisa diajukan melebihi jatahnya
-  if (
-    values.deducts_balance !== false &&
-    quota !== null &&
-    maxDays !== null &&
-    maxDays > Number(quota)
-  ) {
+  else if (deducts && maxDays !== null && maxDays > Number(quota)) {
     issues.push({
       field: "max_days_per_request",
       message: `Max days per request cannot exceed the leave quota (${Number(quota)} days)`,

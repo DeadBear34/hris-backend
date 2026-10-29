@@ -1,6 +1,7 @@
 import { pool } from "../config/databaseConnection.js";
 import { updateVersioned } from "./versionedUpdate.js";
 import type { EmployeeGender } from "./employee.js";
+import type { Executor } from "./user.js";
 
 export interface LeaveType {
   id: string;
@@ -87,6 +88,20 @@ export async function findById(id: string): Promise<LeaveType | null> {
   return result.rows[0] ?? null;
 }
 
+// Kolom code unik di database termasuk untuk baris yang sudah dihapus, jadi
+// pemeriksaan bentrok kode harus ikut melihat jenis cuti yang dihapus
+export async function findCodeOwner(
+  code: string,
+): Promise<{ id: string; deleted: boolean } | null> {
+  const result = await pool.query<{ id: string; deleted: boolean }>(
+    `SELECT id, deleted_at IS NOT NULL AS deleted
+     FROM leave_types WHERE code = $1`,
+    [code],
+  );
+
+  return result.rows[0] ?? null;
+}
+
 export async function findByCode(code: string): Promise<LeaveType | null> {
   const result = await pool.query<LeaveType>(
     `SELECT ${COLUMNS} FROM leave_types WHERE code = $1 AND deleted_at IS NULL`,
@@ -137,6 +152,7 @@ export async function updateLeaveType(
   id: string,
   data: Partial<LeaveTypeInput>,
   expectedUpdatedAt?: string,
+  db?: Executor,
 ): Promise<LeaveType | null> {
   return updateVersioned<LeaveType>({
     table: "leave_types",
@@ -147,6 +163,7 @@ export async function updateLeaveType(
     returning: COLUMNS,
     expectedUpdatedAt,
     current: () => findById(id),
+    db,
   });
 }
 
@@ -167,6 +184,19 @@ export async function softDeleteLeaveType(
 export async function countLeaveRequests(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     "SELECT COUNT(*) FROM leave_requests WHERE leave_type_id = $1::uuid",
+    [id],
+  );
+
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+// Pengajuan yang belum diputuskan. Saldonya ditahan atau tidak tergantung
+// deducts_balance saat pengajuan dibuat, jadi pengaturan itu tidak boleh
+// berubah selama masih ada yang menunggu
+export async function countPendingRequests(id: string): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) FROM leave_requests
+     WHERE leave_type_id = $1::uuid AND status = 'pending'::leave_status`,
     [id],
   );
 

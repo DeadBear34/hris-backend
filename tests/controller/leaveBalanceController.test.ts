@@ -107,6 +107,7 @@ beforeEach(() => {
   (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
     id: LEAVE_TYPE_ID,
     name: "Cuti Tahunan",
+    deducts_balance: true,
   } as never);
   (balanceModel.summaryFor as jest.Mock).mockResolvedValue(
     fakeSummary as never,
@@ -383,6 +384,23 @@ describe("POST /api/v1/leave-balances/adjustments", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe("Leave type not found");
+  });
+
+  it("menolak penyesuaian untuk jenis cuti yang tidak memotong saldo", async () => {
+    (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
+      id: LEAVE_TYPE_ID,
+      name: "Cuti Sakit",
+      deducts_balance: false,
+    } as never);
+
+    const res = await request(app)
+      .post("/api/v1/leave-balances/adjustments")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("does not deduct balance");
+    expect(balanceModel.createTransaction).not.toHaveBeenCalled();
   });
 
   it("mengunci saldo karyawan di dalam transaksi sebelum mencatat", async () => {

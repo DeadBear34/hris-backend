@@ -28,6 +28,12 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 - Clearing the attachment threshold of a leave type no longer causes a server error.
 - Attendance corrections reject a check-in time outside the attendance date and a check-out time later than the following day.
 - Attendance corrections with a time that has not happened yet return 400 instead of 500.
+- A balance-deducting leave type requires a default quota of at least 1 day, reported on the quota field instead of a confusing max-days error.
+- Reusing the code of a deleted leave type returns a clear 409 message instead of a generic conflict.
+- Changing a leave type's quota now applies to every employee who already received this year's or next year's allocation, instead of only to employees who receive it later. The change is rejected with 409, listing the affected employees, when anyone has already used or requested more than the new quota.
+- A leave type cannot start deducting balance while requests of that type are still pending, since those requests were made without a balance hold.
+- Balance adjustments are rejected for leave types that do not deduct balance.
+- Attendance days that belong to an approved leave request cannot be corrected directly, and attendance cannot be corrected to leave without a leave request.
 
 ## [0.7.1] - 2026-10-26
 

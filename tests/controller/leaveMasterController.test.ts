@@ -3,7 +3,12 @@ import request from "supertest";
 
 jest.unstable_mockModule("../../src/config/databaseConnection.js", () => ({
   pool: {
-    connect: jest.fn(),
+    connect: jest.fn(() =>
+      Promise.resolve({
+        query: jest.fn(() => Promise.resolve({ rows: [] })),
+        release: jest.fn(),
+      }),
+    ),
     // query sesi di middleware authenticate dijawab akun aktif, sisanya kosong
     query: jest.fn((sql: unknown) =>
       Promise.resolve(
@@ -37,14 +42,21 @@ jest.unstable_mockModule("../../src/models/leaveType.js", () => ({
   findAll: jest.fn(),
   findById: jest.fn(),
   findByCode: jest.fn(),
+  findCodeOwner: jest.fn(),
   createLeaveType: jest.fn(),
   updateLeaveType: jest.fn(),
   softDeleteLeaveType: jest.fn(),
   countLeaveRequests: jest.fn(),
+  countPendingRequests: jest.fn(),
+}));
+
+jest.unstable_mockModule("../../src/models/leaveBalance.js", () => ({
+  rebaseAllocations: jest.fn(),
 }));
 
 const holidayModel = await import("../../src/models/holiday.js");
 const leaveTypeModel = await import("../../src/models/leaveType.js");
+const balanceModel = await import("../../src/models/leaveBalance.js");
 const { createToken } = await import("../../src/helpers/jwt.js");
 const { app } = await import("../../src/app.js");
 
@@ -100,6 +112,14 @@ beforeEach(() => {
     fakeLeaveType as never,
   );
   (leaveTypeModel.findByCode as jest.Mock).mockResolvedValue(null as never);
+  (leaveTypeModel.findCodeOwner as jest.Mock).mockResolvedValue(null as never);
+  (leaveTypeModel.countPendingRequests as jest.Mock).mockResolvedValue(
+    0 as never,
+  );
+  (balanceModel.rebaseAllocations as jest.Mock).mockImplementation(
+    (_db, _id, period_year) =>
+      Promise.resolve({ period_year, employees: 41, shortfalls: [] }) as never,
+  );
   (leaveTypeModel.createLeaveType as jest.Mock).mockResolvedValue(
     fakeLeaveType as never,
   );
@@ -318,9 +338,10 @@ describe("jenis cuti", () => {
   });
 
   it("menolak kode yang sudah dipakai", async () => {
-    (leaveTypeModel.findByCode as jest.Mock).mockResolvedValue(
-      fakeLeaveType as never,
-    );
+    (leaveTypeModel.findCodeOwner as jest.Mock).mockResolvedValue({
+      id: LEAVE_TYPE_ID,
+      deleted: false,
+    } as never);
 
     const res = await request(app)
       .post("/api/v1/leave-types")
@@ -398,6 +419,185 @@ describe("jenis cuti", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("VALIDATION_ERROR");
   });
+  it("menolak kode milik jenis cuti yang sudah dihapus dengan pesan yang jelas", async () => {
+    (leaveTypeModel.findCodeOwner as jest.Mock).mockResolvedValue({
+      id: "99999999-9999-4999-8999-999999999999",
+      deleted: true,
+    } as never);
+
+    const res = await request(app)
+      .post("/api/v1/leave-types")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("deleted leave type");
+    expect(leaveTypeModel.createLeaveType).not.toHaveBeenCalled();
+  });
+
+  it("perubahan yang tetap memakai kodenya sendiri tidak dianggap bentrok", async () => {
+    (leaveTypeModel.findCodeOwner as jest.Mock).mockResolvedValue({
+      id: LEAVE_TYPE_ID,
+      deleted: false,
+    } as never);
+
+    const res = await request(app)
+      .patch(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ code: "annual-baru", name: "Cuti Tahunan" });
+
+    expect(res.status).not.toBe(409);
+  });
+
+  it("menolak cuti potong saldo dengan jatah 0 pada kolom jatah", async () => {
+    const res = await request(app)
+      .post("/api/v1/leave-types")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ ...body, default_quota: 0, max_days_per_request: 3 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors).toHaveLength(1);
+    expect(res.body.errors[0].field).toBe("default_quota");
+  });
+
+  it("menyimpan jenis cuti baru dengan payload lengkap dari form", async () => {
+    const res = await request(app)
+      .post("/api/v1/leave-types")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        code: "STUDY",
+        name: "Cuti Belajar",
+        default_quota: 2,
+        deducts_balance: true,
+        requires_attachment: false,
+        attachment_required_after: null,
+        max_days_per_request: 2,
+        min_notice_days: null,
+        gender_restriction: null,
+        exempt_from_staffing_limit: false,
+        is_active: true,
+      });
+
+    expect(res.status).toBe(201);
+  });
+
+  describe("perubahan kuota di tengah tahun", () => {
+    const shortfall = {
+      employee_id: "77777777-7777-4777-8777-777777777777",
+      employee_name: "Andi",
+      allocated: 12,
+      balance: 2,
+      balance_after: -7,
+    };
+
+    function changeQuota(body: Record<string, unknown>) {
+      return request(app)
+        .patch(`/api/v1/leave-types/${LEAVE_TYPE_ID}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send(body);
+    }
+
+    it("menolak kuota 3 bila ada karyawan yang sudah memakai 10 dari 12 hari", async () => {
+      (balanceModel.rebaseAllocations as jest.Mock).mockImplementation(
+        (_db, _id, period_year) =>
+          Promise.resolve({
+            period_year,
+            employees: 41,
+            shortfalls: [shortfall],
+          }) as never,
+      );
+
+      const res = await changeQuota({
+        default_quota: 3,
+        max_days_per_request: 3,
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.details.affected_count).toBe(1);
+      expect(res.body.details.affected[0]).toMatchObject({
+        employee_name: "Andi",
+        balance_after: -7,
+      });
+      // jenis cutinya juga tidak berubah, karena satu transaksi
+      expect(leaveTypeModel.updateLeaveType).not.toHaveBeenCalled();
+    });
+
+    it("kuota baru diberlakukan ke semua karyawan tahun ini dan tahun depan", async () => {
+      const res = await changeQuota({ default_quota: 14 });
+
+      expect(res.status).toBe(200);
+      expect(balanceModel.rebaseAllocations).toHaveBeenCalledTimes(2);
+
+      const [, typeId, firstYear, quota] = (
+        balanceModel.rebaseAllocations as jest.Mock
+      ).mock.calls[0] as [unknown, string, number, number];
+      const [, , secondYear] = (balanceModel.rebaseAllocations as jest.Mock)
+        .mock.calls[1] as [unknown, string, number];
+
+      expect(typeId).toBe(LEAVE_TYPE_ID);
+      expect(quota).toBe(14);
+      expect(secondYear).toBe(firstYear + 1);
+      expect(res.body.message).toContain("41 employees");
+    });
+
+    it("jatah tidak disentuh bila kuotanya sama", async () => {
+      await changeQuota({ default_quota: 12, name: "Cuti Tahunan Baru" });
+
+      expect(balanceModel.rebaseAllocations).not.toHaveBeenCalled();
+    });
+
+    it("jatah tidak disentuh bila kuota tidak dikirim", async () => {
+      await changeQuota({ name: "Cuti Tahunan Baru" });
+
+      expect(balanceModel.rebaseAllocations).not.toHaveBeenCalled();
+    });
+
+    it("cuti yang tidak memotong saldo tidak menyentuh jatah", async () => {
+      (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
+        ...fakeLeaveType,
+        deducts_balance: false,
+        default_quota: null,
+      } as never);
+
+      await changeQuota({ name: "Cuti Khusus" });
+
+      expect(balanceModel.rebaseAllocations).not.toHaveBeenCalled();
+    });
+
+    it("menolak mulai memotong saldo selama masih ada pengajuan yang menunggu", async () => {
+      (leaveTypeModel.findById as jest.Mock).mockResolvedValue({
+        ...fakeLeaveType,
+        deducts_balance: false,
+        default_quota: null,
+      } as never);
+      (leaveTypeModel.countPendingRequests as jest.Mock).mockResolvedValue(
+        2 as never,
+      );
+
+      const res = await changeQuota({
+        deducts_balance: true,
+        default_quota: 5,
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.details.pending_requests).toBe(2);
+      expect(leaveTypeModel.updateLeaveType).not.toHaveBeenCalled();
+    });
+
+    it("berhenti memotong saldo tetap boleh walau ada yang menunggu", async () => {
+      (leaveTypeModel.countPendingRequests as jest.Mock).mockResolvedValue(
+        2 as never,
+      );
+
+      const res = await changeQuota({
+        deducts_balance: false,
+        max_days_per_request: 12,
+      });
+
+      expect(res.status).toBe(200);
+    });
+  });
+
   it("menolak ambang lampiran yang tidak masuk akal", async () => {
     const res = await request(app)
       .post("/api/v1/leave-types")
@@ -416,6 +616,7 @@ describe("jenis cuti", () => {
       .send({
         code: "SICK",
         name: "Cuti Sakit",
+        deducts_balance: false,
         requires_attachment: true,
         attachment_required_after: 300,
         max_days_per_request: 300,

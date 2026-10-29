@@ -708,6 +708,27 @@ function assertWithinAttendanceDay(
   }
 }
 
+// Hari cuti selalu berasal dari pengajuan yang disetujui, dan saldonya ikut
+// terpotong. Mengoreksinya langsung membuat absensi dan saldo tidak cocok,
+// jadi perubahannya harus lewat pengajuan cuti itu sendiri
+function assertCorrectableLeave(
+  existing: attendanceModel.Attendance,
+  status: attendanceModel.AttendanceStatus,
+): void {
+  if (existing.leave_request_id && status !== "leave") {
+    throw BadRequest(
+      "This day belongs to an approved leave request. Cancel or change the leave request instead of correcting the attendance",
+      { leave_request_id: existing.leave_request_id },
+    );
+  }
+
+  if (status === "leave" && !existing.leave_request_id) {
+    throw BadRequest(
+      "Leave days can only come from an approved leave request, so attendance cannot be corrected to leave",
+    );
+  }
+}
+
 export async function CorrectAttendanceController(
   req: Request,
   res: Response,
@@ -728,6 +749,8 @@ export async function CorrectAttendanceController(
 
     const existing = await attendanceModel.findById(id);
     if (!existing) throw NotFound("Attendance record not found");
+
+    assertCorrectableLeave(existing, data.status);
 
     const checkIn = data.check_in_at ? new Date(data.check_in_at) : null;
     const checkOut = data.check_out_at ? new Date(data.check_out_at) : null;

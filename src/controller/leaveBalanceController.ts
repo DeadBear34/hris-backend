@@ -122,6 +122,14 @@ export async function AdjustLeaveBalanceController(
     if (!employee) throw BadRequest("Employee not found");
     if (!leaveType) throw BadRequest("Leave type not found");
 
+    // Saldo jenis cuti ini tidak pernah dipakai pengajuan, jadi penyesuaiannya
+    // hanya akan menjadi angka yang tidak berarti di buku besar
+    if (!leaveType.deducts_balance) {
+      throw BadRequest(
+        `${leaveType.name} does not deduct balance, so its balance cannot be adjusted`,
+      );
+    }
+
     // Dikunci sama seperti pengajuan cuti, supaya penyesuaian dan pengajuan
     // yang datang bersamaan tidak menghitung saldo dari angka lama
     const { transaction, balance } = await withTransaction(async (client) => {

@@ -20,6 +20,7 @@ describe("aturan antarkolom jenis cuti", () => {
 
   it("ambang lampiran harus di bawah batas per pengajuan", () => {
     const issues = leaveTypeLimitIssues({
+      deducts_balance: false,
       requires_attachment: true,
       attachment_required_after: 10000000,
       max_days_per_request: 300,
@@ -33,6 +34,7 @@ describe("aturan antarkolom jenis cuti", () => {
   it("ambang yang sama dengan batas per pengajuan juga ditolak", () => {
     expect(
       leaveTypeLimitIssues({
+        deducts_balance: false,
         requires_attachment: true,
         attachment_required_after: 14,
         max_days_per_request: 14,
@@ -43,6 +45,7 @@ describe("aturan antarkolom jenis cuti", () => {
   it("ambang lampiran diabaikan bila lampiran tidak diwajibkan", () => {
     expect(
       leaveTypeLimitIssues({
+        deducts_balance: false,
         requires_attachment: false,
         attachment_required_after: 30,
         max_days_per_request: 14,
@@ -53,6 +56,7 @@ describe("aturan antarkolom jenis cuti", () => {
   it("tanpa batas per pengajuan, ambang berapa pun masih bisa tercapai", () => {
     expect(
       leaveTypeLimitIssues({
+        deducts_balance: false,
         requires_attachment: true,
         attachment_required_after: 30,
         max_days_per_request: null,
@@ -77,6 +81,35 @@ describe("aturan antarkolom jenis cuti", () => {
         default_quota: 12,
         deducts_balance: false,
         max_days_per_request: 20,
+      }),
+    ).toEqual([]);
+  });
+
+  it("cuti yang memotong saldo wajib punya jatah minimal 1 hari", () => {
+    for (const default_quota of [0, null, undefined]) {
+      const issues = leaveTypeLimitIssues({
+        default_quota,
+        deducts_balance: true,
+        max_days_per_request: 3,
+      });
+
+      // cukup satu pesan di kolom jatah, bukan ditambah pesan batas pengajuan
+      expect(issues.map((issue) => issue.field)).toEqual(["default_quota"]);
+    }
+  });
+
+  it("deducts_balance yang tidak dikirim dianggap memotong saldo", () => {
+    expect(leaveTypeLimitIssues({}).map((issue) => issue.field)).toEqual([
+      "default_quota",
+    ]);
+  });
+
+  it("cuti yang tidak memotong saldo boleh tanpa jatah", () => {
+    expect(
+      leaveTypeLimitIssues({
+        default_quota: null,
+        deducts_balance: false,
+        max_days_per_request: 3,
       }),
     ).toEqual([]);
   });

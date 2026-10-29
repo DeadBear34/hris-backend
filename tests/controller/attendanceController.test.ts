@@ -863,6 +863,32 @@ describe("koreksi absensi", () => {
     expect(data.work_minutes).toBe(540);
   });
 
+  it("menolak koreksi hari cuti milik pengajuan yang disetujui", async () => {
+    (attendanceModel.findById as jest.Mock).mockResolvedValue({
+      ...previousAttendance,
+      status: "leave",
+      leave_request_id: LEAVE_REQUEST_ID,
+    } as never);
+
+    const res = await submitCorrection({
+      status: "present",
+      check_in_at: "2026-03-09T01:00:00Z",
+      reason,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.leave_request_id).toBe(LEAVE_REQUEST_ID);
+    expect(attendanceModel.correctAttendance).not.toHaveBeenCalled();
+  });
+
+  it("menolak koreksi menjadi cuti tanpa pengajuan cuti", async () => {
+    const res = await submitCorrection({ status: "leave", reason });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("approved leave request");
+    expect(attendanceModel.correctAttendance).not.toHaveBeenCalled();
+  });
+
   it("menolak jam masuk di luar tanggal absensinya", async () => {
     const res = await submitCorrection({
       status: "present",

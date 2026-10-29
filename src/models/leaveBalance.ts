@@ -283,3 +283,91 @@ export async function lockEmployeeBalance(
     employee_id,
   ]);
 }
+
+export interface AllocationShortfall {
+  employee_id: string;
+  employee_name: string;
+  allocated: number;
+  balance: number;
+  balance_after: number;
+}
+
+export interface AllocationChange {
+  period_year: number;
+  employees: number;
+  shortfalls: AllocationShortfall[];
+}
+
+// Jatah sebuah jenis cuti dihitung dari transaksi accrual, jadi mengubah
+// default_quota saja tidak menyentuh karyawan yang sudah menerima jatah.
+// Fungsi ini menyamakan jatah semua penerima pada satu periode dengan kuota
+// baru lewat transaksi accrual selisih. Karyawan yang saldonya akan menjadi
+// minus (sudah memakai atau sedang menahan lebih dari kuota baru) dikembalikan
+// sebagai shortfalls dan tidak ada yang ditulis. Pemanggil wajib berada di
+// dalam transaksi
+export async function rebaseAllocations(
+  db: Executor,
+  leave_type_id: string,
+  period_year: number,
+  new_quota: number,
+  note: string,
+): Promise<AllocationChange> {
+  // Dikunci dengan urutan id yang sama dengan lockEmployeeBalance per orang,
+  // supaya pengajuan cuti yang sedang berjalan menunggu, bukan saling kunci
+  const locked = await db.query<{ id: string }>(
+    `SELECT e.id FROM employees e
+     WHERE EXISTS (
+       SELECT 1 FROM leave_balance_transactions t
+       WHERE t.employee_id = e.id AND t.leave_type_id = $1::uuid
+         AND t.period_year = $2::int
+         AND t.type = 'accrual'::leave_transaction_type
+     )
+     ORDER BY e.id
+     FOR UPDATE`,
+    [leave_type_id, period_year],
+  );
+
+  if (locked.rows.length === 0) {
+    return { period_year, employees: 0, shortfalls: [] };
+  }
+
+  const shortfalls = await db.query<AllocationShortfall>(
+    `SELECT t.employee_id, e.full_name AS employee_name,
+            SUM(t.amount) FILTER (WHERE t.type = 'accrual'::leave_transaction_type)::float8 AS allocated,
+            SUM(t.amount)::float8 AS balance,
+            (SUM(t.amount) + $3::numeric
+              - SUM(t.amount) FILTER (WHERE t.type = 'accrual'::leave_transaction_type))::float8 AS balance_after
+     FROM leave_balance_transactions t
+     JOIN employees e ON e.id = t.employee_id
+     WHERE t.leave_type_id = $1::uuid AND t.period_year = $2::int
+     GROUP BY t.employee_id, e.full_name
+     HAVING SUM(t.amount) FILTER (WHERE t.type = 'accrual'::leave_transaction_type) IS NOT NULL
+        AND SUM(t.amount) + $3::numeric
+            - SUM(t.amount) FILTER (WHERE t.type = 'accrual'::leave_transaction_type) < 0
+     ORDER BY balance_after ASC, e.full_name ASC`,
+    [leave_type_id, period_year, new_quota],
+  );
+
+  if (shortfalls.rows.length > 0) {
+    return {
+      period_year,
+      employees: locked.rows.length,
+      shortfalls: shortfalls.rows,
+    };
+  }
+
+  await db.query(
+    `INSERT INTO leave_balance_transactions
+       (employee_id, leave_type_id, period_year, amount, type, note)
+     SELECT employee_id, leave_type_id, period_year,
+            $3::numeric - SUM(amount), 'accrual'::leave_transaction_type, $4
+     FROM leave_balance_transactions
+     WHERE leave_type_id = $1::uuid AND period_year = $2::int
+       AND type = 'accrual'::leave_transaction_type
+     GROUP BY employee_id, leave_type_id, period_year
+     HAVING SUM(amount) <> $3::numeric`,
+    [leave_type_id, period_year, new_quota, note],
+  );
+
+  return { period_year, employees: locked.rows.length, shortfalls: [] };
+}

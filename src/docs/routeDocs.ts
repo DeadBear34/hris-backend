@@ -369,10 +369,52 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   },
   "PUT /positions/:id/features": {
     tag: "Positions & Permissions",
-    summary: "Replace a position's features",
+    summary: "Replace a position's features (legacy)",
     description:
-      "The submitted list replaces every feature of the position. Unknown codes are rejected with `details.unknown_codes`.",
+      "Kept for older clients. The submitted list is mapped to an access profile: an existing profile with exactly the same features is reused, otherwise a custom profile is created for the position. Prefer `PUT /positions/:id/access-profile`. Unknown codes are rejected with `details.unknown_codes`, and features missing what they need with `details.missing_requirements`.",
     errors: [STALE],
+  },
+  "PUT /positions/:id/access-profile": {
+    tag: "Positions & Permissions",
+    summary: "Assign an access profile to a position",
+    description:
+      "The position's features become exactly the profile's features. `access_profile_id: null` leaves the position with employee self-service only.",
+    errors: [STALE],
+  },
+  "GET /access-profiles": {
+    tag: "Positions & Permissions",
+    summary: "List access profiles",
+    description:
+      "Each profile includes its feature `codes`, and `position_count` and `employee_count` so the impact of a change is visible before saving.",
+  },
+  "GET /access-profiles/:id": {
+    tag: "Positions & Permissions",
+    summary: "Get an access profile",
+  },
+  "POST /access-profiles": {
+    tag: "Positions & Permissions",
+    summary: "Create an access profile",
+    description:
+      "Features that need another feature (for example `employee.update` needs `employee.view_all`) are rejected unless that feature is included, with `details.missing_requirements`.",
+    status: 201,
+    errors: [conflict("An access profile with that name already exists")],
+  },
+  "PATCH /access-profiles/:id": {
+    tag: "Positions & Permissions",
+    summary: "Update an access profile",
+    description:
+      "Changing `codes` applies immediately to every position that uses the profile, in the same transaction.",
+    errors: [
+      conflict("An access profile with that name already exists"),
+      STALE,
+    ],
+  },
+  "DELETE /access-profiles/:id": {
+    tag: "Positions & Permissions",
+    summary: "Delete an access profile",
+    description:
+      "Standard profiles cannot be deleted, and a profile still used by positions is rejected with `details.position_count`.",
+    errors: [conflict("Still used by positions")],
   },
 
   // Holidays
@@ -533,22 +575,29 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     tag: "Work Schedules",
     summary: "Create a work schedule",
     description:
-      "An empty `department_id` makes it the default schedule (only one is allowed).",
+      "`department_ids` lists every department that uses the schedule, so one schedule can serve several departments. A department can belong to only one schedule. An empty list creates the default schedule, which applies to departments without their own schedule; only one default is allowed. The legacy single `department_id` is still accepted. `overtime_min_minutes` (default 30) is the minimum overtime that counts.",
     status: 201,
     errors: [
       conflict(
-        "The department already has a schedule, or a default schedule already exists",
+        "One of the departments already uses another schedule; the response lists them in `details.conflicts`",
       ),
     ],
   },
   "PATCH /work-schedules/:id": {
     tag: "Work Schedules",
     summary: "Update a work schedule",
-    errors: [conflict("The department already has a schedule"), STALE],
+    description:
+      "Sending `department_ids` replaces the whole department list. A non-default schedule needs at least one department, and the default schedule cannot be limited to departments.",
+    errors: [
+      conflict("One of the departments already uses another schedule"),
+      STALE,
+    ],
   },
   "DELETE /work-schedules/:id": {
     tag: "Work Schedules",
     summary: "Delete a work schedule",
+    description:
+      "Its departments are released and fall back to the default schedule.",
     errors: [conflict("Still assigned to employees")],
   },
 
@@ -556,7 +605,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /attendances/today": {
     tag: "Attendance",
     summary: "Get today's attendance status",
-    description: "Includes `can_check_in` and `can_check_out`.",
+    description:
+      "Includes `can_check_in` and `can_check_out`. Before today's shift starts, `overnight_attendance` holds yesterday's attendance that still has no check-out (overtime past midnight), and `can_check_out` is true for it.",
   },
   "POST /attendances/check-in": {
     tag: "Attendance",

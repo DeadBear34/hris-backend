@@ -2112,6 +2112,7 @@ describe("catatan aktivitas absensi", () => {
   it("mencatat absen pulang beserta lama kerjanya", async () => {
     (attendanceModel.findByEmployeeAndDate as jest.Mock).mockResolvedValue({
       id: ATTENDANCE_ID,
+      attendance_date: "2026-03-10",
       check_in_at: new Date("2026-03-10T01:00:00.000Z"),
       check_out_at: null,
     } as never);
@@ -2130,5 +2131,236 @@ describe("catatan aktivitas absensi", () => {
 
     expect(note.action).toBe("attendance.check_out");
     expect((note.metadata as { work_minutes: number }).work_minutes).toBe(540);
+  });
+});
+
+describe("lembur", () => {
+  // jadwal umum: masuk 08:00, pulang 17:00, lembur dihitung minimal 30 menit
+  const overtimeSchedule = { ...baseSchedule, overtime_min_minutes: 30 };
+
+  const openToday = {
+    id: ATTENDANCE_ID,
+    attendance_date: "2026-03-10",
+    status: "present",
+    check_in_at: new Date("2026-03-10T08:00:00+07:00"),
+    check_out_at: null,
+  };
+
+  const openYesterday = {
+    ...openToday,
+    id: "88888888-8888-4888-8888-888888888888",
+    attendance_date: "2026-03-09",
+    check_in_at: new Date("2026-03-09T08:00:00+07:00"),
+  };
+
+  function byDate(rows: Record<string, unknown>) {
+    (attendanceModel.findByEmployeeAndDate as jest.Mock).mockImplementation(
+      (_id, date) => Promise.resolve(rows[date as string] ?? null) as never,
+    );
+  }
+
+  function savedCheckOut() {
+    const call = (attendanceModel.setCheckOut as jest.Mock).mock.calls[0] as [
+      string,
+      Date,
+      Date,
+      string,
+      number,
+      number,
+    ];
+
+    return { id: call[0], work: call[4], overtime: call[5] };
+  }
+
+  beforeEach(() => {
+    (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue(
+      overtimeSchedule as never,
+    );
+    (attendanceModel.setCheckOut as jest.Mock).mockImplementation(
+      (id) => Promise.resolve({ id, check_out_source: "online" }) as never,
+    );
+  });
+
+  it("pulang dua jam setelah jam pulang tercatat lembur 120 menit", async () => {
+    byDate({ "2026-03-10": openToday });
+    setWibTime("2026-03-10", "19:00");
+
+    const res = await checkOut();
+
+    expect(res.status).toBe(200);
+    expect(savedCheckOut()).toMatchObject({ work: 660, overtime: 120 });
+    expect(res.body.message).toContain("overtime 2 hours");
+  });
+
+  it("pulang tepat waktu tidak menghasilkan lembur", async () => {
+    byDate({ "2026-03-10": openToday });
+    setWibTime("2026-03-10", "17:00");
+
+    await checkOut();
+
+    expect(savedCheckOut().overtime).toBe(0);
+  });
+
+  it("lebih dari jam pulang tetapi di bawah batas minimal tidak dihitung", async () => {
+    byDate({ "2026-03-10": openToday });
+    setWibTime("2026-03-10", "17:29");
+
+    const res = await checkOut();
+
+    expect(savedCheckOut().overtime).toBe(0);
+    expect(res.body.message).not.toContain("overtime");
+  });
+
+  it("tepat di batas minimal langsung dihitung penuh sejak jam pulang", async () => {
+    byDate({ "2026-03-10": openToday });
+    setWibTime("2026-03-10", "17:30");
+
+    await checkOut();
+
+    expect(savedCheckOut().overtime).toBe(30);
+  });
+
+  it("batas minimal 0 menghitung setiap menit setelah jam pulang", async () => {
+    (workScheduleModel.resolveForEmployee as jest.Mock).mockResolvedValue({
+      ...overtimeSchedule,
+      overtime_min_minutes: 0,
+    } as never);
+    byDate({ "2026-03-10": openToday });
+    setWibTime("2026-03-10", "17:05");
+
+    await checkOut();
+
+    expect(savedCheckOut().overtime).toBe(5);
+  });
+
+  it("pulang lewat tengah malam menutup absensi kemarin", async () => {
+    byDate({ "2026-03-09": openYesterday });
+    setWibTime("2026-03-10", "01:30");
+
+    const res = await checkOut();
+
+    expect(res.status).toBe(200);
+    expect(savedCheckOut()).toMatchObject({
+      id: openYesterday.id,
+      // 08:00 kemarin sampai 01:30 = 17 jam 30 menit; lembur sejak 17:00
+      work: 1050,
+      overtime: 510,
+    });
+  });
+
+  it("setelah jam kerja hari ini dimulai, absensi kemarin tidak bisa ditutup lagi", async () => {
+    byDate({ "2026-03-09": openYesterday });
+    setWibTime("2026-03-10", "08:30");
+
+    const res = await checkOut();
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain("haven't checked in today");
+    expect(attendanceModel.setCheckOut).not.toHaveBeenCalled();
+  });
+
+  it("absensi kemarin yang sudah ditutup tidak dibuka lagi lewat tengah malam", async () => {
+    byDate({
+      "2026-03-09": {
+        ...openYesterday,
+        check_out_at: new Date("2026-03-09T17:00:00+07:00"),
+      },
+    });
+    setWibTime("2026-03-10", "01:00");
+
+    const res = await checkOut();
+
+    expect(res.status).toBe(400);
+    expect(attendanceModel.setCheckOut).not.toHaveBeenCalled();
+  });
+
+  it("absen pulang dini hari tanpa absensi kemarin tetap ditolak", async () => {
+    byDate({});
+    setWibTime("2026-03-10", "02:00");
+
+    const res = await checkOut();
+
+    expect(res.status).toBe(400);
+  });
+
+  it("ringkasan hari ini menawarkan absen pulang untuk absensi kemarin", async () => {
+    byDate({ "2026-03-09": openYesterday });
+    setWibTime("2026-03-10", "01:00");
+
+    const res = await request(app)
+      .get("/api/v1/attendances/today")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.body.data.can_check_out).toBe(true);
+    expect(res.body.data.overnight_attendance.attendance_date).toBe(
+      "2026-03-09",
+    );
+    expect(res.body.data.attendance).toBeNull();
+  });
+
+  it("ringkasan hari ini tidak menawarkan absensi kemarin di jam kerja", async () => {
+    byDate({ "2026-03-09": openYesterday });
+    setWibTime("2026-03-10", "09:00");
+
+    const res = await request(app)
+      .get("/api/v1/attendances/today")
+      .set("Authorization", `Bearer ${employeeToken}`);
+
+    expect(res.body.data.overnight_attendance).toBeNull();
+  });
+
+  it("koreksi menghitung ulang lembur dari jam pulang yang dikoreksi", async () => {
+    (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
+      "attendance.correct",
+    ] as never);
+    (attendanceModel.findById as jest.Mock).mockResolvedValue({
+      ...openYesterday,
+      check_out_at: null,
+      leave_request_id: null,
+    } as never);
+    (attendanceModel.correctAttendance as jest.Mock).mockImplementation(
+      (id, data) => Promise.resolve({ id, ...(data as object) }) as never,
+    );
+    setWibTime("2026-03-10", "12:00");
+
+    const res = await request(app)
+      .patch(`/api/v1/attendances/${openYesterday.id}/correct`)
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send({
+        status: "present",
+        check_in_at: "2026-03-09T08:00:00+07:00",
+        check_out_at: "2026-03-09T20:00:00+07:00",
+        reason: "Lupa absen pulang setelah lembur",
+      });
+
+    expect(res.status).toBe(200);
+
+    const [, data] = (attendanceModel.correctAttendance as jest.Mock).mock
+      .calls[0] as [string, { overtime_minutes: number }];
+
+    expect(data.overtime_minutes).toBe(180);
+  });
+
+  it("koreksi menjadi tidak hadir menghapus lembur", async () => {
+    (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
+      "attendance.correct",
+    ] as never);
+    (attendanceModel.findById as jest.Mock).mockResolvedValue({
+      ...openYesterday,
+      leave_request_id: null,
+    } as never);
+    (attendanceModel.correctAttendance as jest.Mock).mockImplementation(
+      (id, data) => Promise.resolve({ id, ...(data as object) }) as never,
+    );
+
+    await request(app)
+      .patch(`/api/v1/attendances/${openYesterday.id}/correct`)
+      .set("Authorization", `Bearer ${employeeToken}`)
+      .send({ status: "absent", reason: "Ternyata tidak masuk kerja" });
+
+    const [, data] = (attendanceModel.correctAttendance as jest.Mock).mock
+      .calls[0] as [string, { overtime_minutes: number }];
+
+    expect(data.overtime_minutes).toBe(0);
   });
 });

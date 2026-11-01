@@ -16,10 +16,17 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 
 ### Added
 
+- Access profiles: named feature bundles such as Line Manager or HR Staff. A position picks one profile instead of ticking features one by one, and changing a profile applies to every position that uses it in one transaction. Six standard profiles are included. New endpoints: `/access-profiles` and `PUT /positions/:id/access-profile`.
+- The feature catalog marks sensitive features (`is_sensitive`) and lists what each feature needs (`requires`). Profiles missing a required feature, such as `employee.update` without `employee.view_all`, are rejected.
+
+- One work schedule can be used by several departments at once through `department_ids`. A department still belongs to only one schedule, and conflicts are reported with the department and schedule names. The legacy single `department_id` is still accepted.
+- Overtime: minutes worked after the schedule's end time are recorded in `overtime_minutes` at check-out, counted only from the schedule's `overtime_min_minutes` (default 30). Summaries and monthly reports include `total_overtime_minutes` and `overtime_days`. Corrections recalculate overtime.
+
 - Days are closed automatically inside the backend every 15 minutes, so absences are recorded without a server crontab. On startup the last `ATTENDANCE_BACKFILL_DAYS` days (default 7) are closed as well. Switch: `ATTENDANCE_AUTO_CLOSE`.
 
 ### Fixed
 
+- Checking out after midnight closes yesterday's attendance as long as today's shift has not started, instead of being rejected as "not checked in today".
 - A check-in rejected after the cutoff now records the day as absent immediately, as its message already said.
 - Closing today no longer marks employees absent before their check-in cutoff has passed, and future dates are rejected.
 - Days before an employee's join date are no longer marked absent.
@@ -34,6 +41,16 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 - A leave type cannot start deducting balance while requests of that type are still pending, since those requests were made without a balance hold.
 - Balance adjustments are rejected for leave types that do not deduct balance.
 - Attendance days that belong to an approved leave request cannot be corrected directly, and attendance cannot be corrected to leave without a leave request.
+
+### Changed
+
+- `PUT /positions/:id/features` still works for older clients, but now maps the submitted features to an access profile (reusing an identical one or creating a custom one).
+- The unused `system.manage_feature` feature is deactivated; feature management has always been limited to administrators.
+
+### Migration
+
+- Run `database/migrations/2026-10-30_jadwal_multi_divisi_dan_lembur.sql` before starting this version.
+- Run `database/migrations/2026-11-01_paket_akses.sql` before starting this version. Existing positions are mapped to profiles without gaining or losing any feature.
 
 ## [0.7.1] - 2026-10-26
 

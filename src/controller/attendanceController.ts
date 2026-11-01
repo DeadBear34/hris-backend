@@ -46,6 +46,7 @@ import {
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
 import { closeDay, dayClosingSummary } from "../helpers/dayClosing.js";
+import { isBeforeShiftStart, overtimeMinutes } from "../helpers/overtime.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
 import { paginated, paginationMeta } from "../helpers/pagination.js";
 
@@ -360,6 +361,42 @@ export async function CheckInController(
   }
 }
 
+interface OpenAttendance {
+  attendance: attendanceModel.Attendance;
+  // true bila absensinya milik kemarin (pulang lewat tengah malam)
+  overnight: boolean;
+}
+
+// Absensi yang menjadi pasangan absen pulang. Biasanya absensi hari ini.
+// Kalau hari ini belum ada absen masuk dan jam kerja hari ini belum dimulai,
+// absen pulang dipasangkan ke absensi kemarin yang belum ditutup, untuk
+// lembur yang berlanjut lewat tengah malam
+async function findOpenAttendance(
+  employee_id: string,
+  local: { date: IsoDate; minutesSinceMidnight: number },
+  schedule: WorkSchedule,
+): Promise<OpenAttendance | null> {
+  const today = await attendanceModel.findByEmployeeAndDate(
+    employee_id,
+    local.date,
+  );
+
+  if (today?.check_in_at) return { attendance: today, overnight: false };
+
+  if (!isBeforeShiftStart(local.minutesSinceMidnight, schedule)) return null;
+
+  const yesterday = await attendanceModel.findByEmployeeAndDate(
+    employee_id,
+    shiftDate(local.date, -1),
+  );
+
+  if (yesterday?.check_in_at && !yesterday.check_out_at) {
+    return { attendance: yesterday, overnight: true };
+  }
+
+  return null;
+}
+
 export async function CheckOutController(
   req: Request,
   res: Response,
@@ -387,20 +424,18 @@ export async function CheckOutController(
     });
 
     const local = toLocalTime(attendanceAt.at);
-    const date = local.date;
 
-    const existing = await attendanceModel.findByEmployeeAndDate(
-      employee.id,
-      date,
-    );
+    const open = await findOpenAttendance(employee.id, local, schedule);
 
-    if (!existing || !existing.check_in_at) {
+    if (!open) {
       throw rejectEvent(
         event.id,
         "You haven't checked in today, so you can't check out yet",
         BadRequest,
       );
     }
+
+    const existing = open.attendance;
 
     if (existing.check_out_at) {
       const message = `You already checked out today at ${clockTimeOf(new Date(existing.check_out_at))}`;
@@ -410,9 +445,12 @@ export async function CheckOutController(
       );
     }
 
-    const startMinutes = minutesFromClockTime(schedule.start_time);
-
-    if (local.minutesSinceMidnight < startMinutes) {
+    // Absen pulang lewat tengah malam tidak diperiksa terhadap jam masuk
+    // hari ini, karena memang terjadi sebelum jam kerja hari ini dimulai
+    if (
+      !open.overnight &&
+      isBeforeShiftStart(local.minutesSinceMidnight, schedule)
+    ) {
       throw rejectEvent(
         event.id,
         `You can't check out before work starts at ${shortTime(schedule.start_time)}`,
@@ -420,7 +458,7 @@ export async function CheckOutController(
       );
     }
 
-    const checkIn = new Date(existing.check_in_at);
+    const checkIn = new Date(existing.check_in_at!);
     const workedMinutes = minutesBetween(checkIn, attendanceAt.at);
 
     if (workedMinutes <= 0) {
@@ -431,12 +469,19 @@ export async function CheckOutController(
       );
     }
 
+    const overtime = overtimeMinutes(
+      existing.attendance_date,
+      attendanceAt.at,
+      schedule,
+    );
+
     const attendance = await attendanceModel.setCheckOut(
       existing.id,
       attendanceAt.at,
       now,
       attendanceAt.offline ? "offline_sync" : "online",
       workedMinutes,
+      overtime,
     );
 
     if (!attendance) {
@@ -455,14 +500,20 @@ export async function CheckOutController(
       summary: `${employee.full_name} checked out at ${clockTimeOf(attendanceAt.at)}`,
       metadata: {
         employee_id: employee.id,
+        attendance_date: existing.attendance_date,
         work_minutes: workedMinutes,
+        overtime_minutes: overtime,
+        overnight: open.overnight,
         source: attendance.check_out_source,
       },
     });
 
+    const overtimeNote =
+      overtime > 0 ? `, overtime ${formatDuration(overtime)}` : "";
+
     res.json({
       success: true,
-      message: `Check-out recorded at ${clockTimeOf(attendanceAt.at)}, total work time ${formatDuration(workedMinutes)}`,
+      message: `Check-out recorded at ${clockTimeOf(attendanceAt.at)}, total work time ${formatDuration(workedMinutes)}${overtimeNote}`,
       data: attendance,
     });
   } catch (err) {
@@ -505,6 +556,13 @@ export async function TodayAttendanceController(
       attendanceModel.findByEmployeeAndDate(employee.id, date),
     ]);
 
+    // Lembur yang berlanjut lewat tengah malam: absensi kemarin masih bisa
+    // ditutup sampai jam kerja hari ini dimulai
+    const open = schedule
+      ? await findOpenAttendance(employee.id, toLocalTime(now), schedule)
+      : null;
+    const overnight = open?.overnight ? open.attendance : null;
+
     const blockedReason = schedule
       ? ((await blockedReasonForDate(employee.id, schedule, date)) ??
         (attendance
@@ -523,9 +581,11 @@ export async function TodayAttendanceController(
         schedule,
         attendance,
         can_check_in: Boolean(schedule) && !blockedReason && !attendance,
-        can_check_out: Boolean(
-          attendance?.check_in_at && !attendance.check_out_at,
-        ),
+        can_check_out:
+          Boolean(attendance?.check_in_at && !attendance.check_out_at) ||
+          Boolean(overnight),
+        // absensi kemarin yang belum absen pulang; null bila tidak ada
+        overnight_attendance: overnight,
         blocked_reason: blockedReason,
       },
     });
@@ -769,22 +829,28 @@ export async function CorrectAttendanceController(
     );
 
     let lateMinutes = 0;
+    let overtime = 0;
 
-    if (checkIn && requiresCheckIn(data.status)) {
+    const newCheckIn = requiresCheckIn(data.status) ? checkIn : null;
+    const newCheckOut = requiresCheckIn(data.status) ? checkOut : null;
+
+    // Keterlambatan dan lembur dihitung ulang dari jadwal, bukan dari
+    // kiriman klien, supaya koreksi tidak bisa menyelipkan angka sendiri
+    if (newCheckIn) {
       const schedule = await getSchedule(existing.employee_id);
-      const localCheckIn = toLocalTime(checkIn);
 
       lateMinutes =
         data.status === "late"
           ? lateMinutesFrom(
-              localCheckIn.minutesSinceMidnight,
+              toLocalTime(newCheckIn).minutesSinceMidnight,
               minutesFromClockTime(schedule.start_time),
             )
           : 0;
-    }
 
-    const newCheckIn = requiresCheckIn(data.status) ? checkIn : null;
-    const newCheckOut = requiresCheckIn(data.status) ? checkOut : null;
+      overtime = newCheckOut
+        ? overtimeMinutes(existing.attendance_date, newCheckOut, schedule)
+        : 0;
+    }
 
     const checkInWitness = witnessAfterCorrection(
       newCheckIn,
@@ -821,6 +887,7 @@ export async function CorrectAttendanceController(
           newCheckIn && newCheckOut
             ? minutesBetween(newCheckIn, newCheckOut)
             : null,
+        overtime_minutes: overtime,
         note: buildCorrectionNote(corrector, data.reason, correctedAt),
       },
       pool,

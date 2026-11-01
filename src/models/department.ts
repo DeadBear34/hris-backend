@@ -214,6 +214,20 @@ export async function findUnitAncestry(unitId: string): Promise<string[]> {
   return result.rows.map((row) => row.id);
 }
 
+// id yang benar-benar ada dan belum dihapus, untuk memeriksa daftar divisi
+// kiriman klien dalam satu query
+export async function findExistingIds(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+
+  const result = await pool.query<{ id: string }>(
+    `SELECT id FROM departments
+     WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+    [ids],
+  );
+
+  return result.rows.map((row) => row.id);
+}
+
 export async function countChildUnits(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM departments

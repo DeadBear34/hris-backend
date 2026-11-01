@@ -483,11 +483,24 @@ Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `sta
 | `GET`    | `/work-schedules`     | Login                   | Seluruh jadwal kerja                       |
 | `GET`    | `/work-schedules/me`  | Login                   | Jadwal yang berlaku bagi diri sendiri      |
 | `GET`    | `/work-schedules/:id` | Login                   | Detail satu jadwal                         |
-| `POST`   | `/work-schedules`     | `organization.schedule` | Membuat jadwal, satu jadwal per departemen |
+| `POST`   | `/work-schedules`     | `organization.schedule` | Membuat jadwal untuk satu atau beberapa divisi |
 | `PATCH`  | `/work-schedules/:id` | `organization.schedule` | Mengubah jam kerja dan hari kerja          |
 | `DELETE` | `/work-schedules/:id` | `organization.schedule` | Menghapus jadwal yang tidak dipakai        |
 
 Membaca jadwal cukup dengan login, karena setiap karyawan perlu mengetahui jam masuk dan batas toleransinya sendiri sebelum melakukan absensi.
+
+Satu jadwal dapat dipakai beberapa divisi sekaligus lewat `department_ids`, tetapi satu divisi hanya boleh berada di satu jadwal supaya jadwal karyawannya tidak ambigu. Jadwal yang berlaku bagi seorang karyawan dipilih berurutan: jadwal khusus karyawan (`employees.work_schedule_id`), jadwal yang memuat divisinya, lalu jadwal bawaan (`is_default`). Menghapus jadwal melepas divisinya kembali ke jadwal bawaan.
+
+### Lembur
+
+Lembur dihitung otomatis saat absen pulang: menit kerja setelah `end_time` jadwal pada hari absensinya, disimpan di `attendances.overtime_minutes`.
+
+- Lembur yang lebih pendek dari `overtime_min_minutes` jadwal (bawaan 30 menit) tidak dihitung. Begitu mencapai batas itu, seluruh menitnya dihitung sejak jam pulang.
+- Absen pulang lewat tengah malam tetap menutup absensi kemarin selama jam kerja hari ini belum dimulai. `GET /attendances/today` menampilkannya di `overnight_attendance`.
+- Koreksi absensi menghitung ulang lembur dari jam pulang yang dikoreksi.
+- Rekap pribadi dan laporan bulanan memuat `total_overtime_minutes` dan `overtime_days`.
+
+Lembur di hari libur atau akhir pekan belum didukung, karena absen masuk pada hari itu ditolak.
 
 ### Absensi
 
@@ -1390,8 +1403,36 @@ HR adalah **jabatan**, bukan peran sistem. Kemampuannya ditentukan oleh fitur ya
 ### Tiga lapis, urutannya menentukan
 
 1. **Role `admin` melewati seluruh pemeriksaan fitur tanpa kecuali**, supaya sistem tidak terkunci sendiri kalau pemberian fitur salah atur.
-2. **Selain admin, kemampuan berasal dari jabatan** lewat tabel `position_features`. Karyawan tanpa jabatan tidak mewarisi fitur apa pun.
+2. **Selain admin, kemampuan berasal dari paket akses jabatan.** Karyawan tanpa jabatan, atau jabatan tanpa paket, tidak mewarisi fitur apa pun.
 3. **Kemampuan atas diri sendiri selalu ada**: melihat dan mengubah profil sendiri, absen, mengajukan cuti, melihat saldo dan notifikasi sendiri.
+
+### Paket akses
+
+Fitur tidak dicentang satu per satu per jabatan. Fitur dikelompokkan ke dalam paket akses, dan setiap jabatan memilih satu paket. Enam paket standar disediakan dan tidak dapat dihapus:
+
+| Paket           | Isi                                                                          |
+| --------------- | ---------------------------------------------------------------------------- |
+| Atasan Langsung | Menyetujui cuti dan melihat absensi bawahan langsung                         |
+| Pimpinan        | Atasan Langsung, ditambah melihat karyawan, cuti, dan absensi semua orang    |
+| Pengamat HR     | Melihat karyawan, cuti, dan absensi tanpa dapat mengubah                     |
+| Staf HR         | Mengelola data karyawan dan laporan absensi                                  |
+| Supervisor HR   | Staf HR yang juga menyetujui cuti bawahannya                                 |
+| Manajer HR      | Seluruh pengelolaan HR, organisasi, cuti, absensi, dan log aktivitas         |
+
+- Mengubah isi paket langsung berlaku ke semua jabatan pemakainya dalam satu transaksi. `GET /access-profiles` menampilkan jumlah jabatan dan karyawan terdampak.
+- Fitur yang membutuhkan fitur lain ditolak bila fitur dasarnya tidak ikut, misalnya `employee.update` tanpa `employee.view_all`. Katalog fitur menandai fitur sensitif (`is_sensitive`) dan kebutuhannya (`requires`).
+- `position_features` tetap menjadi daftar fitur yang diperiksa per jabatan, tetapi isinya selalu disalin dari paket, jadi pemeriksaan izin tidak berubah.
+- `PUT /positions/:id/features` tetap diterima untuk klien lama dan dipetakan ke paket yang isinya sama, atau dibuatkan paket kustom.
+
+| Metode   | Endpoint                         | Keterangan                                 |
+| -------- | -------------------------------- | ------------------------------------------ |
+| `GET`    | `/access-profiles`               | Daftar paket beserta fitur dan dampaknya   |
+| `POST`   | `/access-profiles`               | Membuat paket baru                         |
+| `PATCH`  | `/access-profiles/:id`           | Mengubah nama, deskripsi, atau isi paket   |
+| `DELETE` | `/access-profiles/:id`           | Menghapus paket kustom yang tidak dipakai  |
+| `PUT`    | `/positions/:id/access-profile`  | Memasang paket ke jabatan (`null` = lepas) |
+
+Semua endpoint di atas khusus role admin.
 
 Penolakan memakai 403 beserta kode fitur yang dibutuhkan:
 
@@ -1534,6 +1575,8 @@ Unit dan jabatan tetap dikelola lewat `/departments` dan `/positions`, dengan ko
 ### Migrasi
 
 `database/migrations/2026-10-18_hierarki_organisasi.sql` menambah kolom, constraint, dan indeks di atas. Migrasi ini aman untuk database yang sudah berisi data (semua kolom baru boleh kosong) dan aman dijalankan ulang. Struktur contoh lengkap dibuat oleh skrip seed.
+
+`database/migrations/2026-10-30_jadwal_multi_divisi_dan_lembur.sql` memindahkan divisi jadwal kerja ke tabel `work_schedule_departments`, menandai jadwal bawaan dengan `is_default`, membuang kolom `work_schedules.department_id`, dan menambah kolom lembur. Jalankan **sebelum** backend versi baru dinyalakan, karena versi baru tidak lagi membaca `department_id`. Migrasi ini aman dijalankan ulang.
 
 ## Alur Persetujuan Cuti
 

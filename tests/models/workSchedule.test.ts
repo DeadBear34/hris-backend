@@ -54,7 +54,7 @@ describe("urutan penentuan jadwal karyawan", () => {
 
     // urutan prioritas inilah yang menjadi aturan, jadi diperiksa langsung
     expect(sql).toContain("WHEN ws.id = e.work_schedule_id THEN 1");
-    expect(sql).toContain("WHEN ws.department_id = e.department_id THEN 2");
+    expect(sql).toContain("wsd.department_id = e.department_id ) THEN 2");
     expect(sql).toContain("ELSE 3");
     expect(sql).toContain("ORDER BY prioritas ASC");
     expect(sql).toContain("LIMIT 1");
@@ -75,7 +75,7 @@ describe("urutan penentuan jadwal karyawan", () => {
 
     await workScheduleModel.resolveForEmployee(EMPLOYEE_ID);
 
-    expect(lastSql()).toContain("OR ws.department_id IS NULL");
+    expect(lastSql()).toContain("OR ws.is_default");
   });
 
   it("mengembalikan jadwal yang ditemukan", async () => {
@@ -212,29 +212,76 @@ describe("countEmployees", () => {
 });
 
 describe("penyimpanan jadwal", () => {
-  it("membuat jadwal departemen dengan nilai bawaan bila tidak diisi", async () => {
-    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
+  const db = { query: mockQuery };
 
-    await workScheduleModel.createSchedule({
-      name: "Jadwal Operasional",
-      department_id: DEPARTMENT_ID,
-    });
+  it("membuat jadwal dengan nilai bawaan bila tidak diisi", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: SCHEDULE_ID }] } as never);
+
+    await workScheduleModel.createSchedule(
+      db as never,
+      { name: "Jadwal Operasional", department_ids: [DEPARTMENT_ID] },
+      false,
+    );
 
     const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
 
     expect(values[0]).toBe("Jadwal Operasional");
-    expect(values[1]).toBe(DEPARTMENT_ID);
+    expect(values[1]).toBe(false);
     // sisanya dikirim null supaya COALESCE memakai nilai bawaan database
-    expect(values.slice(2)).toEqual(new Array(11).fill(null));
+    expect(values.slice(2)).toEqual(new Array(12).fill(null));
+  });
+
+  it("menyimpan divisi pemakai jadwal setelah jadwalnya dibuat", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: SCHEDULE_ID }] } as never);
+
+    await workScheduleModel.createSchedule(
+      db as never,
+      { name: "Jadwal Operasional", department_ids: [DEPARTMENT_ID] },
+      false,
+    );
+
+    const insert = mockQuery.mock.calls
+      .map(([sql, values]) => [String(sql), values] as [string, unknown[]])
+      .find(([sql]) => sql.includes("INSERT INTO work_schedule_departments"));
+
+    expect(insert?.[1]).toEqual([SCHEDULE_ID, [DEPARTMENT_ID]]);
+  });
+
+  it("mengganti divisi dengan membuang yang tidak lagi dipilih", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await workScheduleModel.replaceDepartments(db as never, SCHEDULE_ID, [
+      DEPARTMENT_ID,
+    ]);
+
+    const [deleteSql, deleteValues] = mockQuery.mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+
+    expect(deleteSql.replace(/\s+/g, " ")).toContain(
+      "NOT (department_id = ANY($2::uuid[]))",
+    );
+    expect(deleteValues).toEqual([SCHEDULE_ID, [DEPARTMENT_ID]]);
+  });
+
+  it("daftar divisi kosong hanya menghapus, tanpa insert", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await workScheduleModel.replaceDepartments(db as never, SCHEDULE_ID, []);
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(lastSql()).toContain("DELETE FROM work_schedule_departments");
   });
 
   it("hanya menulis kolom yang diizinkan saat mengubah jadwal", async () => {
-    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
+    mockQuery.mockResolvedValue({ rows: [{ id: SCHEDULE_ID }] } as never);
 
-    await workScheduleModel.updateSchedule(SCHEDULE_ID, {
+    await workScheduleModel.updateSchedule(db as never, SCHEDULE_ID, {
       start_time: "09:00",
       id: "tidak-boleh",
       created_at: new Date(),
+      is_default: true,
     } as never);
 
     // hanya bagian SET yang diperiksa, karena klausa WHERE memang memakai id
@@ -243,24 +290,87 @@ describe("penyimpanan jadwal", () => {
     expect(set).toContain("start_time = $1::time");
     expect(set).not.toContain("id = $");
     expect(set).not.toContain("created_at = $");
+    expect(set).not.toContain("is_default");
   });
 
-  it("tidak menjalankan update ketika tidak ada kolom yang berubah", async () => {
-    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
+  it("perubahan divisi saja tetap memeriksa versi lewat updated_at", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: SCHEDULE_ID }] } as never);
 
-    await workScheduleModel.updateSchedule(SCHEDULE_ID, {});
+    const saved = await workScheduleModel.updateSchedule(
+      db as never,
+      SCHEDULE_ID,
+      { department_ids: [DEPARTMENT_ID] },
+      "2026-01-01T00:00:00.000Z",
+    );
 
-    expect(lastSql()).toContain("SELECT");
+    const [touchSql, touchValues] = mockQuery.mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+
+    expect(saved).toBe(true);
+    expect(touchSql).toContain("SET updated_at = now()");
+    expect(touchValues).toEqual([SCHEDULE_ID, "2026-01-01T00:00:00.000Z"]);
   });
 
-  it("menghapus jadwal secara lunak sekaligus menonaktifkannya", async () => {
-    mockQuery.mockResolvedValue({ rows: [generalSchedule] } as never);
+  it("tidak mengganti divisi bila versinya sudah berubah", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
 
-    await workScheduleModel.softDeleteSchedule(SCHEDULE_ID);
+    const saved = await workScheduleModel.updateSchedule(
+      db as never,
+      SCHEDULE_ID,
+      { department_ids: [DEPARTMENT_ID] },
+      "2026-01-01T00:00:00.000Z",
+    );
 
-    const sql = lastSql();
+    expect(saved).toBe(false);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
 
-    expect(sql).toContain("deleted_at = now()");
-    expect(sql).toContain("is_active = false");
+  it("menghapus jadwal secara lunak dan melepas divisinya", async () => {
+    mockQuery.mockResolvedValue({ rows: [] } as never);
+
+    await workScheduleModel.softDeleteSchedule(db as never, SCHEDULE_ID);
+
+    const sqls = mockQuery.mock.calls.map(([sql]) =>
+      String(sql).replace(/\s+/g, " "),
+    );
+
+    expect(sqls[0]).toContain("deleted_at = now()");
+    expect(sqls[0]).toContain("is_active = false");
+    expect(sqls[1]).toContain("DELETE FROM work_schedule_departments");
+  });
+});
+
+describe("bentuk jadwal yang dikembalikan", () => {
+  it("menyusun department_ids dan department_id lama dari daftar divisi", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          ...generalSchedule,
+          is_default: false,
+          departments: [
+            { id: DEPARTMENT_ID, name: "Engineering" },
+            { id: EMPLOYEE_ID, name: "Finance" },
+          ],
+        },
+      ],
+    } as never);
+
+    const schedule = await workScheduleModel.findById(SCHEDULE_ID);
+
+    expect(schedule?.department_ids).toEqual([DEPARTMENT_ID, EMPLOYEE_ID]);
+    expect(schedule?.department_id).toBe(DEPARTMENT_ID);
+  });
+
+  it("jadwal bawaan tidak punya divisi dan department_id-nya null", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [{ ...generalSchedule, is_default: true, departments: [] }],
+    } as never);
+
+    const schedule = await workScheduleModel.findDefault();
+
+    expect(schedule?.department_ids).toEqual([]);
+    expect(schedule?.department_id).toBeNull();
   });
 });

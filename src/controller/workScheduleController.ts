@@ -8,6 +8,7 @@ import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import { BadRequest, Conflict, NotFound } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
+import { withTransaction } from "../helpers/transaction.js";
 
 const SCHEDULE_DEFAULTS = {
   start_time: "08:00",
@@ -97,6 +98,40 @@ export async function DetailWorkScheduleController(
   }
 }
 
+// Semua divisi harus ada dan belum dipakai jadwal lain. Satu divisi hanya
+// boleh punya satu jadwal, kalau tidak jadwal karyawannya menjadi ambigu
+async function assertDepartmentsAvailable(
+  department_ids: string[],
+  exceptScheduleId?: string,
+): Promise<void> {
+  const existing = new Set(
+    await departmentModel.findExistingIds(department_ids),
+  );
+  const missing = department_ids.filter((id) => !existing.has(id));
+
+  if (missing.length > 0) {
+    throw BadRequest(`${plural(missing.length, "department")} not found`, {
+      missing_department_ids: missing,
+    });
+  }
+
+  const taken = await workScheduleModel.findDepartmentOwners(
+    department_ids,
+    exceptScheduleId,
+  );
+
+  if (taken.length > 0) {
+    const names = taken
+      .map((row) => `${row.department_name} (${row.schedule_name})`)
+      .join(", ");
+
+    throw Conflict(
+      `These departments already use another work schedule: ${names}. Remove them from that schedule first`,
+      { conflicts: taken },
+    );
+  }
+}
+
 export async function CreateWorkScheduleController(
   req: Request,
   res: Response,
@@ -105,28 +140,22 @@ export async function CreateWorkScheduleController(
   try {
     const activity = startActivity(req);
     const data = req.body as WorkScheduleInput;
+    const department_ids = data.department_ids ?? [];
 
-    if (data.department_id) {
-      const department = await departmentModel.findById(data.department_id);
-      if (!department) throw BadRequest("Department not found");
+    // Jadwal tanpa divisi hanya boleh menjadi jadwal bawaan, dan bawaan
+    // hanya satu. Selain itu jadwal tanpa divisi tidak berlaku bagi siapa pun
+    const isDefault = department_ids.length === 0;
 
-      const existing = await workScheduleModel.findByDepartment(
-        data.department_id,
-      );
-
-      if (existing) {
-        throw Conflict(
-          `Department ${department.name} already has a work schedule named ${existing.name}, update that schedule instead of creating a new one`,
-        );
-      }
-    } else {
+    if (isDefault) {
       const existing = await workScheduleModel.findDefault();
 
       if (existing) {
-        throw Conflict(
-          `A default schedule named ${existing.name} already exists, only one default schedule is allowed`,
+        throw BadRequest(
+          `A default schedule named ${existing.name} already exists. Choose at least one department for this schedule`,
         );
       }
+    } else {
+      await assertDepartmentsAvailable(department_ids);
     }
 
     assertScheduleTimesMakeSense({
@@ -138,13 +167,26 @@ export async function CreateWorkScheduleController(
         data.absent_cutoff_time ?? SCHEDULE_DEFAULTS.absent_cutoff_time,
     });
 
-    const schedule = await workScheduleModel.createSchedule(data);
+    const schedule = await withTransaction(async (client) => {
+      const id = await workScheduleModel.createSchedule(
+        client,
+        { ...data, department_ids },
+        isDefault,
+      );
+
+      return workScheduleModel.findById(id, client);
+    });
+
+    if (!schedule) throw new Error("Failed to load the saved work schedule");
 
     activity.success({
       action: "schedule.create",
       entity: "work_schedule",
       entity_id: schedule.id,
-      summary: `Work schedule ${schedule.name} created`,
+      summary: isDefault
+        ? `Default work schedule ${schedule.name} created`
+        : `Work schedule ${schedule.name} created for ${plural(department_ids.length, "department")}`,
+      metadata: { department_ids },
     });
 
     res.status(201).json({
@@ -173,10 +215,10 @@ export async function UpdateWorkScheduleController(
     const existing = await workScheduleModel.findById(id);
     if (!existing) throw NotFound("Work schedule not found");
 
-    if (existing.department_id === null) {
-      if (data.department_id) {
+    if (existing.is_default) {
+      if (data.department_ids && data.department_ids.length > 0) {
         throw BadRequest(
-          "The default schedule cannot be moved to a department, create a new schedule for that department",
+          "The default schedule applies to every department without its own schedule, so it cannot be limited to specific departments. Create a new schedule for those departments",
         );
       }
 
@@ -185,21 +227,14 @@ export async function UpdateWorkScheduleController(
           "The default schedule cannot be deactivated because it is the fallback for employees without their own schedule",
         );
       }
-    }
-
-    if (data.department_id && data.department_id !== existing.department_id) {
-      const department = await departmentModel.findById(data.department_id);
-      if (!department) throw BadRequest("Department not found");
-
-      const duplicate = await workScheduleModel.findByDepartment(
-        data.department_id,
-      );
-
-      if (duplicate) {
-        throw Conflict(
-          `Department ${department.name} already has a work schedule named ${duplicate.name}`,
+    } else if (data.department_ids !== undefined) {
+      if (data.department_ids.length === 0) {
+        throw BadRequest(
+          "Choose at least one department, or delete the schedule if it is no longer used",
         );
       }
+
+      await assertDepartmentsAvailable(data.department_ids, id);
     }
 
     assertScheduleTimesMakeSense({
@@ -211,26 +246,44 @@ export async function UpdateWorkScheduleController(
         data.absent_cutoff_time ?? existing.absent_cutoff_time,
     });
 
-    const schedule = await workScheduleModel.updateSchedule(
-      id,
-      data,
-      expectedUpdatedAt,
-    );
+    // jadwal bawaan tidak pernah punya divisi, jadi daftar kosong diabaikan
+    const changes = existing.is_default
+      ? { ...data, department_ids: undefined }
+      : data;
 
-    if (!schedule) {
-      throw await rejectStaleUpdate(
-        "work_schedule",
-        () => workScheduleModel.findById(id),
-        "Work schedule not found",
+    const schedule = await withTransaction(async (client) => {
+      const updated = await workScheduleModel.updateSchedule(
+        client,
+        id,
+        changes,
+        expectedUpdatedAt,
       );
-    }
+
+      if (!updated) {
+        throw await rejectStaleUpdate(
+          "work_schedule",
+          () => workScheduleModel.findById(id),
+          "Work schedule not found",
+        );
+      }
+
+      return workScheduleModel.findById(id, client);
+    });
 
     activity.success({
       action: "schedule.update",
       entity: "work_schedule",
       entity_id: id,
       summary: `Work schedule ${existing.name} updated`,
-      metadata: { fields: Object.keys(data) },
+      metadata: {
+        fields: Object.keys(data),
+        ...(changes.department_ids !== undefined
+          ? {
+              departments_from: existing.department_ids,
+              departments_to: changes.department_ids,
+            }
+          : {}),
+      },
     });
 
     res.json({
@@ -255,7 +308,7 @@ export async function DeleteWorkScheduleController(
     const existing = await workScheduleModel.findById(id);
     if (!existing) throw NotFound("Work schedule not found");
 
-    if (existing.department_id === null) {
+    if (existing.is_default) {
       throw BadRequest(
         "The default schedule cannot be deleted because it is the fallback for employees without their own schedule",
       );
@@ -270,13 +323,16 @@ export async function DeleteWorkScheduleController(
       );
     }
 
-    await workScheduleModel.softDeleteSchedule(id);
+    await withTransaction((client) =>
+      workScheduleModel.softDeleteSchedule(client, id),
+    );
 
     activity.success({
       action: "schedule.delete",
       entity: "work_schedule",
       entity_id: id,
       summary: `Work schedule ${existing.name} deleted`,
+      metadata: { released_department_ids: existing.department_ids },
     });
 
     res.json({ success: true, message: "Work schedule deleted successfully" });

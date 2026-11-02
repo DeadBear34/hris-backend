@@ -12,6 +12,46 @@ In short, for `MAJOR.MINOR.PATCH`:
 
 Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests merged into `main` when this policy was adopted.
 
+## [Unreleased]
+
+### Added
+
+- Access profiles: named feature bundles such as Line Manager or HR Staff. A position picks one profile instead of ticking features one by one, and changing a profile applies to every position that uses it in one transaction. Six standard profiles are included. New endpoints: `/access-profiles` and `PUT /positions/:id/access-profile`.
+- The feature catalog marks sensitive features (`is_sensitive`) and lists what each feature needs (`requires`). Profiles missing a required feature, such as `employee.update` without `employee.view_all`, are rejected.
+
+- One work schedule can be used by several departments at once through `department_ids`. A department still belongs to only one schedule, and conflicts are reported with the department and schedule names. The legacy single `department_id` is still accepted.
+- Overtime: minutes worked after the schedule's end time are recorded in `overtime_minutes` at check-out, counted only from the schedule's `overtime_min_minutes` (default 30). Summaries and monthly reports include `total_overtime_minutes` and `overtime_days`. Corrections recalculate overtime.
+
+- Days are closed automatically inside the backend every 15 minutes, so absences are recorded without a server crontab. On startup the last `ATTENDANCE_BACKFILL_DAYS` days (default 7) are closed as well. Switch: `ATTENDANCE_AUTO_CLOSE`.
+
+### Fixed
+
+- Checking out after midnight closes yesterday's attendance as long as today's shift has not started, instead of being rejected as "not checked in today".
+- A check-in rejected after the cutoff now records the day as absent immediately, as its message already said.
+- Closing today no longer marks employees absent before their check-in cutoff has passed, and future dates are rejected.
+- Days before an employee's join date are no longer marked absent.
+- `GET /attendances/today` explains why check-in is closed when the day is already recorded as absent, on leave, or a holiday.
+- Leave types reject unrealistic settings: the attachment threshold is limited to 365 days and must be lower than the max days per request, the max days per request cannot exceed the quota of a balance-deducting leave type, and the minimum notice is limited to 90 days.
+- Clearing the attachment threshold of a leave type no longer causes a server error.
+- Attendance corrections reject a check-in time outside the attendance date and a check-out time later than the following day.
+- Attendance corrections with a time that has not happened yet return 400 instead of 500.
+- A balance-deducting leave type requires a default quota of at least 1 day, reported on the quota field instead of a confusing max-days error.
+- Reusing the code of a deleted leave type returns a clear 409 message instead of a generic conflict.
+- Changing a leave type's quota now applies to every employee who already received this year's or next year's allocation, instead of only to employees who receive it later. The change is rejected with 409, listing the affected employees, when anyone has already used or requested more than the new quota.
+- A leave type cannot start deducting balance while requests of that type are still pending, since those requests were made without a balance hold.
+- Balance adjustments are rejected for leave types that do not deduct balance.
+- Attendance days that belong to an approved leave request cannot be corrected directly, and attendance cannot be corrected to leave without a leave request.
+
+### Changed
+
+- `PUT /positions/:id/features` still works for older clients, but now maps the submitted features to an access profile (reusing an identical one or creating a custom one).
+- The unused `system.manage_feature` feature is deactivated; feature management has always been limited to administrators.
+
+### Migration
+
+- Run `database/migrations/2026-10-30_jadwal_multi_divisi_dan_lembur.sql` before starting this version.
+- Run `database/migrations/2026-11-01_paket_akses.sql` before starting this version. Existing positions are mapped to profiles without gaining or losing any feature.
+
 ## [0.7.1] - 2026-10-26
 
 ### Security
@@ -23,7 +63,6 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 
 ### Fixed
 
-- Two concurrent leave requests with overlapping dates now return 409 instead of 500.
 - Balance refunds on rejection or cancellation are calculated from the request's own transactions rather than the leave type's current settings, and can no longer happen twice.
 - Approver reassignment notifications are sent only to managers holding `leave.approve_team`, and tasks of `leave.approve_all` holders are no longer marked as read.
 - Body parser rejections return 413 or 415 instead of 500.

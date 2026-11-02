@@ -35,7 +35,6 @@ router.use(userAccountRoute);
 router.use(employeeRoute);
 router.use(departmentRoute);
 router.use(positionRoute);
-// baru: rute struktur organisasi
 router.use(orgRoute);
 router.use(featureRoute);
 

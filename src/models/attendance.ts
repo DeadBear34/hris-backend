@@ -22,6 +22,7 @@ export interface Attendance {
   status: AttendanceStatus;
   late_minutes: number;
   work_minutes: number | null;
+  overtime_minutes: number;
   leave_request_id: string | null;
   note: string | null;
   created_at: Date;
@@ -82,6 +83,8 @@ export interface AttendanceSummary {
   holiday: number;
   total_late_minutes: number;
   total_work_minutes: number;
+  total_overtime_minutes: number;
+  overtime_days: number;
 }
 
 export interface MonthlyReportRow {
@@ -97,6 +100,8 @@ export interface MonthlyReportRow {
   holiday: number;
   total_late_minutes: number;
   total_work_minutes: number;
+  total_overtime_minutes: number;
+  overtime_days: number;
 }
 
 const COLUMN_NAMES = [
@@ -112,6 +117,7 @@ const COLUMN_NAMES = [
   "status",
   "late_minutes",
   "work_minutes",
+  "overtime_minutes",
   "leave_request_id",
   "note",
   "created_at",
@@ -191,6 +197,7 @@ export async function setCheckOut(
   check_out_recorded_at: Date,
   check_out_source: Extract<AttendanceSource, "online" | "offline_sync">,
   work_minutes: number,
+  overtime_minutes: number,
   db: Executor = pool,
 ): Promise<Attendance | null> {
   const result = await db.query<Attendance>(
@@ -199,10 +206,18 @@ export async function setCheckOut(
          check_out_recorded_at = $3::timestamptz,
          check_out_source = $4::attendance_source,
          work_minutes = $5::int,
+         overtime_minutes = $6::int,
          updated_at = now()
      WHERE id = $1::uuid AND check_out_at IS NULL AND check_in_at IS NOT NULL
      RETURNING ${COLUMNS}`,
-    [id, check_out_at, check_out_recorded_at, check_out_source, work_minutes],
+    [
+      id,
+      check_out_at,
+      check_out_recorded_at,
+      check_out_source,
+      work_minutes,
+      overtime_minutes,
+    ],
   );
 
   return result.rows[0] ?? null;
@@ -220,7 +235,6 @@ function buildFilter(params: ListAttendanceParams, values: unknown[]): string {
   // yang tanpa pengecualian manual dan jabatannya melapor ke jabatan manager_id
   if (params.manager_id) {
     values.push(params.manager_id);
-    // ubah: bawahan juga dihitung dari struktur jabatan
     const manager = `$${values.length}::uuid`;
 
     conditions.push(
@@ -311,7 +325,9 @@ export async function summaryFor(
        COUNT(*) FILTER (WHERE status = 'leave'::attendance_status)   AS leave,
        COUNT(*) FILTER (WHERE status = 'holiday'::attendance_status) AS holiday,
        COALESCE(SUM(late_minutes), 0) AS total_late_minutes,
-       COALESCE(SUM(work_minutes), 0) AS total_work_minutes
+       COALESCE(SUM(work_minutes), 0) AS total_work_minutes,
+       COALESCE(SUM(overtime_minutes), 0) AS total_overtime_minutes,
+       COUNT(*) FILTER (WHERE overtime_minutes > 0) AS overtime_days
      FROM attendances
      WHERE employee_id = $1::uuid
        AND attendance_date BETWEEN $2::date AND $3::date`,
@@ -328,6 +344,8 @@ export async function summaryFor(
     holiday: Number(row.holiday ?? 0),
     total_late_minutes: Number(row.total_late_minutes ?? 0),
     total_work_minutes: Number(row.total_work_minutes ?? 0),
+    total_overtime_minutes: Number(row.total_overtime_minutes ?? 0),
+    overtime_days: Number(row.overtime_days ?? 0),
   };
 }
 
@@ -354,7 +372,9 @@ export async function monthlyReport(
             COUNT(a.id) FILTER (WHERE a.status = 'leave'::attendance_status)   AS leave,
             COUNT(a.id) FILTER (WHERE a.status = 'holiday'::attendance_status) AS holiday,
             COALESCE(SUM(a.late_minutes), 0) AS total_late_minutes,
-            COALESCE(SUM(a.work_minutes), 0) AS total_work_minutes
+            COALESCE(SUM(a.work_minutes), 0) AS total_work_minutes,
+            COALESCE(SUM(a.overtime_minutes), 0) AS total_overtime_minutes,
+            COUNT(a.id) FILTER (WHERE a.overtime_minutes > 0) AS overtime_days
      FROM employees e
      LEFT JOIN departments d ON d.id = e.department_id
      LEFT JOIN positions p ON p.id = e.position_id
@@ -375,6 +395,8 @@ export async function monthlyReport(
     holiday: Number(row.holiday),
     total_late_minutes: Number(row.total_late_minutes),
     total_work_minutes: Number(row.total_work_minutes),
+    total_overtime_minutes: Number(row.total_overtime_minutes),
+    overtime_days: Number(row.overtime_days),
   }));
 }
 
@@ -388,6 +410,7 @@ export interface CorrectionInput {
   check_out_source?: AttendanceSource | null;
   late_minutes: number;
   work_minutes?: number | null;
+  overtime_minutes: number;
   note: string;
 }
 
@@ -409,6 +432,7 @@ export async function correctAttendance(
          late_minutes = $9::int,
          work_minutes = $10::int,
          note = $11,
+         overtime_minutes = $13::int,
          updated_at = now()
      WHERE id = $1::uuid AND ${sameVersion("updated_at", 12)}
      RETURNING ${COLUMNS}`,
@@ -425,6 +449,7 @@ export async function correctAttendance(
       data.work_minutes ?? null,
       data.note,
       expectedUpdatedAt ?? null,
+      data.overtime_minutes,
     ],
   );
 

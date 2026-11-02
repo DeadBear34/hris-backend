@@ -9,7 +9,6 @@ export interface Position {
   code: string;
   name: string;
   level: number;
-  // baru: kolom hierarki jabatan
   // unit pemilik jabatan. Null hanya untuk data lama sebelum struktur disusun
   department_id: string | null;
   // atasan jabatan. Null berarti jabatan puncak (misalnya CEO)
@@ -53,7 +52,6 @@ const COLUMN_CAST: Record<string, string> = {
   max_holders: "::int",
 };
 
-// baru: daftar jabatan sekarang bawa nama unit & atasan
 export interface PositionListItem extends Position {
   department_code: string | null;
   department_name: string | null;
@@ -85,7 +83,6 @@ export async function findById(id: string): Promise<Position | null> {
   return result.rows[0] ?? null;
 }
 
-// ubah: cek kode per unit
 // Kode jabatan unik per unit, jadi pencariannya selalu di dalam satu unit
 export async function findByCode(
   code: string,
@@ -102,7 +99,6 @@ export async function findByCode(
   return result.rows[0] ?? null;
 }
 
-// ubah: cek nama per unit
 // Nama jabatan unik per unit: "Staff" boleh ada di Finance dan di Operations.
 // Dibandingkan tanpa membedakan huruf besar-kecil dan spasi di tepi, supaya
 // "Staff", "staff", dan " Staff " dianggap nama yang sama. exceptId dipakai
@@ -209,7 +205,6 @@ export async function touchPosition(
   return result.rows[0] ?? null;
 }
 
-// baru: cek jabatan ada di bawah jabatan lain (anti muter)
 // true bila candidate adalah jabatan itu sendiri atau salah satu bawahannya
 // (langsung maupun tidak langsung). Jabatan tidak boleh melapor ke cabangnya
 // sendiri, karena atasan akan berputar tanpa ujung
@@ -236,7 +231,6 @@ export async function isPositionInSubtree(
   return result.rows[0]?.found === true;
 }
 
-// baru: kedalaman jabatan dari puncak
 // Jumlah tingkat dari jabatan ini sampai puncak. Jabatan puncak bernilai 0
 export async function depthOf(positionId: string): Promise<number> {
   const result = await pool.query<{ depth: number }>(
@@ -258,7 +252,6 @@ export async function depthOf(positionId: string): Promise<number> {
   return result.rows[0]?.depth ?? 0;
 }
 
-// baru: jabatan puncak tanpa atasan
 // Jabatan puncak, yaitu yang tidak punya atasan jabatan. Jabatan lama tanpa
 // unit tidak dihitung, karena belum masuk struktur
 export async function findRoots(exceptId?: string): Promise<Position[]> {
@@ -272,7 +265,6 @@ export async function findRoots(exceptId?: string): Promise<Position[]> {
   return result.rows;
 }
 
-// baru: kepala unit
 export async function findUnitHead(
   department_id: string,
   exceptId?: string,
@@ -286,7 +278,6 @@ export async function findUnitHead(
   return result.rows[0] ?? null;
 }
 
-// baru: hitung bawahan langsung
 export async function countDirectReports(id: string): Promise<number> {
   const result = await pool.query<{ count: string }>(
     `SELECT COUNT(*) FROM positions
@@ -296,7 +287,6 @@ export async function countDirectReports(id: string): Promise<number> {
   return Number(result.rows[0]?.count ?? 0);
 }
 
-// baru: samain departemen pemegang kalau jabatan pindah unit
 // Jabatan berpindah unit: departemen para pemegangnya ikut disesuaikan,
 // karena departemen karyawan selalu diturunkan dari jabatannya
 export async function syncHolderDepartments(

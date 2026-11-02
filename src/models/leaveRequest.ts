@@ -389,7 +389,6 @@ export async function findApprovedCovering(
   return result.rows[0] ?? null;
 }
 
-// baru: data pengajuan pending buat dialihkan
 export interface PendingRoute {
   id: string;
   employee_id: string;
@@ -401,7 +400,6 @@ export interface PendingRoute {
   total_days: number;
 }
 
-// baru: ambil semua pengajuan pending
 // Pengajuan yang masih menunggu keputusan, untuk dihitung ulang penyetujunya
 // setelah struktur organisasi berubah
 export async function findPendingForRouting(): Promise<PendingRoute[]> {
@@ -420,7 +418,6 @@ export async function findPendingForRouting(): Promise<PendingRoute[]> {
   return result.rows;
 }
 
-// baru: ganti penyetuju, aman dari bentrok
 // Mengganti penyetuju hanya bila pengajuannya masih menunggu dan penyetujunya
 // masih sama dengan yang dibaca sebelumnya. Bila sudah diputus atau dialihkan
 // oleh proses lain di tengah jalan, tidak ada yang diubah

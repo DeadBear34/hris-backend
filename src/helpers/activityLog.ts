@@ -19,6 +19,10 @@ export type ActivityAction =
   | "position.update"
   | "position.delete"
   | "position.features_replace"
+  | "position.access_profile_assign"
+  | "access_profile.create"
+  | "access_profile.update"
+  | "access_profile.delete"
   | "holiday.create"
   | "holiday.update"
   | "holiday.delete"
@@ -37,7 +41,6 @@ export type ActivityAction =
   | "auth.register"
   | "auth.verify_email"
   | "auth.resend_verification"
-  // baru: log admin ngambil kode verifikasi buat QA
   | "auth.qa_verification_code"
   | "auth.forgot_password"
   | "auth.reset_password"

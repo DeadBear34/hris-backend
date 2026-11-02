@@ -13,3 +13,16 @@ export function paginationMeta(
 ): PaginationMeta {
   return { page, limit, total, total_pages: Math.ceil(total / limit) };
 }
+
+// Respons standar untuk daftar berhalaman: { success, data, meta }
+export function paginated<T>(
+  data: T[],
+  total: number,
+  query: { page: number; limit: number },
+) {
+  return {
+    success: true as const,
+    data,
+    meta: paginationMeta(total, query.page, query.limit),
+  };
+}

@@ -5,6 +5,7 @@ import { testConnection } from "./config/databaseConnection.js";
 import { startRedis, closeRedis } from "./config/redis.js";
 import { attachSocketServer } from "./realtime/socketServer.js";
 import { startCleanup } from "./helpers/notificationCleanup.js";
+import { startDayClosing } from "./helpers/dayClosingScheduler.js";
 import { pushToMany } from "./realtime/hub.js";
 import { parseEvent } from "./realtime/event.js";
 import { registerTransport } from "./realtime/dispatcher.js";
@@ -38,6 +39,7 @@ async function start() {
   const wss = attachSocketServer(server);
 
   startCleanup();
+  startDayClosing();
 
   // Soket lokal dulu karena paling cepat, lalu diteruskan ke instance lain
   registerTransport(localSocketTransport);

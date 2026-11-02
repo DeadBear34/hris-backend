@@ -286,6 +286,8 @@ describe("rekap kehadiran", () => {
           holiday: "1",
           total_late_minutes: "25",
           total_work_minutes: "9600",
+          total_overtime_minutes: "150",
+          overtime_days: "2",
         },
       ],
     } as never);
@@ -304,6 +306,8 @@ describe("rekap kehadiran", () => {
       holiday: 1,
       total_late_minutes: 25,
       total_work_minutes: 9600,
+      total_overtime_minutes: 150,
+      overtime_days: 2,
     });
   });
 

@@ -140,6 +140,38 @@ export function dateRange(start: IsoDate, end: IsoDate): IsoDate[] {
   return result;
 }
 
+// Saat tertentu (UTC) dari tanggal dan jam dinding di zona waktu kantor.
+// Selisih zona dihitung dari tebakan pertama, cukup untuk zona tanpa
+// pergantian musim seperti Asia/Jakarta
+export function instantOf(date: IsoDate, clock: ClockTime): Date {
+  const [year, month, day] = date.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+
+  const guess = Date.UTC(year, month - 1, day, 0, minutesFromClockTime(clock));
+  const local = toLocalTime(new Date(guess));
+  const [ly, lm, ld] = local.date.split("-").map(Number);
+  const localAsUtc = Date.UTC(ly!, lm! - 1, ld!, 0, local.minutesSinceMidnight);
+
+  return new Date(guess - (localAsUtc - guess));
+}
+
+// Tanggal kalender digeser sejumlah hari, negatif berarti mundur
+export function shiftDate(date: IsoDate, days: number): IsoDate {
+  const [year, month, day] = date.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+
+  const cursor = new Date(Date.UTC(year, month - 1, day));
+  cursor.setUTCDate(cursor.getUTCDate() + days);
+
+  return cursor.toISOString().slice(0, 10);
+}
+
 // Folder arsip per bulan untuk berkas yang menumpuk. Memakai zona kantor,
 // bukan jam server, supaya berkas yang diunggah pada awal bulan waktu WIB
 // tidak jatuh ke folder bulan sebelumnya

@@ -56,18 +56,23 @@ export function decideArrivalStatus(
   }
 }
 
-export type DailyMarker = "holiday" | "leave" | "absent" | "skip";
+export type DailyMarker = "holiday" | "leave" | "absent" | "pending" | "skip";
 
 export interface DailyState {
   alreadyRecorded: boolean;
+  // hari itu sebelum tanggal bergabung, jadi belum ada kewajiban absen
+  notEmployedYet: boolean;
   isHoliday: boolean;
   onLeave: boolean;
   isWorkday: boolean;
+  // batas absen masuk hari ini belum lewat, karyawan masih bisa datang
+  checkInOpen: boolean;
 }
 
 export function decideDailyMarker(state: DailyState): DailyMarker {
   switch (true) {
     case state.alreadyRecorded:
+    case state.notEmployedYet:
       return "skip";
 
     case state.isHoliday:
@@ -78,6 +83,9 @@ export function decideDailyMarker(state: DailyState): DailyMarker {
 
     case !state.isWorkday:
       return "skip";
+
+    case state.checkInOpen:
+      return "pending";
 
     default:
       return "absent";

@@ -107,9 +107,11 @@ describe("tentukanPenandaHarian", () => {
   const state = (overrides: Partial<Parameters<typeof decideDailyMarker>[0]>) =>
     decideDailyMarker({
       alreadyRecorded: false,
+      notEmployedYet: false,
       isHoliday: false,
       onLeave: false,
       isWorkday: true,
+      checkInOpen: false,
       ...overrides,
     });
 
@@ -147,21 +149,54 @@ describe("tentukanPenandaHarian", () => {
     expect(state({ onLeave: true, isWorkday: false })).toBe("leave");
   });
 
+  it("karyawan yang belum bergabung tidak ditandai apa pun", () => {
+    expect(state({ notEmployedYet: true })).toBe("skip");
+    expect(state({ notEmployedYet: true, isHoliday: true })).toBe("skip");
+    expect(state({ notEmployedYet: true, onLeave: true })).toBe("skip");
+  });
+
+  it("belum ditandai tidak hadir selama batas absen masuk belum lewat", () => {
+    expect(state({ checkInOpen: true })).toBe("pending");
+  });
+
+  it("libur dan cuti tetap ditandai walau batas absen masuk belum lewat", () => {
+    expect(state({ checkInOpen: true, isHoliday: true })).toBe("holiday");
+    expect(state({ checkInOpen: true, onLeave: true })).toBe("leave");
+  });
+
+  it("bukan hari kerja tetap dilewati walau batas absen masuk belum lewat", () => {
+    expect(state({ checkInOpen: true, isWorkday: false })).toBe("skip");
+  });
+
   it("selalu memberi keputusan untuk setiap kombinasi keadaan", () => {
     const value = [false, true];
+    const seen = new Set<string>();
 
     for (const alreadyRecorded of value)
-      for (const isHoliday of value)
-        for (const onLeave of value)
-          for (const isWorkday of value) {
-            const result = decideDailyMarker({
-              recordedFlag: alreadyRecorded,
-              holidayFlag: isHoliday,
-              onLeaveFlag: onLeave,
-              workdayFlag: isWorkday,
-            });
+      for (const notEmployedYet of value)
+        for (const isHoliday of value)
+          for (const onLeave of value)
+            for (const isWorkday of value)
+              for (const checkInOpen of value) {
+                const result = decideDailyMarker({
+                  alreadyRecorded,
+                  notEmployedYet,
+                  isHoliday,
+                  onLeave,
+                  isWorkday,
+                  checkInOpen,
+                });
 
-            expect(["holiday", "leave", "absent", "skip"]).toContain(result);
-          }
+                expect([
+                  "holiday",
+                  "leave",
+                  "absent",
+                  "pending",
+                  "skip",
+                ]).toContain(result);
+                seen.add(result);
+              }
+
+    expect(seen.size).toBe(5);
   });
 });

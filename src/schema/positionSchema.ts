@@ -22,7 +22,6 @@ export const createPositionSchema = z.object({
     .max(10, "Level must be at most 10")
     .optional(),
 
-  // baru: jabatan wajib punya unit, plus atasan jabatan & kuota
   // unit pemilik jabatan: departemen, direktorat, atau unit perusahaan
   department_id: z.uuid("Unit is required"),
 
@@ -49,7 +48,6 @@ export const updatePositionSchema = createPositionSchema.partial().extend({
   updated_at: expectedUpdatedAt,
 });
 
-// baru: query pratinjau atasan; karyawan yang sedang diubah dikecualikan
 export const positionLineManagerQuerySchema = z.object({
   exclude_employee_id: z.uuid("Invalid employee").optional(),
 });

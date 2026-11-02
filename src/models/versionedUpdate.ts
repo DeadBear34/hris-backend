@@ -16,7 +16,6 @@ interface VersionedUpdate<T> {
   expectedUpdatedAt?: string;
   // dipakai bila tidak ada kolom yang berubah, supaya tidak menulis apa pun
   current: () => Promise<T | null>;
-  // baru: bisa ikut transaksi
   // klien transaksi bila UPDATE harus satu transaksi dengan perubahan lain
   db?: Executor;
 }
@@ -53,7 +52,6 @@ export async function updateVersioned<T extends QueryResultRow>({
   const idParam = values.length;
   values.push(expectedUpdatedAt ?? null);
 
-  // ubah: pakai db (bisa transaksi), bukan pool langsung
   const result = await db.query<T>(
     `UPDATE ${table}
      SET ${fields.join(", ")}

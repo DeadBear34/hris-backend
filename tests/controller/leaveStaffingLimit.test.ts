@@ -35,6 +35,7 @@ jest.unstable_mockModule("../../src/models/department.js", () => ({
   findAll: jest.fn(),
   findById: jest.fn(),
   findByCode: jest.fn(),
+  findCodeOwner: jest.fn(),
   findByName: jest.fn(),
   createDepartment: jest.fn(),
   updateDepartment: jest.fn(),

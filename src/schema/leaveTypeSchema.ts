@@ -26,12 +26,16 @@ export const createLeaveTypeSchema = z.object({
   is_paid: z.boolean().optional(),
   requires_attachment: z.boolean().optional(),
 
+  // 0 berarti lampiran selalu wajib. Kolomnya NOT NULL, jadi null dari form
+  // yang dikosongkan diartikan sama dengan 0
   attachment_required_after: z.coerce
     .number()
     .int("Attachment threshold must be an integer")
-    .min(1, "Attachment threshold must be at least 1 day")
+    .min(0, "Attachment threshold cannot be negative")
+    .max(365, "Attachment threshold must be at most 365 days")
     .nullable()
-    .optional(),
+    .optional()
+    .transform((value) => (value === null ? 0 : value)),
 
   max_days_per_request: z.coerce
     .number()
@@ -45,7 +49,7 @@ export const createLeaveTypeSchema = z.object({
     .number()
     .int("Minimum notice must be an integer")
     .min(0, "Minimum notice cannot be negative")
-    .max(365, "Minimum notice must be at most 365 days")
+    .max(90, "Minimum notice must be at most 90 days")
     .optional(),
 
   gender_restriction: z

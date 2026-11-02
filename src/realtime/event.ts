@@ -5,7 +5,6 @@ import type { Notification } from "../models/notification.js";
 export type NotificationEvent =
   | { event: "notification.created"; data: NotificationView }
   | { event: "notification.cleared"; ids: string[] }
-  // baru: event notif ditandai dibaca sama sistem
   // ditandai dibaca oleh sistem, misalnya tugas persetujuan yang sudah
   // diputus orang lain. Notifikasinya tetap ada sebagai riwayat
   | { event: "notification.read"; ids: string[] };
@@ -51,7 +50,6 @@ export function parseEvent(value: unknown): NotificationEvent | null {
   }
 
   if (
-    // ubah: event read ikut dikenali
     candidate.event === "notification.cleared" ||
     candidate.event === "notification.read"
   ) {

@@ -176,7 +176,7 @@ Isi `.env.production` sama dengan `.env`, dengan catatan berikut:
 | `TRUST_PROXY`                   | `1`, karena ada satu reverse proxy di depan backend                  |
 | `APP_URL`                       | Alamat frontend tanpa garis miring di akhir, dipakai di tautan email |
 | `CORS_ORIGIN`                   | Alamat frontend, boleh lebih dari satu dipisah koma                  |
-| `CRON_SECRET`                   | String acak minimal 16 karakter, dipakai job penutup hari            |
+| `CRON_SECRET`                   | Opsional. Hanya untuk memanggil job penutup hari secara manual       |
 | `LOG_LEVEL`                     | `info`                                                               |
 
 `.env.production` tidak ikut git (`.env.*` ada di `.gitignore`) dan tidak ikut image (`.dockerignore`). Rahasia hanya ada di VM.
@@ -224,12 +224,7 @@ Tanpa tiga baris WebSocket itu, API tetap jalan tetapi notifikasi real-time sela
 
 ### Job penutup hari
 
-Railway tidak lagi memanggil endpoint ini, jadi jadwalnya dipasang di crontab VM (`crontab -e`). Contoh setiap hari pukul 23.30 WIB:
-
-```cron
-CRON_TZ=Asia/Jakarta
-30 23 * * * curl -fsS -X POST -H "x-cron-secret: ISI_CRON_SECRET" http://127.0.0.1:8080/api/v1/attendances/close-day > /dev/null
-```
+Tidak perlu crontab. Backend menutup hari sendiri setiap 15 menit (lihat [Job Penutup Hari](#job-penutup-hari)). Crontab lama yang memanggil `close-day` boleh dibiarkan atau dihapus; keduanya aman berjalan bersamaan.
 
 ### Memperbarui ke versi baru
 
@@ -298,7 +293,9 @@ Log berformat JSON, satu baris per kejadian. Docker menyimpannya di disk VM deng
 | `SUPABASE_STORAGE_BUCKET`   | tidak | `leave-attachments`            | Nama bucket privat penyimpan lampiran cuti                                             |
 | `SUPABASE_PHOTO_BUCKET`     | tidak | `employee-photos`              | Nama bucket publik penyimpan foto profil karyawan                                      |
 | `TIMEZONE`                  | tidak | `Asia/Jakarta`                 | Zona waktu kantor, menjadi acuan seluruh aturan jam kerja                              |
-| `CRON_SECRET`               | tidak | —                              | Rahasia job penutup hari, minimal 16 karakter, wajib untuk absensi                     |
+| `CRON_SECRET`               | tidak | —                              | Rahasia untuk memanggil `close-day` secara manual, minimal 16 karakter                 |
+| `ATTENDANCE_AUTO_CLOSE`     | tidak | menyala, kecuali saat test     | `true` atau `false`, penutupan hari otomatis di dalam backend                          |
+| `ATTENDANCE_BACKFILL_DAYS`  | tidak | `7`                            | Jumlah hari ke belakang yang ikut ditutup saat server menyala, 0 sampai 31             |
 | `RATE_LIMIT_ENABLED`        | tidak | menyala, kecuali saat test     | `true` atau `false`, lihat [Rate Limit](#rate-limit)                                   |
 | `QA_TOOLS_ENABLED`          | tidak | menyala, kecuali di production | `true` atau `false`, lihat [Kode verifikasi untuk QA](#kode-verifikasi-untuk-qa)       |
 | `TRUST_PROXY`               | tidak | mati                           | Jumlah proxy di depan server, wajib bila memakai reverse proxy                         |
@@ -486,11 +483,24 @@ Filter yang tersedia pada daftar: `status`, `employee_id`, `leave_type_id`, `sta
 | `GET`    | `/work-schedules`     | Login                   | Seluruh jadwal kerja                       |
 | `GET`    | `/work-schedules/me`  | Login                   | Jadwal yang berlaku bagi diri sendiri      |
 | `GET`    | `/work-schedules/:id` | Login                   | Detail satu jadwal                         |
-| `POST`   | `/work-schedules`     | `organization.schedule` | Membuat jadwal, satu jadwal per departemen |
+| `POST`   | `/work-schedules`     | `organization.schedule` | Membuat jadwal untuk satu atau beberapa divisi |
 | `PATCH`  | `/work-schedules/:id` | `organization.schedule` | Mengubah jam kerja dan hari kerja          |
 | `DELETE` | `/work-schedules/:id` | `organization.schedule` | Menghapus jadwal yang tidak dipakai        |
 
 Membaca jadwal cukup dengan login, karena setiap karyawan perlu mengetahui jam masuk dan batas toleransinya sendiri sebelum melakukan absensi.
+
+Satu jadwal dapat dipakai beberapa divisi sekaligus lewat `department_ids`, tetapi satu divisi hanya boleh berada di satu jadwal supaya jadwal karyawannya tidak ambigu. Jadwal yang berlaku bagi seorang karyawan dipilih berurutan: jadwal khusus karyawan (`employees.work_schedule_id`), jadwal yang memuat divisinya, lalu jadwal bawaan (`is_default`). Menghapus jadwal melepas divisinya kembali ke jadwal bawaan.
+
+### Lembur
+
+Lembur dihitung otomatis saat absen pulang: menit kerja setelah `end_time` jadwal pada hari absensinya, disimpan di `attendances.overtime_minutes`.
+
+- Lembur yang lebih pendek dari `overtime_min_minutes` jadwal (bawaan 30 menit) tidak dihitung. Begitu mencapai batas itu, seluruh menitnya dihitung sejak jam pulang.
+- Absen pulang lewat tengah malam tetap menutup absensi kemarin selama jam kerja hari ini belum dimulai. `GET /attendances/today` menampilkannya di `overnight_attendance`.
+- Koreksi absensi menghitung ulang lembur dari jam pulang yang dikoreksi.
+- Rekap pribadi dan laporan bulanan memuat `total_overtime_minutes` dan `overtime_days`.
+
+Lembur di hari libur atau akhir pekan belum didukung, karena absen masuk pada hari itu ditolak.
 
 ### Absensi
 
@@ -506,7 +516,7 @@ Membaca jadwal cukup dengan login, karena setiap karyawan perlu mengetahui jam m
 | `GET`   | `/attendances/offline-log` | `attendance.report`    | Audit absensi yang dikirim setelah offline      |
 | `GET`   | `/attendances/events`      | `attendance.report`    | Jejak mentah setiap penekanan tombol absen      |
 | `PATCH` | `/attendances/:id/correct` | `attendance.correct`   | Koreksi absensi, alasan wajib diisi             |
-| `POST`  | `/attendances/close-day`   | Header `x-cron-secret` | Job penutup hari, dipanggil penjadwal eksternal |
+| `POST`  | `/attendances/close-day`   | Header `x-cron-secret` | Job penutup hari, pemanggilan manual            |
 
 Absen masuk dan absen pulang tidak memerlukan fitur apa pun, karena merupakan kemampuan dasar setiap karyawan dan tidak boleh dapat dicabut lewat jabatan.
 
@@ -1357,24 +1367,34 @@ Kalau audit menunjukkan pemakaiannya berulang pada orang yang sama, langkah beri
 
 ## Job Penutup Hari
 
-Karyawan yang tidak absen sama sekali tidak meninggalkan baris apa pun, jadi ketidakhadiran ditandai setelah hari berakhir.
+Karyawan yang tidak absen sama sekali tidak meninggalkan baris apa pun, jadi ketidakhadirannya perlu ditandai oleh job ini.
+
+### Berjalan otomatis
+
+Backend menjalankannya sendiri, tanpa crontab:
+
+- saat server menyala, hari ini beserta `ATTENDANCE_BACKFILL_DAYS` hari sebelumnya (bawaan 7) ikut ditutup, supaya hari yang terlewat ketika server mati tetap terhitung;
+- sesudahnya setiap 15 menit untuk kemarin dan hari ini.
+
+Untuk hari ini, tanda tidak hadir baru diberikan setelah `absent_cutoff_time` jadwal karyawan itu lewat. Sebelum itu karyawannya dihitung `pending` karena masih boleh absen. Tanggal sebelum `join_date` karyawan tidak ditandai. Putaran yang membuat baris baru dicatat di log aktivitas sebagai `attendance.close_day` dengan pelaku `System`.
+
+Absen masuk yang ditolak karena lewat batas langsung mencatat baris `absent` saat itu juga, dengan catatan jam percobaannya. Karyawan tidak perlu menunggu job untuk melihat alfanya di rekap.
+
+Matikan dengan `ATTENDANCE_AUTO_CLOSE=false` bila penutupan ingin dipegang penjadwal luar.
+
+### Memanggil secara manual
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/attendances/close-day" \
   -H "x-cron-secret: $CRON_SECRET"
 ```
 
-Wewenangnya diperiksa lewat header `x-cron-secret`, bukan JWT, karena pemanggilnya mesin penjadwal. Tanpa query `date`, job memakai tanggal hari ini menurut zona waktu kantor.
+Wewenangnya diperiksa lewat header `x-cron-secret`, bukan JWT, karena pemanggilnya mesin penjadwal. Tanpa query `date`, job memakai tanggal hari ini menurut zona waktu kantor. Tanggal yang belum terjadi ditolak dengan 400.
 
 Urutan penentuan statusnya: hari libur, lalu cuti yang disetujui, baru tidak hadir. Hari yang bukan hari kerja tidak menghasilkan baris sama sekali, supaya akhir pekan tidak tercampur dengan hari libur nasional pada laporan.
 
 Job aman dijalankan berkali-kali pada tanggal yang sama. Baris yang sudah ada tidak pernah ditimpa, dan penulisannya dipotong per 500 baris, masing-masing dalam satu transaksi.
 
-Contoh crontab setiap hari pukul 21:00 WIB (gunakan `0 14 * * *` bila penjadwal berjalan di UTC):
-
-```cron
-0 21 * * * curl -fsS -X POST "http://localhost:8080/api/v1/attendances/close-day" -H "x-cron-secret: YOUR_SECRET" >> /var/log/hris-close-day.log 2>&1
-```
 
 ## Otorisasi Berbasis Jabatan
 
@@ -1383,8 +1403,36 @@ HR adalah **jabatan**, bukan peran sistem. Kemampuannya ditentukan oleh fitur ya
 ### Tiga lapis, urutannya menentukan
 
 1. **Role `admin` melewati seluruh pemeriksaan fitur tanpa kecuali**, supaya sistem tidak terkunci sendiri kalau pemberian fitur salah atur.
-2. **Selain admin, kemampuan berasal dari jabatan** lewat tabel `position_features`. Karyawan tanpa jabatan tidak mewarisi fitur apa pun.
+2. **Selain admin, kemampuan berasal dari paket akses jabatan.** Karyawan tanpa jabatan, atau jabatan tanpa paket, tidak mewarisi fitur apa pun.
 3. **Kemampuan atas diri sendiri selalu ada**: melihat dan mengubah profil sendiri, absen, mengajukan cuti, melihat saldo dan notifikasi sendiri.
+
+### Paket akses
+
+Fitur tidak dicentang satu per satu per jabatan. Fitur dikelompokkan ke dalam paket akses, dan setiap jabatan memilih satu paket. Enam paket standar disediakan dan tidak dapat dihapus:
+
+| Paket           | Isi                                                                          |
+| --------------- | ---------------------------------------------------------------------------- |
+| Atasan Langsung | Menyetujui cuti dan melihat absensi bawahan langsung                         |
+| Pimpinan        | Atasan Langsung, ditambah melihat karyawan, cuti, dan absensi semua orang    |
+| Pengamat HR     | Melihat karyawan, cuti, dan absensi tanpa dapat mengubah                     |
+| Staf HR         | Mengelola data karyawan dan laporan absensi                                  |
+| Supervisor HR   | Staf HR yang juga menyetujui cuti bawahannya                                 |
+| Manajer HR      | Seluruh pengelolaan HR, organisasi, cuti, absensi, dan log aktivitas         |
+
+- Mengubah isi paket langsung berlaku ke semua jabatan pemakainya dalam satu transaksi. `GET /access-profiles` menampilkan jumlah jabatan dan karyawan terdampak.
+- Fitur yang membutuhkan fitur lain ditolak bila fitur dasarnya tidak ikut, misalnya `employee.update` tanpa `employee.view_all`. Katalog fitur menandai fitur sensitif (`is_sensitive`) dan kebutuhannya (`requires`).
+- `position_features` tetap menjadi daftar fitur yang diperiksa per jabatan, tetapi isinya selalu disalin dari paket, jadi pemeriksaan izin tidak berubah.
+- `PUT /positions/:id/features` tetap diterima untuk klien lama dan dipetakan ke paket yang isinya sama, atau dibuatkan paket kustom.
+
+| Metode   | Endpoint                         | Keterangan                                 |
+| -------- | -------------------------------- | ------------------------------------------ |
+| `GET`    | `/access-profiles`               | Daftar paket beserta fitur dan dampaknya   |
+| `POST`   | `/access-profiles`               | Membuat paket baru                         |
+| `PATCH`  | `/access-profiles/:id`           | Mengubah nama, deskripsi, atau isi paket   |
+| `DELETE` | `/access-profiles/:id`           | Menghapus paket kustom yang tidak dipakai  |
+| `PUT`    | `/positions/:id/access-profile`  | Memasang paket ke jabatan (`null` = lepas) |
+
+Semua endpoint di atas khusus role admin.
 
 Penolakan memakai 403 beserta kode fitur yang dibutuhkan:
 
@@ -1527,6 +1575,8 @@ Unit dan jabatan tetap dikelola lewat `/departments` dan `/positions`, dengan ko
 ### Migrasi
 
 `database/migrations/2026-10-18_hierarki_organisasi.sql` menambah kolom, constraint, dan indeks di atas. Migrasi ini aman untuk database yang sudah berisi data (semua kolom baru boleh kosong) dan aman dijalankan ulang. Struktur contoh lengkap dibuat oleh skrip seed.
+
+`database/migrations/2026-10-30_jadwal_multi_divisi_dan_lembur.sql` memindahkan divisi jadwal kerja ke tabel `work_schedule_departments`, menandai jadwal bawaan dengan `is_default`, membuang kolom `work_schedules.department_id`, dan menambah kolom lembur. Jalankan **sebelum** backend versi baru dinyalakan, karena versi baru tidak lagi membaca `department_id`. Migrasi ini aman dijalankan ulang.
 
 ## Alur Persetujuan Cuti
 

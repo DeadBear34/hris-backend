@@ -3,7 +3,6 @@ import { pool } from "../config/databaseConnection.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { startActivity } from "../helpers/activityLog.js";
-import { withTransaction } from "../helpers/transaction.js";
 import { rejectStaleUpdate } from "../helpers/concurrency.js";
 import * as attendanceModel from "../models/attendance.js";
 import * as eventModel from "../models/attendanceEvent.js";
@@ -21,8 +20,8 @@ import {
   lateMinutesFrom,
   dayNameOf,
   minutesBetween,
+  shiftDate,
   type IsoDate,
-  type DayName,
 } from "../helpers/timezone.js";
 import { isWorkingDay } from "../models/workSchedule.js";
 import {
@@ -35,7 +34,6 @@ import {
   requiresCheckIn,
   formatDuration,
   decideArrivalStatus,
-  decideDailyMarker,
   type ArrivalOutcome,
 } from "../helpers/attendanceStatus.js";
 import {
@@ -47,12 +45,12 @@ import {
   Unauthorized,
 } from "../helpers/appError.js";
 import { plural } from "../helpers/plural.js";
+import { closeDay, dayClosingSummary } from "../helpers/dayClosing.js";
+import { isBeforeShiftStart, overtimeMinutes } from "../helpers/overtime.js";
 import { requireRequestEmployee } from "../helpers/requestEmployee.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated, paginationMeta } from "../helpers/pagination.js";
 
 const CRON_HEADER = "x-cron-secret";
-
-const BATCH_SIZE = 500;
 
 function assertMayCheckIn(employee: Employee): void {
   if (!employee.is_active) {
@@ -208,6 +206,31 @@ function blockedReasonForTime(
   return `Check-in closed at ${shortTime(schedule.absent_cutoff_time)}, you are marked absent today`;
 }
 
+// Pesan penolakan menyebut karyawan sudah tidak hadir, jadi barisnya langsung
+// dibuat saat itu juga, tidak menunggu penutupan hari. Kalau gagal disimpan,
+// penolakan tetap berjalan dan penutupan hari yang akan menandainya nanti
+async function markAbsentAfterCutoff(
+  employee_id: string,
+  date: IsoDate,
+  attemptedAt: string,
+  schedule: WorkSchedule,
+): Promise<void> {
+  try {
+    await attendanceModel.insertMarkers(pool, date, [
+      {
+        employee_id,
+        status: "absent",
+        note: `Check-in attempted at ${attemptedAt}, after the ${shortTime(schedule.absent_cutoff_time)} cutoff`,
+      },
+    ]);
+  } catch (err) {
+    logger.warn(
+      { err, employee_id, date },
+      "Failed to mark absence after the check-in cutoff",
+    );
+  }
+}
+
 export async function CheckInController(
   req: Request,
   res: Response,
@@ -267,7 +290,15 @@ export async function CheckInController(
       schedule,
       local.minutesSinceMidnight,
     );
-    if (closedReason) throw rejectEvent(event.id, closedReason, BadRequest);
+    if (closedReason) {
+      await markAbsentAfterCutoff(
+        employee.id,
+        date,
+        clockTimeOf(attendanceAt.at),
+        schedule,
+      );
+      throw rejectEvent(event.id, closedReason, BadRequest);
+    }
 
     const startMinutes = minutesFromClockTime(schedule.start_time);
     const diffMinutes = lateMinutesFrom(
@@ -330,6 +361,42 @@ export async function CheckInController(
   }
 }
 
+interface OpenAttendance {
+  attendance: attendanceModel.Attendance;
+  // true bila absensinya milik kemarin (pulang lewat tengah malam)
+  overnight: boolean;
+}
+
+// Absensi yang menjadi pasangan absen pulang. Biasanya absensi hari ini.
+// Kalau hari ini belum ada absen masuk dan jam kerja hari ini belum dimulai,
+// absen pulang dipasangkan ke absensi kemarin yang belum ditutup, untuk
+// lembur yang berlanjut lewat tengah malam
+async function findOpenAttendance(
+  employee_id: string,
+  local: { date: IsoDate; minutesSinceMidnight: number },
+  schedule: WorkSchedule,
+): Promise<OpenAttendance | null> {
+  const today = await attendanceModel.findByEmployeeAndDate(
+    employee_id,
+    local.date,
+  );
+
+  if (today?.check_in_at) return { attendance: today, overnight: false };
+
+  if (!isBeforeShiftStart(local.minutesSinceMidnight, schedule)) return null;
+
+  const yesterday = await attendanceModel.findByEmployeeAndDate(
+    employee_id,
+    shiftDate(local.date, -1),
+  );
+
+  if (yesterday?.check_in_at && !yesterday.check_out_at) {
+    return { attendance: yesterday, overnight: true };
+  }
+
+  return null;
+}
+
 export async function CheckOutController(
   req: Request,
   res: Response,
@@ -357,20 +424,18 @@ export async function CheckOutController(
     });
 
     const local = toLocalTime(attendanceAt.at);
-    const date = local.date;
 
-    const existing = await attendanceModel.findByEmployeeAndDate(
-      employee.id,
-      date,
-    );
+    const open = await findOpenAttendance(employee.id, local, schedule);
 
-    if (!existing || !existing.check_in_at) {
+    if (!open) {
       throw rejectEvent(
         event.id,
         "You haven't checked in today, so you can't check out yet",
         BadRequest,
       );
     }
+
+    const existing = open.attendance;
 
     if (existing.check_out_at) {
       const message = `You already checked out today at ${clockTimeOf(new Date(existing.check_out_at))}`;
@@ -380,9 +445,12 @@ export async function CheckOutController(
       );
     }
 
-    const startMinutes = minutesFromClockTime(schedule.start_time);
-
-    if (local.minutesSinceMidnight < startMinutes) {
+    // Absen pulang lewat tengah malam tidak diperiksa terhadap jam masuk
+    // hari ini, karena memang terjadi sebelum jam kerja hari ini dimulai
+    if (
+      !open.overnight &&
+      isBeforeShiftStart(local.minutesSinceMidnight, schedule)
+    ) {
       throw rejectEvent(
         event.id,
         `You can't check out before work starts at ${shortTime(schedule.start_time)}`,
@@ -390,7 +458,7 @@ export async function CheckOutController(
       );
     }
 
-    const checkIn = new Date(existing.check_in_at);
+    const checkIn = new Date(existing.check_in_at!);
     const workedMinutes = minutesBetween(checkIn, attendanceAt.at);
 
     if (workedMinutes <= 0) {
@@ -401,12 +469,19 @@ export async function CheckOutController(
       );
     }
 
+    const overtime = overtimeMinutes(
+      existing.attendance_date,
+      attendanceAt.at,
+      schedule,
+    );
+
     const attendance = await attendanceModel.setCheckOut(
       existing.id,
       attendanceAt.at,
       now,
       attendanceAt.offline ? "offline_sync" : "online",
       workedMinutes,
+      overtime,
     );
 
     if (!attendance) {
@@ -425,14 +500,20 @@ export async function CheckOutController(
       summary: `${employee.full_name} checked out at ${clockTimeOf(attendanceAt.at)}`,
       metadata: {
         employee_id: employee.id,
+        attendance_date: existing.attendance_date,
         work_minutes: workedMinutes,
+        overtime_minutes: overtime,
+        overnight: open.overnight,
         source: attendance.check_out_source,
       },
     });
 
+    const overtimeNote =
+      overtime > 0 ? `, overtime ${formatDuration(overtime)}` : "";
+
     res.json({
       success: true,
-      message: `Check-out recorded at ${clockTimeOf(attendanceAt.at)}, total work time ${formatDuration(workedMinutes)}`,
+      message: `Check-out recorded at ${clockTimeOf(attendanceAt.at)}, total work time ${formatDuration(workedMinutes)}${overtimeNote}`,
       data: attendance,
     });
   } catch (err) {
@@ -447,6 +528,16 @@ export async function CheckOutController(
 
     next(err);
   }
+}
+
+// Baris tanpa jam masuk (tidak hadir, cuti, libur) tetap perlu alasan,
+// supaya layar tidak menampilkan tombol mati tanpa penjelasan
+function recordedWithoutCheckIn(
+  attendance: attendanceModel.Attendance,
+): string | null {
+  if (attendance.check_in_at) return null;
+
+  return `Today's attendance is recorded as ${statusLabel(attendance.status)}`;
 }
 
 export async function TodayAttendanceController(
@@ -465,10 +556,17 @@ export async function TodayAttendanceController(
       attendanceModel.findByEmployeeAndDate(employee.id, date),
     ]);
 
+    // Lembur yang berlanjut lewat tengah malam: absensi kemarin masih bisa
+    // ditutup sampai jam kerja hari ini dimulai
+    const open = schedule
+      ? await findOpenAttendance(employee.id, toLocalTime(now), schedule)
+      : null;
+    const overnight = open?.overnight ? open.attendance : null;
+
     const blockedReason = schedule
       ? ((await blockedReasonForDate(employee.id, schedule, date)) ??
         (attendance
-          ? null
+          ? recordedWithoutCheckIn(attendance)
           : blockedReasonForTime(
               schedule,
               toLocalTime(now).minutesSinceMidnight,
@@ -483,9 +581,11 @@ export async function TodayAttendanceController(
         schedule,
         attendance,
         can_check_in: Boolean(schedule) && !blockedReason && !attendance,
-        can_check_out: Boolean(
-          attendance?.check_in_at && !attendance.check_out_at,
-        ),
+        can_check_out:
+          Boolean(attendance?.check_in_at && !attendance.check_out_at) ||
+          Boolean(overnight),
+        // absensi kemarin yang belum absen pulang; null bila tidak ada
+        overnight_attendance: overnight,
         blocked_reason: blockedReason,
       },
     });
@@ -551,11 +651,7 @@ export async function TeamAttendanceController(
       manager_id: employee.id,
     });
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -570,11 +666,7 @@ export async function ListAttendanceController(
     const query = res.locals.query as ListAttendanceParams;
     const { rows, total } = await attendanceModel.listAttendances(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -645,6 +737,58 @@ function witnessAfterCorrection(
   return { recorded_at: correctedAt, source: "correction" };
 }
 
+// Koreksi hanya boleh menggeser jam pada hari absensi itu sendiri. Jam pulang
+// boleh lewat tengah malam (lembur), tetapi tidak lebih dari esok harinya.
+// Jam yang belum terjadi juga ditolak: jam hasil koreksi dicatat dengan waktu
+// koreksi sebagai saksinya, dan database menolak saksi yang mendahului jamnya
+function assertWithinAttendanceDay(
+  date: IsoDate,
+  checkIn: Date | null,
+  checkOut: Date | null,
+  now: Date,
+): void {
+  if (checkIn && checkIn > now) {
+    throw BadRequest(
+      `Check-in time ${clockTimeOf(checkIn)} on ${todayInOfficeZone(checkIn)} has not happened yet`,
+    );
+  }
+
+  if (checkOut && checkOut > now) {
+    throw BadRequest(
+      `Check-out time ${clockTimeOf(checkOut)} on ${todayInOfficeZone(checkOut)} has not happened yet, record it after it happens`,
+    );
+  }
+
+  if (checkIn && todayInOfficeZone(checkIn) !== date) {
+    throw BadRequest(`Check-in time must be on the attendance date ${date}`);
+  }
+
+  if (checkOut && todayInOfficeZone(checkOut) > shiftDate(date, 1)) {
+    throw BadRequest(`Check-out time must be on ${date} or the following day`);
+  }
+}
+
+// Hari cuti selalu berasal dari pengajuan yang disetujui, dan saldonya ikut
+// terpotong. Mengoreksinya langsung membuat absensi dan saldo tidak cocok,
+// jadi perubahannya harus lewat pengajuan cuti itu sendiri
+function assertCorrectableLeave(
+  existing: attendanceModel.Attendance,
+  status: attendanceModel.AttendanceStatus,
+): void {
+  if (existing.leave_request_id && status !== "leave") {
+    throw BadRequest(
+      "This day belongs to an approved leave request. Cancel or change the leave request instead of correcting the attendance",
+      { leave_request_id: existing.leave_request_id },
+    );
+  }
+
+  if (status === "leave" && !existing.leave_request_id) {
+    throw BadRequest(
+      "Leave days can only come from an approved leave request, so attendance cannot be corrected to leave",
+    );
+  }
+}
+
 export async function CorrectAttendanceController(
   req: Request,
   res: Response,
@@ -666,6 +810,8 @@ export async function CorrectAttendanceController(
     const existing = await attendanceModel.findById(id);
     if (!existing) throw NotFound("Attendance record not found");
 
+    assertCorrectableLeave(existing, data.status);
+
     const checkIn = data.check_in_at ? new Date(data.check_in_at) : null;
     const checkOut = data.check_out_at ? new Date(data.check_out_at) : null;
 
@@ -673,24 +819,38 @@ export async function CorrectAttendanceController(
       throw BadRequest("Check-out time cannot be set without a check-in time");
     }
 
-    let lateMinutes = 0;
+    const correctedAt = new Date();
 
-    if (checkIn && requiresCheckIn(data.status)) {
+    assertWithinAttendanceDay(
+      existing.attendance_date,
+      checkIn,
+      checkOut,
+      correctedAt,
+    );
+
+    let lateMinutes = 0;
+    let overtime = 0;
+
+    const newCheckIn = requiresCheckIn(data.status) ? checkIn : null;
+    const newCheckOut = requiresCheckIn(data.status) ? checkOut : null;
+
+    // Keterlambatan dan lembur dihitung ulang dari jadwal, bukan dari
+    // kiriman klien, supaya koreksi tidak bisa menyelipkan angka sendiri
+    if (newCheckIn) {
       const schedule = await getSchedule(existing.employee_id);
-      const localCheckIn = toLocalTime(checkIn);
 
       lateMinutes =
         data.status === "late"
           ? lateMinutesFrom(
-              localCheckIn.minutesSinceMidnight,
+              toLocalTime(newCheckIn).minutesSinceMidnight,
               minutesFromClockTime(schedule.start_time),
             )
           : 0;
-    }
 
-    const correctedAt = new Date();
-    const newCheckIn = requiresCheckIn(data.status) ? checkIn : null;
-    const newCheckOut = requiresCheckIn(data.status) ? checkOut : null;
+      overtime = newCheckOut
+        ? overtimeMinutes(existing.attendance_date, newCheckOut, schedule)
+        : 0;
+    }
 
     const checkInWitness = witnessAfterCorrection(
       newCheckIn,
@@ -727,6 +887,7 @@ export async function CorrectAttendanceController(
           newCheckIn && newCheckOut
             ? minutesBetween(newCheckIn, newCheckOut)
             : null,
+        overtime_minutes: overtime,
         note: buildCorrectionNote(corrector, data.reason, correctedAt),
       },
       pool,
@@ -780,111 +941,6 @@ function assertCronAuthorized(req: Request): void {
   }
 }
 
-interface DayFacts {
-  holiday: Awaited<ReturnType<typeof holidayModel.findByDate>>;
-  leaveByEmployee: Map<string, string>;
-  alreadyRecorded: Set<string>;
-  employeeSchedules: Awaited<
-    ReturnType<typeof workScheduleModel.resolveForAllActive>
-  >;
-}
-
-// Semua keadaan hari itu dikumpulkan sekali di depan, supaya keputusan
-// per karyawan tidak menyentuh database lagi
-async function collectDayFacts(date: IsoDate): Promise<DayFacts> {
-  const [holiday, approvedLeaves, recorded, employeeSchedules] =
-    await Promise.all([
-      holidayModel.findByDate(date),
-      attendanceModel.findApprovedLeaveOn(date),
-      attendanceModel.findEmployeeIdsOnDate(date),
-      workScheduleModel.resolveForAllActive(),
-    ]);
-
-  return {
-    holiday,
-    leaveByEmployee: new Map(
-      approvedLeaves.map((row) => [row.employee_id, row.leave_request_id]),
-    ),
-    alreadyRecorded: new Set(recorded),
-    employeeSchedules,
-  };
-}
-
-// Menentukan penanda harian tiap karyawan. skipped dihitung terpisah karena
-// baris yang dilewati memang tidak menghasilkan apa pun untuk disimpan
-function buildMarkers(
-  facts: DayFacts,
-  day: DayName,
-): { markers: attendanceModel.MarkerRow[]; skipped: number } {
-  const markers: attendanceModel.MarkerRow[] = [];
-  let skipped = 0;
-
-  for (const { employee_id, schedule } of facts.employeeSchedules) {
-    const leave_request_id = facts.leaveByEmployee.get(employee_id);
-
-    switch (
-      decideDailyMarker({
-        alreadyRecorded: facts.alreadyRecorded.has(employee_id),
-        isHoliday: Boolean(facts.holiday),
-        onLeave: Boolean(leave_request_id),
-        isWorkday: isWorkingDay(schedule, day),
-      })
-    ) {
-      case "holiday":
-        markers.push({
-          employee_id,
-          status: "holiday",
-          note: facts.holiday?.name ?? null,
-        });
-        break;
-
-      case "leave":
-        markers.push({ employee_id, status: "leave", leave_request_id });
-        break;
-
-      case "absent":
-        markers.push({ employee_id, status: "absent" });
-        break;
-
-      case "skip":
-        skipped += 1;
-        break;
-    }
-  }
-
-  return { markers, skipped };
-}
-
-// Ditulis per potongan supaya satu transaksi tidak menahan ribuan baris
-// sekaligus. Tiap potongan berdiri sendiri
-async function storeMarkers(
-  date: IsoDate,
-  markers: attendanceModel.MarkerRow[],
-): Promise<number> {
-  let stored = 0;
-
-  for (let i = 0; i < markers.length; i += BATCH_SIZE) {
-    const chunk = markers.slice(i, i + BATCH_SIZE);
-
-    stored += await withTransaction((client) =>
-      attendanceModel.insertMarkers(client, date, chunk),
-    );
-  }
-
-  return stored;
-}
-
-function countMarkers(markers: attendanceModel.MarkerRow[]) {
-  const count = (status: string) =>
-    markers.filter((row) => row.status === status).length;
-
-  return {
-    holiday: count("holiday"),
-    leave: count("leave"),
-    absent: count("absent"),
-  };
-}
-
 export async function CloseDayController(
   req: Request,
   res: Response,
@@ -896,32 +952,19 @@ export async function CloseDayController(
     assertCronAuthorized(req);
 
     const query = res.locals.query as { date?: IsoDate };
-    const date = query.date ?? todayInOfficeZone();
-
-    const facts = await collectDayFacts(date);
-    const { markers, skipped } = buildMarkers(facts, dayNameOf(date));
-    const stored = await storeMarkers(date, markers);
-
-    const marked = countMarkers(markers);
+    const result = await closeDay(query.date ?? todayInOfficeZone());
 
     activity.success({
       action: "attendance.close_day",
       entity: "attendance",
-      summary: `Day closing for ${date}: ${plural(stored, "row")} created, ${skipped} skipped`,
-      metadata: { date, created: stored, skipped, marked },
+      summary: dayClosingSummary(result),
+      metadata: { ...result },
     });
 
     res.json({
       success: true,
-      message: `Day closing for ${date} finished, ${stored} new attendance rows created`,
-      data: {
-        date,
-        is_holiday: Boolean(facts.holiday),
-        holiday_name: facts.holiday?.name ?? null,
-        created: stored,
-        skipped,
-        marked,
-      },
+      message: `Day closing for ${result.date} finished, ${result.created} new attendance rows created`,
+      data: result,
     });
   } catch (err) {
     next(err);
@@ -937,11 +980,7 @@ export async function OfflineLogController(
     const query = res.locals.query as attendanceModel.OfflineLogParams;
     const { rows, total } = await attendanceModel.listOfflineSync(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -956,11 +995,7 @@ export async function EventLogController(
     const query = res.locals.query as eventModel.ListEventParams;
     const { rows, total } = await eventModel.listEvents(query);
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }

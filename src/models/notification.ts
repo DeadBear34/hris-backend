@@ -171,7 +171,6 @@ export async function deletePending(
   return result.rows;
 }
 
-// baru: tandai dibaca, jangan dihapus
 // Tugas yang sudah selesai ditandai dibaca untuk semua penerimanya, bukan
 // dihapus, supaya tetap tampil sebagai riwayat tetapi tidak lagi dihitung
 // sebagai pekerjaan yang menunggu
@@ -192,7 +191,6 @@ export async function markPendingRead(
   return result.rows;
 }
 
-// baru: sama, tapi buat satu penerima aja
 // Sama seperti markPendingRead, tetapi hanya untuk satu penerima. Dipakai
 // saat penyetuju sebuah pengajuan dialihkan ke orang lain
 export async function markPendingReadFor(

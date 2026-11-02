@@ -220,13 +220,45 @@ describe("createLeaveTypeSchema", () => {
     ).toBe(false);
   });
 
-  it("menolak ambang lampiran nol", () => {
+  it("menerima ambang lampiran nol yang berarti lampiran selalu wajib", () => {
     expect(
       createLeaveTypeSchema.safeParse({
         ...valid,
         attachment_required_after: 0,
       }).success,
+    ).toBe(true);
+  });
+
+  it("menolak ambang lampiran lebih dari setahun", () => {
+    for (const value of [366, 10000000]) {
+      expect(
+        createLeaveTypeSchema.safeParse({
+          ...valid,
+          attachment_required_after: value,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("mengubah ambang lampiran null menjadi 0 karena kolomnya wajib terisi", () => {
+    const result = createLeaveTypeSchema.safeParse({
+      ...valid,
+      attachment_required_after: null,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.attachment_required_after).toBe(0);
+  });
+
+  it("menolak minimal pemberitahuan lebih dari 90 hari", () => {
+    expect(
+      createLeaveTypeSchema.safeParse({ ...valid, min_notice_days: 91 })
+        .success,
     ).toBe(false);
+    expect(
+      createLeaveTypeSchema.safeParse({ ...valid, min_notice_days: 90 })
+        .success,
+    ).toBe(true);
   });
 
   it("menolak minimal pemberitahuan negatif", () => {

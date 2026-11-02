@@ -63,7 +63,6 @@ router.post(
 // Khusus admin, untuk QA otomatis. requireQaTools paling depan supaya rute
 // yang dimatikan terlihat tidak ada, bahkan sebelum token diperiksa
 router.get(
-  // baru: endpoint kode verifikasi buat QA
   "/auth/verification-code",
   requireQaTools,
   authenticate,

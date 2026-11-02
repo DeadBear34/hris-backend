@@ -16,7 +16,7 @@ import {
   ensureAccruals,
   isAccrualYear,
 } from "../helpers/leaveAccrual.js";
-import { paginationMeta } from "../helpers/pagination.js";
+import { paginated } from "../helpers/pagination.js";
 
 export async function MyLeaveBalanceController(
   req: Request,
@@ -88,11 +88,7 @@ export async function MyLeaveLedgerController(
       employee_id: employee.id,
     });
 
-    res.json({
-      success: true,
-      data: rows,
-      meta: paginationMeta(total, query.page, query.limit),
-    });
+    res.json(paginated(rows, total, query));
   } catch (err) {
     next(err);
   }
@@ -125,6 +121,14 @@ export async function AdjustLeaveBalanceController(
 
     if (!employee) throw BadRequest("Employee not found");
     if (!leaveType) throw BadRequest("Leave type not found");
+
+    // Saldo jenis cuti ini tidak pernah dipakai pengajuan, jadi penyesuaiannya
+    // hanya akan menjadi angka yang tidak berarti di buku besar
+    if (!leaveType.deducts_balance) {
+      throw BadRequest(
+        `${leaveType.name} does not deduct balance, so its balance cannot be adjusted`,
+      );
+    }
 
     // Dikunci sama seperti pengajuan cuti, supaya penyesuaian dan pengajuan
     // yang datang bersamaan tidak menghitung saldo dari angka lama

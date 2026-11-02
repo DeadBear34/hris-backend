@@ -237,12 +237,17 @@ export async function deleteProfile(db: Executor, id: string): Promise<void> {
 export interface PositionAssignment {
   position_id: string;
   access_profile_id: string | null;
+  // karyawan aktif pemegang jabatan, supaya dampak perubahan paket terlihat
+  holder_count: number;
 }
 
 export async function findAssignments(): Promise<PositionAssignment[]> {
   const result = await pool.query<PositionAssignment>(
-    `SELECT id AS position_id, access_profile_id
-     FROM positions WHERE deleted_at IS NULL`,
+    `SELECT p.id AS position_id, p.access_profile_id,
+            (SELECT COUNT(*)::int FROM employees e
+             WHERE e.position_id = p.id AND e.deleted_at IS NULL
+               AND e.is_active = true) AS holder_count
+     FROM positions p WHERE p.deleted_at IS NULL`,
   );
 
   return result.rows;

@@ -182,7 +182,11 @@ beforeEach(() => {
     updated_at: new Date("2026-11-01T01:00:00Z"),
   } as never);
   (profileModel.findAssignments as jest.Mock).mockResolvedValue([
-    { position_id: POSITION_ID, access_profile_id: PROFILE_ID },
+    {
+      position_id: POSITION_ID,
+      access_profile_id: PROFILE_ID,
+      holder_count: 3,
+    },
   ] as never);
   (featureModel.findCodesByPosition as jest.Mock).mockResolvedValue([
     "system.manage_feature",
@@ -688,6 +692,7 @@ describe("GET /api/v1/features/matrix", () => {
 
     expect(res.body.data.access_profiles[0].name).toBe("Pengamat HR");
     expect(res.body.data.positions[0].access_profile_id).toBe(PROFILE_ID);
+    expect(res.body.data.positions[0].holder_count).toBe(3);
 
     const features = res.body.data.categories[0].features;
     const remove = features.find(

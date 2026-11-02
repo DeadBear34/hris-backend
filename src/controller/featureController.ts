@@ -203,8 +203,8 @@ export async function FeatureMatrixController(
         profileModel.findAssignments(),
       ]);
 
-    const profileOf = new Map(
-      assignments.map((row) => [row.position_id, row.access_profile_id]),
+    const assignmentOf = new Map(
+      assignments.map((row) => [row.position_id, row]),
     );
 
     res.json({
@@ -219,7 +219,8 @@ export async function FeatureMatrixController(
           department_id: p.department_id,
           department_name: p.department_name,
           is_unit_head: p.is_unit_head,
-          access_profile_id: profileOf.get(p.id) ?? null,
+          access_profile_id: assignmentOf.get(p.id)?.access_profile_id ?? null,
+          holder_count: assignmentOf.get(p.id)?.holder_count ?? 0,
           updated_at: p.updated_at,
         })),
         categories: groupByCategory(features),

@@ -1,6 +1,6 @@
 {
   "name": "hris-backend",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "HRIS backend API",
   "private": true,
   "license": "ISC",

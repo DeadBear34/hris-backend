@@ -41,7 +41,7 @@
     "multer": "^2.5.0",
     "pg": "^8.22.0",
     "pino": "^10.3.1",
-    "resend": "^6.19.0",
+    "resend": "^6.35.0",
     "ws": "^8.21.3",
     "zod": "^4.6.7"
   },
@@ -52,7 +52,7 @@
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.6.6",
     "@types/pg": "^8.20.3",
     "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.2",

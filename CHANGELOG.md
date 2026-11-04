@@ -45,6 +45,7 @@ Versions 0.1.0 through 0.6.1 were assigned retroactively from the pull requests 
 
 - **BREAKING:** the database column `work_schedules.department_id` is replaced by the `work_schedule_departments` table and `work_schedules.is_default`. The API still accepts and returns `department_id`, but this version cannot run on a database that has not been migrated.
 - Work schedule responses include `is_default`, `department_ids`, `departments`, and `overtime_min_minutes`. Attendance responses include `overtime_minutes`, and `GET /attendances/today` includes `overnight_attendance`.
+- Working hours of active work schedules can no longer overlap on a shared working day; creating or editing such a schedule returns 409 with the overlapping schedules in `overlaps`. Schedules may meet at the boundary (one ending at 17:00, the next starting at 17:00). Deactivating or deleting a schedule is always allowed, so existing overlaps can be resolved.
 - `POST /attendances/close-day` is now a manual trigger; `CRON_SECRET` is only needed to call it.
 - `PUT /positions/:id/features` still works for older clients, but now maps the submitted features to an access profile (reusing an identical one or creating a custom one).
 - The unused `system.manage_feature` feature is deactivated; feature management has always been limited to administrators.

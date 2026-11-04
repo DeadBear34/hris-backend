@@ -17,6 +17,57 @@ const SCHEDULE_DEFAULTS = {
   absent_cutoff_time: "18:00",
 } as const;
 
+const WORKING_DAY_DEFAULTS: workScheduleModel.WorkingDays = {
+  works_monday: true,
+  works_tuesday: true,
+  works_wednesday: true,
+  works_thursday: true,
+  works_friday: true,
+  works_saturday: false,
+  works_sunday: false,
+};
+
+function workingDaysOf(
+  data: Partial<workScheduleModel.WorkingDays>,
+  fallback: workScheduleModel.WorkingDays,
+): workScheduleModel.WorkingDays {
+  const days = { ...fallback };
+
+  for (const key of Object.keys(days) as (keyof typeof days)[]) {
+    days[key] = data[key] ?? fallback[key];
+  }
+
+  return days;
+}
+
+// Jam kerja antar jadwal aktif tidak boleh beririsan pada hari kerja yang
+// sama, supaya jam kerja perusahaan tidak tumpang tindih. Jadwal nonaktif
+// tidak berlaku bagi siapa pun sehingga tidak diperiksa
+async function assertNoOverlappingHours(
+  hours: { start_time: string; end_time: string },
+  days: workScheduleModel.WorkingDays,
+  exceptScheduleId?: string,
+): Promise<void> {
+  const overlaps = await workScheduleModel.findOverlapping(
+    hours,
+    days,
+    exceptScheduleId,
+  );
+
+  if (overlaps.length === 0) return;
+
+  const start = hours.start_time.slice(0, 5);
+  const end = hours.end_time.slice(0, 5);
+  const names = overlaps
+    .map((row) => `${row.name} (${row.start_time}-${row.end_time})`)
+    .join(", ");
+
+  throw Conflict(
+    `Working hours ${start}-${end} overlap with another work schedule: ${names}. Schedules may only meet at the boundary, for example one ending at 17:00 and the next starting at 17:00`,
+    { overlaps },
+  );
+}
+
 function assertScheduleTimesMakeSense(hour: {
   start_time: string;
   end_time: string;
@@ -158,14 +209,25 @@ export async function CreateWorkScheduleController(
       await assertDepartmentsAvailable(department_ids);
     }
 
-    assertScheduleTimesMakeSense({
+    const hours = {
       start_time: data.start_time ?? SCHEDULE_DEFAULTS.start_time,
       end_time: data.end_time ?? SCHEDULE_DEFAULTS.end_time,
+    };
+
+    assertScheduleTimesMakeSense({
+      ...hours,
       late_tolerance_minutes:
         data.late_tolerance_minutes ?? SCHEDULE_DEFAULTS.late_tolerance_minutes,
       absent_cutoff_time:
         data.absent_cutoff_time ?? SCHEDULE_DEFAULTS.absent_cutoff_time,
     });
+
+    if (data.is_active !== false) {
+      await assertNoOverlappingHours(
+        hours,
+        workingDaysOf(data, WORKING_DAY_DEFAULTS),
+      );
+    }
 
     const schedule = await withTransaction(async (client) => {
       const id = await workScheduleModel.createSchedule(
@@ -237,14 +299,26 @@ export async function UpdateWorkScheduleController(
       await assertDepartmentsAvailable(data.department_ids, id);
     }
 
-    assertScheduleTimesMakeSense({
+    const hours = {
       start_time: data.start_time ?? existing.start_time,
       end_time: data.end_time ?? existing.end_time,
+    };
+
+    assertScheduleTimesMakeSense({
+      ...hours,
       late_tolerance_minutes:
         data.late_tolerance_minutes ?? existing.late_tolerance_minutes,
       absent_cutoff_time:
         data.absent_cutoff_time ?? existing.absent_cutoff_time,
     });
+
+    if ((data.is_active ?? existing.is_active) !== false) {
+      await assertNoOverlappingHours(
+        hours,
+        workingDaysOf(data, workingDaysOf(existing, WORKING_DAY_DEFAULTS)),
+        id,
+      );
+    }
 
     // jadwal bawaan tidak pernah punya divisi, jadi daftar kosong diabaikan
     const changes = existing.is_default

@@ -52,6 +52,7 @@ jest.unstable_mockModule("../../src/models/workSchedule.js", () => ({
   findById: jest.fn(),
   findDefault: jest.fn(),
   findDepartmentOwners: jest.fn(),
+  findOverlapping: jest.fn(),
   resolveForEmployee: jest.fn(),
   resolveForAllActive: jest.fn(),
   createSchedule: jest.fn(),
@@ -149,6 +150,9 @@ beforeEach(() => {
     (ids) => Promise.resolve(ids) as never,
   );
   (workScheduleModel.findDepartmentOwners as jest.Mock).mockResolvedValue(
+    [] as never,
+  );
+  (workScheduleModel.findOverlapping as jest.Mock).mockResolvedValue(
     [] as never,
   );
   (workScheduleModel.createSchedule as jest.Mock).mockResolvedValue(
@@ -674,5 +678,121 @@ describe("batas minimal lembur pada jadwal", () => {
 
       expect(res.status).toBe(400);
     }
+  });
+});
+
+describe("jam kerja antar jadwal tidak boleh beririsan", () => {
+  const overlap = {
+    id: SCHEDULE_ID,
+    name: "Jadwal Kerja Umum",
+    start_time: "08:00",
+    end_time: "17:00",
+  };
+
+  function postSchedule(body: Record<string, unknown>) {
+    return asEmployee("post", "/api/v1/work-schedules").send({
+      name: "Jadwal Sore",
+      department_ids: [DEPARTMENT_ID],
+      ...body,
+    });
+  }
+
+  function patchSchedule(body: Record<string, unknown>) {
+    return asEmployee("patch", `/api/v1/work-schedules/${SCHEDULE_ID}`).send(
+      body,
+    );
+  }
+
+  it("menolak jadwal baru yang beririsan sambil menyebut jadwal dan jamnya", async () => {
+    (workScheduleModel.findOverlapping as jest.Mock).mockResolvedValue([
+      overlap,
+    ] as never);
+
+    const res = await postSchedule({
+      start_time: "16:00",
+      end_time: "23:00",
+      absent_cutoff_time: "18:00",
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain("16:00-23:00");
+    expect(res.body.message).toContain("Jadwal Kerja Umum (08:00-17:00)");
+    expect(res.body.details.overlaps).toEqual([overlap]);
+    expect(workScheduleModel.createSchedule).not.toHaveBeenCalled();
+  });
+
+  it("memeriksa jam dan hari kerja yang dikirim, dengan hari bawaan Senin sampai Jumat", async () => {
+    await postSchedule({
+      start_time: "17:00",
+      end_time: "23:00",
+      absent_cutoff_time: "18:00",
+      works_saturday: true,
+    });
+
+    expect(workScheduleModel.findOverlapping).toHaveBeenCalledWith(
+      { start_time: "17:00", end_time: "23:00" },
+      {
+        works_monday: true,
+        works_tuesday: true,
+        works_wednesday: true,
+        works_thursday: true,
+        works_friday: true,
+        works_saturday: true,
+        works_sunday: false,
+      },
+      undefined,
+    );
+  });
+
+  it("tidak memeriksa jadwal yang dibuat dalam keadaan nonaktif", async () => {
+    const res = await postSchedule({ is_active: false });
+
+    expect(res.status).toBe(201);
+    expect(workScheduleModel.findOverlapping).not.toHaveBeenCalled();
+  });
+
+  it("menolak perubahan jam yang membuat jadwal beririsan", async () => {
+    (workScheduleModel.findOverlapping as jest.Mock).mockResolvedValue([
+      overlap,
+    ] as never);
+
+    const res = await patchSchedule({ start_time: "07:00" });
+
+    expect(res.status).toBe(409);
+    expect(workScheduleModel.updateSchedule).not.toHaveBeenCalled();
+  });
+
+  it("membandingkan dengan nilai lama dan tidak menghitung jadwal itu sendiri", async () => {
+    await patchSchedule({ end_time: "16:00", absent_cutoff_time: "09:00" });
+
+    expect(workScheduleModel.findOverlapping).toHaveBeenCalledWith(
+      { start_time: "08:00:00", end_time: "16:00" },
+      expect.objectContaining({ works_monday: true, works_sunday: false }),
+      SCHEDULE_ID,
+    );
+  });
+
+  it("menonaktifkan jadwal tidak diperiksa supaya bentrok lama bisa dibereskan", async () => {
+    (workScheduleModel.findOverlapping as jest.Mock).mockResolvedValue([
+      overlap,
+    ] as never);
+
+    const res = await patchSchedule({ is_active: false });
+
+    expect(res.status).toBe(200);
+    expect(workScheduleModel.findOverlapping).not.toHaveBeenCalled();
+  });
+
+  it("menghapus jadwal tetap bisa walaupun jamnya beririsan", async () => {
+    (workScheduleModel.findOverlapping as jest.Mock).mockResolvedValue([
+      overlap,
+    ] as never);
+
+    const res = await asEmployee(
+      "delete",
+      `/api/v1/work-schedules/${SCHEDULE_ID}`,
+    );
+
+    expect(res.status).toBe(200);
   });
 });

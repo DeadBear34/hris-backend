@@ -238,6 +238,52 @@ export async function findDepartmentOwners(
   return result.rows;
 }
 
+export interface OverlappingSchedule {
+  id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+}
+
+export type WorkingDays = Record<`works_${DayName}`, boolean>;
+
+// Jadwal aktif lain yang jam kerjanya beririsan pada hari kerja yang sama.
+// Bersentuhan tidak dihitung: selesai 17:00 dan mulai 17:00 masih boleh
+export async function findOverlapping(
+  hours: { start_time: string; end_time: string },
+  days: WorkingDays,
+  exceptScheduleId?: string,
+): Promise<OverlappingSchedule[]> {
+  const result = await pool.query<OverlappingSchedule>(
+    `SELECT ws.id, ws.name,
+            to_char(ws.start_time, 'HH24:MI') AS start_time,
+            to_char(ws.end_time, 'HH24:MI') AS end_time
+     FROM work_schedules ws
+     WHERE ws.deleted_at IS NULL AND ws.is_active = true
+       AND ($3::uuid IS NULL OR ws.id <> $3::uuid)
+       AND ws.start_time < $2::time AND $1::time < ws.end_time
+       AND ((ws.works_monday AND $4) OR (ws.works_tuesday AND $5)
+            OR (ws.works_wednesday AND $6) OR (ws.works_thursday AND $7)
+            OR (ws.works_friday AND $8) OR (ws.works_saturday AND $9)
+            OR (ws.works_sunday AND $10))
+     ORDER BY ws.start_time ASC, ws.name ASC`,
+    [
+      hours.start_time,
+      hours.end_time,
+      exceptScheduleId ?? null,
+      days.works_monday,
+      days.works_tuesday,
+      days.works_wednesday,
+      days.works_thursday,
+      days.works_friday,
+      days.works_saturday,
+      days.works_sunday,
+    ],
+  );
+
+  return result.rows;
+}
+
 export async function resolveForEmployee(
   employee_id: string,
 ): Promise<WorkSchedule | null> {
